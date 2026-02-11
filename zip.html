@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ZIP</title>
+  <style>
+    /* Adobe Spectrum 2 Darkest – github.com/adobe/spectrum-css */
+    :root {
+      --sp-gray-75: #0d0d0d;
+      --sp-gray-100: #171717;
+      --sp-gray-200: #232323;
+      --sp-gray-300: #2e2e2e;
+      --sp-gray-400: #3d3d3d;
+      --sp-gray-500: #525252;
+      --sp-gray-700: #858585;
+      --sp-gray-900: #c4c4c4;
+      --sp-gray-1100: #f5f5f5;
+      --sp-red-600: #e34850;
+      --sp-red-700: #d7373f;
+      --sp-red-800: #c9252c;
+      --sp-green: #2d9d78;
+      --sp-yellow-bg: rgba(230, 158, 34, 0.15);
+      --sp-yellow: #e69a22;
+      --sp-font: adobe-clean, "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--sp-gray-75);
+      color: var(--sp-gray-1100);
+      font: 14px/1.5 var(--sp-font);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+    .card {
+      width: min(920px, 96vw);
+      border: 1px solid var(--sp-gray-400);
+      background: var(--sp-gray-100);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--sp-red-600);
+    }
+    p { margin: 0 0 12px; color: var(--sp-gray-900); }
+    ol { margin: 0 0 14px 20px; }
+    li { margin-bottom: 8px; }
+    code {
+      background: var(--sp-gray-200);
+      border: 1px solid var(--sp-gray-400);
+      border-radius: 4px;
+      padding: 1px 6px;
+      color: var(--sp-gray-1100);
+      font-size: 13px;
+    }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 12px 0 14px;
+    }
+    .btn {
+      border: 1px solid var(--sp-gray-400);
+      border-radius: 6px;
+      background: var(--sp-gray-200);
+      color: var(--sp-gray-1100);
+      padding: 8px 12px;
+      font: 500 12px/1.2 var(--sp-font);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .btn:hover {
+      background: var(--sp-gray-300);
+      border-color: var(--sp-gray-500);
+    }
+    .btn.primary {
+      border-color: var(--sp-red-600);
+      background: var(--sp-red-600);
+      color: #fff;
+    }
+    .btn.primary:hover {
+      background: var(--sp-red-700);
+      border-color: var(--sp-red-700);
+    }
+    .warn {
+      margin-top: 12px;
+      border: 1px solid var(--sp-yellow);
+      background: var(--sp-yellow-bg);
+      border-radius: 4px;
+      padding: 10px 12px;
+      color: var(--sp-gray-1100);
+      font-size: 13px;
+    }
+    .meta {
+      margin-top: 8px;
+      border: 1px solid var(--sp-gray-400);
+      background: var(--sp-gray-200);
+      border-radius: 4px;
+      padding: 10px 12px;
+      color: var(--sp-gray-900);
+      font-size: 12px;
+    }
+    .mission-quote {
+      margin: 12px 0;
+      padding: 10px 12px;
+      border-left: 3px solid var(--sp-gray-400);
+      background: var(--sp-gray-200);
+      color: var(--sp-gray-900);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .mission-quote strong { color: var(--sp-gray-1100); }
+    .btn-feedback { font-size: 12px; color: var(--sp-green); margin-left: 4px; }
+    .hint { font-size: 12px; color: var(--sp-gray-700); margin: -6px 0 12px; display: none; }
+    .hint.visible { display: block; }
+  </style>
+</head>
+<body class="spectrum spectrum--medium spectrum--darkest">
+  <main class="card">
+    <h1>ZIP</h1>
+    <p><strong>ZIP = Zeek Info Peek</strong> — ZIP into INFO from the Zendesk API.</p>
+    <p>
+      Legacy standalone SPA flow has been retired. ZIP is now packaged as a pure Chrome extension
+      with no third-party dependencies.
+    </p>
+    <p>
+      One-time setup uses Chrome extension loading. After that, daily usage is under 3 clicks:
+      open Zendesk, click ZIP, login if prompted.
+    </p>
+
+    <blockquote class="mission-quote">
+      <strong>Mission:</strong> Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. When gatekeeping or &ldquo;no shared token&rdquo; roadblocks show up, we treat them as the yin to our yang—fuel for reflection, smarter design, and relentless follow‑through—letting results rise on their own while we stay focused on the work, not the doubters.
+    </blockquote>
+
+    <ol>
+      <li>Open <code>chrome://extensions</code>.</li>
+      <li>Turn on <strong>Developer mode</strong> (top-right).</li>
+      <li>Click <strong>Load unpacked</strong>.</li>
+      <li>Select folder:<br /><code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
+      <li>Open Zendesk dashboard:<br /><code>https://adobeprimetime.zendesk.com/agent/dashboard</code></li>
+      <li>If logged out, click Login with Zendesk from ZIP panel.</li>
+    </ol>
+
+    <div class="btn-row">
+      <button type="button" class="btn" id="open-extensions-btn" title="Chrome blocks direct links to chrome:// — this copies the URL so you can paste it in the address bar">Copy chrome://extensions link</button>
+      <span id="extensions-feedback" class="btn-feedback" aria-live="polite"></span>
+      <a class="btn primary" href="https://adobeprimetime.zendesk.com/agent/dashboard" target="_blank" rel="noopener">Open Zendesk Dashboard</a>
+      <a class="btn" href="./zip-chrome-extension/README.md" target="_blank" rel="noopener">Open Extension README</a>
+      <a class="btn" href="./zip-chrome-extension.zip" download>Download Extension Zip</a>
+    </div>
+    <p class="hint" id="extensions-hint">Paste in Chrome’s address bar (Ctrl+L or Cmd+L) and press Enter.</p>
+
+    <div class="meta">
+      Canonical extension package: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>
+    </div>
+
+    <div class="warn">
+      If your team cannot use "Load unpacked", your Chrome admin can deploy this extension centrally
+      via enterprise policy.
+    </div>
+  </main>
+  <script>
+    (function () {
+      var EXTENSIONS_URL = 'chrome://extensions';
+      var btn = document.getElementById('open-extensions-btn');
+      var feedback = document.getElementById('extensions-feedback');
+      var hint = document.getElementById('extensions-hint');
+
+      function showFeedback(msg) {
+        if (feedback) feedback.textContent = msg;
+        if (hint) hint.classList.add('visible');
+        if (feedback && msg) setTimeout(function () { feedback.textContent = ''; }, 4000);
+      }
+
+      if (btn) {
+        btn.addEventListener('click', function () {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(EXTENSIONS_URL).then(function () {
+              showFeedback('Copied! ');
+            }).catch(function () {
+              showFeedback('Select and copy: ' + EXTENSIONS_URL);
+            });
+          } else {
+            try {
+              var ta = document.createElement('textarea');
+              ta.value = EXTENSIONS_URL;
+              ta.setAttribute('readonly', '');
+              ta.style.position = 'absolute';
+              ta.style.left = '-9999px';
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+              showFeedback('Copied! ');
+            } catch (e) {
+              showFeedback('Copy this: ' + EXTENSIONS_URL);
+            }
+          }
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

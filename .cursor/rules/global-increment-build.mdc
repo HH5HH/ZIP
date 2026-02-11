@@ -1,0 +1,14 @@
+---
+description: Auto-increment build/version after every update, change, or refactor (all projects)
+alwaysApply: true
+---
+
+# Auto-Increment Build Number (Every Project)
+
+**Never forget:** After every single update, change, or refactoring, increment the project's **version / build number** in the same response.
+
+- **Chrome / Web extensions:** Bump `"version"` in `manifest.json` (e.g. `1.0.5` → `1.0.6`).
+- **Node / npm:** Bump `"version"` in `package.json` (e.g. `1.0.5` → `1.0.6`), or run `npm version patch`.
+- **Other:** If the project has a version field (e.g. `version` in `pyproject.toml`, `Cargo.toml`, `build.gradle`, etc.), increment it.
+
+Do the version bump in the **same** set of changes that modified the code—do not leave it for "later." This keeps releases traceable and avoids confusion.

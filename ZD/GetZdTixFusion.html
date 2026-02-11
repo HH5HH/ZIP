@@ -1,0 +1,17 @@
+try {
+        const resp = await fetch(FUSION_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+
+        // If you have a Webhook Response module, you might see its body here
+        const body = await resp.text();
+        statusEl.textContent = `HTTP ${resp.status}: ${body}`;
+      } catch (e) {
+        statusEl.textContent = 'Error (likely CORS): ' + e.message;
+      }
+    });
+  </script>
+</body>
+</html>

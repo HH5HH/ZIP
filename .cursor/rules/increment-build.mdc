@@ -1,0 +1,15 @@
+---
+description: Always increment extension build/version after any change or refactor
+globs: zip-chrome-extension/**
+alwaysApply: true
+---
+
+# Increment Build Number After Every Change
+
+**Never forget:** After every single update, change, or refactoring to the ZIP Chrome extension, increment the **version** (build number) in `zip-chrome-extension/manifest.json`.
+
+- Edit `manifest.json` and bump the `"version"` field (e.g. `1.0.5` → `1.0.6`).
+- Do this in the same set of changes that modified the extension—do not leave it for "later."
+- The sidepanel displays this version as "ZIP v{version}"; keeping it incremented tracks releases and avoids confusion.
+
+Example: after adding a feature, fixing a bug, or refactoring any file under `zip-chrome-extension/`, add or update a version bump in the same response.

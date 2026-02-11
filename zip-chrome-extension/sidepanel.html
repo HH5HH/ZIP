@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ZIP</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body class="spectrum spectrum--medium spectrum--darkest">
+  <header class="topbar">
+    <div class="brand">
+      <div class="top-avatar-wrap" id="zipTopAvatarWrap" title="Not logged in">
+        <img id="zipTopAvatar" class="top-avatar hidden" alt="Zendesk agent avatar" />
+        <span id="zipTopAvatarFallback" class="top-avatar-fallback">?</span>
+      </div>
+      <div id="zipTopIdentity" class="top-identity-wrap">
+        <div id="zipTopIdentityName" class="top-identity-name">Not logged in</div>
+        <div id="zipTopIdentityTz" class="top-identity-tz"></div>
+        <a id="zipTopIdentityEmail" class="top-identity-email" href="#"> </a>
+      </div>
+      <div class="title title-logged-out" aria-hidden="true">ZIP</div>
+    </div>
+    <div class="actions">
+      <button id="zipSignoutBtn" class="btn">Sign out</button>
+    </div>
+  </header>
+  <div class="body">
+    <div id="zipLoginScreen" class="login-wrap">
+      <div class="login-card">
+        <div class="login-card-left">
+          <h2>Not Logged In</h2>
+          <p>Open a Zendesk tab (adobeprimetime.zendesk.com), then sign in or click below to open the login page.</p>
+          <button id="zipLoginBtn" class="btn primary">Login with Zendesk</button>
+        </div>
+        <blockquote id="zipAppDescription" class="login-card-description" cite="">
+          <!-- Filled from manifest description by sidepanel.js -->
+        </blockquote>
+      </div>
+    </div>
+    <div id="zipAppScreen" class="hidden">
+      <section class="section">
+        <div class="ticket-section-header">
+          <h3 class="ticket-section-title"><a href="#" id="zipAssignedTicketsLink" class="ticket-section-link">Assigned Tickets</a></h3>
+          <div class="ticket-section-filters">
+            <div class="ticket-section-by-group">
+              <label for="zipGroupMemberSelect" class="by-org-label">By Group</label>
+              <select id="zipGroupMemberSelect" class="org-select group-member-select">
+                <option value="">—</option>
+              </select>
+            </div>
+            <div class="ticket-section-by-view">
+              <label for="zipViewSelect" class="by-org-label">By View</label>
+              <select id="zipViewSelect" class="org-select view-select">
+                <option value="">—</option>
+              </select>
+            </div>
+            <div class="ticket-section-by-org">
+              <label for="zipOrgSelect" class="by-org-label">By Org</label>
+              <select id="zipOrgSelect" class="org-select">
+                <option value="">—</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr id="zipTicketHead"></tr></thead>
+            <tbody id="zipTicketBody"></tbody>
+          </table>
+        </div>
+        <div class="ticket-table-footer control-row">
+          <input id="zipTicketSearch" type="text" placeholder="Search tickets" />
+          <select id="zipStatusFilter">
+            <option value="all">All statuses</option>
+            <option value="open">open</option>
+            <option value="pending">pending</option>
+            <option value="hold">hold</option>
+          </select>
+          <button id="zipReloadTicketsBtn" class="btn">Refresh Tickets</button>
+        </div>
+      </section>
+      <section class="section">
+        <h3>ZD API – GET</h3>
+        <div class="api-form">
+          <div class="control-row">
+            <select id="zipApiPathSelect"></select>
+            <button id="zipApiRunBtn" class="btn primary">Run GET</button>
+          </div>
+          <div id="zipApiParams" class="api-form"></div>
+        </div>
+      </section>
+      <section class="section">
+        <h3 id="zipRawTitle">GET /api/v2/users/me</h3>
+        <div class="raw-table-wrap" id="zipRawTableWrap">
+          <table>
+            <thead><tr id="zipRawThead"></tr></thead>
+            <tbody id="zipRawBody"></tbody>
+          </table>
+        </div>
+        <div class="raw-footer">
+          <a id="zipRawDownload" href="#" class="raw-download-link">Raw.JSON</a>
+        </div>
+      </section>
+    </div>
+  </div>
+  <footer class="zip-footer" id="zipFooter">
+    <span id="zipStatus" class="zip-footer-status">Initializing...</span>
+    <a href="#" id="zipAppVersionLink" class="zip-footer-version" title="Refresh">ZIP v<span id="zipAppVersion" class="app-version-num">—</span></a>
+  </footer>
+  <script src="paths.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

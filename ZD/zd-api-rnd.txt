@@ -1,0 +1,82 @@
+Using the "Basic Authentication" example listed below 
+
+Basic authentication
+You can use your email address and password to access the API. The credentials must be sent in an Authorization header in the HTTP request. Credentials sent in the body or URL of the request are ignored.
+
+To use basic authentication, password access must be enabled in Admin Center interface at Apps and integrations > APIs > Zendesk API.
+
+To authenticate a request with basic authentication
+
+Combine your email address and password with a colon. Example: jdoe@example.com:pa$$w0rd.
+
+Base64-encode the resulting string. Example: amRvZUBleGFtcGxlLmNvbTpwYSQkdzByZA==.
+
+Include the base64-encoded string in a HTTP Authorization header as follows:
+
+Authorization: Basic {base64-encoded-string}
+Example:
+
+Authorization: Basic amRvZUBleGFtcGxlLmNvbTpwYSQkdzByZA==
+Note: Most HTTP request libraries have methods that simplify basic authentication.
+
+To learn more, see Authentication for API requests in Zendesk help.
+
+If you use curl to test different endpoints, you can use the following format:
+
+curl https://adobeprimetime.zendesk.com/api/v2/users.json -u 'minnick@adobe.com:ZendeskIdz!1'
+
+//	STEP 1 -> GET ACCESS TOKEN BY LOGGING INTO ZD
+
+curl --location --request POST 'https://adobeprimetime.zendesk.com/api/v2/oauth/clients/2379046' --header 'Accept: application/json'
+
+// 4-Days
+// ZD URL https://adobeprimetime.zendesk.com/agent/filters/43567215
+curl https://adobeprimetime.zendesk.com/api/v2/views/43567215/tickets.json -u 'minnick@adobe.com:ZendeskIdz!1' > ZD-4DAYS.JSON
+
+// All
+// ZD URL https://adobeprimetime.zendesk.com/agent/filters/8863190295316
+curl https://adobeprimetime.zendesk.com/api/v2/views/8863190295316/tickets.json -u 'minnick@adobe.com:ZendeskIdz!1' > ZD-ALL.JSON
+
+curl https://adobeprimetime.zendesk.com/api/v2/users/me -u 'minnick@adobe.com:ZendeskIdz!1' > ZD-ME.JSON
+
+
+curl -u minnick@adobe.com:ZendeskIdz!1 https://adobeprimetime.zendesk.com/api/v2/users.json
+
+
+-------------
+
+Please craft a bare bones web login form containing a field for email and a field for password, which posts to the Zendesk endpoint https://adobeprimetime.zendesk.com/ and utilizes Zendesk's /api/v2/ pathing that logs a user into Zendesk, and then uses the Zendesk API to retrieve a ticket list from two different views.
+
+
+curl --user "login:password" [URL]
+
+curl --user "minnick@adobe.com:Zendeskidz!1" https://adobeprimetime.zendesk.com/api/v2/views/43567215/tickets.json
+
+curl --location 'https://adobeprimetime.zendesk.com/api/v2/views/43567215/tickets.json' \
+--header 'Accept: application/json' \
+--header 'Authorization: Basic bWlubmlja0BhZG9iZS5jb206WmVuZGVza0lkeiEx'
+
+
+
+curl https://adobeprimetime.zendesk.com/api/v2/users.json -u 'minnick@adobe.com:ZendeskIdz!1' > ZD-USERS.JSON
+curl https://adobeprimetime.zendesk.com/agent/filters/43567215/tickets.json -u 'minnick@adobe.com:ZendeskIdz!1' > ZD-USERS.JSON
+
+*
+
+
+
+To authenticate a request with basic authentication
+
+//	Combine your email address and password with a colon
+minnick@adobe.com:ZendeskIdz!1
+
+//	Base64-encode the resulting string
+//	btoa("minnick@adobe.com:ZendeskIdz!1")
+
+bWlubmlja0BhZG9iZS5jb206WmVuZGVza0lkeiEx
+
+
+//	Include the base64-encoded string in a HTTP Authorization header as follows:
+//	Authorization: Basic {base64-encoded-string}
+
+Authorization: Basic bWlubmlja0BhZG9iZS5jb206WmVuZGVza0lkeiEx

@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "ZIP",
+  "version": "1.0.11",
+  "description": "ZIP = Zeek Info Peek — ZIP into INFO from the Zendesk API. Mission: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. When gatekeeping or \"no shared token\" roadblocks show up, we treat them as the yin to our yang\u2014fuel for reflection, smarter design, and relentless follow-through\u2014letting results rise on their own while we stay focused on the work, not the doubters.",
+  "permissions": [
+    "sidePanel",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://adobeprimetime.zendesk.com/*"
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "ZIP"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://adobeprimetime.zendesk.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
