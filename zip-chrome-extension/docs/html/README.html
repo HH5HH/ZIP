@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <base href="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/" />
+  <title>ZIP Chrome Extension (No 3P Dependencies)</title>
+  <style>
+    :root {
+      --s2-bg: #f4f4f4;
+      --s2-surface: #ffffff;
+      --s2-border: #dadada;
+      --s2-text: #222222;
+      --s2-muted: #575757;
+      --s2-accent: #ff2d55;
+      --s2-accent-2: #ff7a00;
+      --s2-accent-dark: #be0a26;
+      --s2-link: #1473e6;
+      --s2-code-bg: #f0f0f0;
+      --s2-code-border: #d0d0d0;
+      --s2-pre-bg: #171717;
+      --s2-pre-ink: #f3f3f3;
+      --s2-table-head: #fdecee;
+      --s2-shadow: 0 5px 16px rgba(0,0,0,0.09);
+      --s2-font: "Adobe Clean", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      --s2-mono: "Source Code Pro", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    @page {
+      size: Letter;
+      margin: 0.58in;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--s2-text);
+      background:
+        radial-gradient(80% 38% at 8% 0%, rgba(190,10,38,0.13) 0%, rgba(255,255,255,0) 60%),
+        linear-gradient(180deg, #fbfbfb 0%, var(--s2-bg) 100%);
+      font-family: var(--s2-font);
+      font-size: 11.1pt;
+      line-height: 1.58;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      width: 100%;
+      max-width: 8.5in;
+      margin: 0 auto;
+    }
+    .hero {
+      position: relative;
+      border: 1px solid var(--s2-border);
+      border-radius: 12px;
+      margin-bottom: 18px;
+      overflow: hidden;
+      box-shadow: var(--s2-shadow);
+      background: #101013;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    .hero-bg {
+      display: block;
+      width: 100%;
+      height: 130px;
+      object-fit: cover;
+      opacity: 0.86;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(100deg, rgba(9,9,11,0.92) 10%, rgba(9,9,11,0.46) 72%);
+      pointer-events: none;
+    }
+    .hero-content {
+      position: absolute;
+      inset: 12px 14px;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      color: #ffffff;
+    }
+    .hero-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 6px;
+    }
+    .hero-brand img {
+      width: 21px;
+      height: 21px;
+      filter: drop-shadow(0 0 8px rgba(255, 45, 85, 0.32));
+    }
+    .hero-brand span {
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      color: #f3f3f3;
+    }
+    .hero h1 {
+      margin: 0;
+      border: none;
+      padding: 0;
+      color: #fff;
+      font-size: 21pt;
+      line-height: 1.15;
+      font-weight: 800;
+    }
+    .hero-meta {
+      margin-top: 6px;
+      font-size: 8.8pt;
+      color: rgba(255,255,255,0.86);
+    }
+    main {
+      background: var(--s2-surface);
+      border: 1px solid var(--s2-border);
+      border-radius: 11px;
+      padding: 16px 18px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+    }
+    h1, h2, h3, h4 {
+      color: #1f1f1f;
+      line-height: 1.25;
+      margin-top: 1.1em;
+      margin-bottom: 0.45em;
+      page-break-after: avoid;
+      break-after: avoid-page;
+    }
+    h1 {
+      font-size: 18pt;
+      border-bottom: 2px solid var(--s2-border);
+      padding-bottom: 6px;
+      margin-top: 0.3em;
+    }
+    h2 {
+      font-size: 14.2pt;
+      border-left: 4px solid var(--s2-accent);
+      padding-left: 10px;
+    }
+    h3 {
+      font-size: 12.2pt;
+      color: var(--s2-accent-dark);
+    }
+    p {
+      margin: 0.45em 0 0.7em;
+      orphans: 3;
+      widows: 3;
+    }
+    a {
+      color: var(--s2-link);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(20,115,230,0.35);
+    }
+    ul, ol {
+      margin: 0.32em 0 0.75em 1.25em;
+      padding: 0;
+    }
+    li { margin: 0.22em 0; }
+    blockquote {
+      margin: 0.85em 0;
+      padding: 10px 12px;
+      border-left: 4px solid var(--s2-accent);
+      border-radius: 6px;
+      background: #fff4f6;
+      color: #444;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid var(--s2-border);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    code {
+      font-family: var(--s2-mono);
+      background: var(--s2-code-bg);
+      border: 1px solid var(--s2-code-border);
+      border-radius: 4px;
+      padding: 0.1em 0.34em;
+      font-size: 0.92em;
+      color: #222;
+      word-break: break-word;
+    }
+    pre {
+      margin: 0.7em 0 0.9em;
+      background: var(--s2-pre-bg);
+      color: var(--s2-pre-ink);
+      border: 1px solid #111;
+      border-radius: 8px;
+      padding: 12px;
+      overflow: auto;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    pre code {
+      border: none;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-size: 9.5pt;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.6em 0 0.95em;
+      font-size: 10pt;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    th, td {
+      border: 1px solid var(--s2-border);
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--s2-table-head);
+      font-weight: 700;
+    }
+    tr:nth-child(even) td {
+      background: #fcfcfc;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--s2-border);
+      margin: 1.1em 0;
+    }
+    .footer {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid var(--s2-border);
+      color: var(--s2-muted);
+      font-size: 8.7pt;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <img class="hero-bg" src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/splash/zeek-info-peek-master-splash-1920x1080.png" alt="ZIP splash" />
+      <div class="hero-content">
+        <div class="hero-brand">
+          <img src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/source/zeek-info-peek-master-mark.svg" alt="ZIP mark" />
+          <span>ZEEK INFO PEEK</span>
+        </div>
+        <h1>ZIP Chrome Extension (No 3P Dependencies)</h1>
+        <div class="hero-meta">ZIP Documentation Suite • Spectrum 2 branded export • Generated 2026-02-11 13:50:44</div>
+      </div>
+    </header>
+    <main>
+<h1>ZIP Chrome Extension (No 3P Dependencies)</h1>
+<p><strong>ZIP = Zeek Info Peek</strong> — ZIP into INFO from the Zendesk API.</p>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<p>If the urgent line just paged, do this now:</p>
+<ol>
+<li>Open <code>chrome://extensions</code>.</li>
+<li>Toggle <strong>Developer mode</strong> ON.</li>
+<li>Click <strong>Load unpacked</strong>.</li>
+<li>Select <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Click ZIP, then click <code>Login with Zendesk</code> if prompted.</li>
+<li>Click <code>Assigned Tickets</code> and start triage.</li>
+</ol>
+<p><img src="docs/assets/brand/zeek-info-peek-master-preview-1024.png" alt="ZIP Master Brand Preview"></p>
+<p><strong>Mission:</strong> Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. When gatekeeping or &quot;no shared token&quot; roadblocks show up, we treat them as the yin to our yang—fuel for reflection, smarter design, and relentless follow‑through—letting results rise on their own while we stay focused on the work, not the doubters.</p>
+<p>ZIP is now distributed as a pure Chrome Manifest V3 extension.</p>
+<ul>
+<li>No Tampermonkey</li>
+<li>No hosted SPA required</li>
+<li>No OAuth client-id prompt in local HTML</li>
+</ul>
+<p><strong>Versioning (Automated):</strong> This repo now auto-increments <code>manifest.json</code> on commit when ZIP app files are staged.</p>
+<ul>
+<li>Hook: <code>.githooks/pre-commit</code></li>
+<li>Bump script: <code>scripts/auto_bump_manifest_version.sh</code></li>
+<li>One-time setup (already run in this repo): <code>scripts/install_git_hooks.sh</code></li>
+</ul>
+<p>Result: every ZIP code/content commit bumps patch version (<code>x.y.z</code> -&gt; <code>x.y.(z+1)</code>) automatically.</p>
+<p>After one-time install, runtime flow is:</p>
+<ol>
+<li>Open Zendesk page</li>
+<li>Click the ZIP bubble</li>
+<li>If logged out, click Login with Zendesk</li>
+<li>After sign-in, ZIP loads profile + assigned tickets automatically</li>
+</ol>
+<p>Logged-out behavior:</p>
+<ul>
+<li>ZIP shows a branded login card and opens Zendesk authentication from the <code>Login with Zendesk</code> button.</li>
+</ul>
+<h2>Brand System (Master Kit)</h2>
+<p>This build is aligned to the latest approved media kit:</p>
+<ul>
+<li><code>/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip</code></li>
+</ul>
+<p>Integrated assets now live in:</p>
+<ul>
+<li><code>assets/brand/icons</code></li>
+<li><code>assets/brand/source</code></li>
+<li><code>assets/brand/splash</code></li>
+<li><code>docs/assets/brand</code></li>
+</ul>
+<p>Current release:</p>
+<ul>
+<li><code>manifest.json</code> version: <code>1.0.21</code></li>
+</ul>
+<h2>Quick Start</h2>
+<ol>
+<li>Open Chrome and go to <code>chrome://extensions</code>.</li>
+<li>Toggle <strong>Developer mode</strong> ON.</li>
+<li>Click <strong>Load unpacked</strong>.</li>
+<li>Select this folder:<ul>
+<li><code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
+</ul>
+</li>
+<li>Open Zendesk:<ul>
+<li><code>https://adobeprimetime.zendesk.com/agent/dashboard</code></li>
+</ul>
+</li>
+<li>ZIP opens and checks session automatically (floating panel button is available if collapsed).</li>
+</ol>
+<h2>Team Handoff</h2>
+<p>You can hand off either of these:</p>
+<ol>
+<li>Folder: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
+<li>Zip: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip</code></li>
+</ol>
+<p>Also available:</p>
+<ul>
+<li>Install helper page: <code>/Users/minnick/Documents/PASS/ZIP/zip.html</code></li>
+</ul>
+<h2>Runtime Behavior</h2>
+<p>Runs only on:</p>
+<ul>
+<li><code>https://adobeprimetime.zendesk.com/*</code></li>
+</ul>
+<p>Uses active logged-in Zendesk browser session to call:</p>
+<ul>
+<li><code>/api/v2/users/me.json</code></li>
+<li><code>/api/v2/search.json?query=type:ticket assignee:{email} status:open status:pending status:hold</code></li>
+</ul>
+<h2>Side Panel Controls</h2>
+<ul>
+<li>Action click opens ZIP side panel (<code>openPanelOnActionClick: true</code>)</li>
+<li>Context menu:<ul>
+<li><code>Open ZIP Side Panel</code></li>
+<li><code>Open ZIP Workspace Tab (Horizontal)</code></li>
+</ul>
+</li>
+<li>Keyboard shortcut command:<ul>
+<li><code>Open or close ZIP side panel</code> (default <code>Ctrl+Shift+Y</code> / <code>Command+Shift+Y</code>)</li>
+</ul>
+</li>
+</ul>
+<p>ZIP is tab-scoped for Zendesk URLs and disabled on irrelevant domains to avoid workspace clutter.</p>
+<h3>Horizontal Docking Note</h3>
+<p>Chrome Side Panel supports left/right docking only (not bottom horizontal docking like DevTools).
+For a horizontal workflow, use <code>Open ZIP Workspace Tab (Horizontal)</code> which opens the same UI in a full tab.</p>
+<h2>Enterprise Option</h2>
+<p>If teammates cannot use &quot;Load unpacked&quot;, your Chrome admin can deploy this extension via managed policy.</p>
+    </main>
+    <footer class="footer">
+      <span>PASS • ZIP (Zeek Info Peek)</span>
+      <span>Master brand kit aligned</span>
+    </footer>
+  </div>
+</body>
+</html>

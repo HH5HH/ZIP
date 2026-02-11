@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+BUMP_SCRIPT="$ROOT/zip-chrome-extension/scripts/auto_bump_manifest_version.sh"
+if [[ ! -x "$BUMP_SCRIPT" ]]; then
+  exit 0
+fi
+
+MANIFEST_PATH="zip-chrome-extension/manifest.json"
+
+# If manifest is already staged in this commit, assume version was handled manually.
+if git diff --cached --name-only --diff-filter=ACMR | grep -qx "$MANIFEST_PATH"; then
+  exit 0
+fi
+
+new_version="$($BUMP_SCRIPT --if-staged-zip-changes)"
+if [[ -n "$new_version" ]]; then
+  git add "$MANIFEST_PATH"
+  echo "pre-commit: auto-bumped ZIP manifest version to $new_version"
+fi

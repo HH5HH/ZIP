@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "ZIP",
-  "version": "1.0.11",
-  "description": "ZIP = Zeek Info Peek — ZIP into INFO from the Zendesk API. Mission: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. When gatekeeping or \"no shared token\" roadblocks show up, we treat them as the yin to our yang\u2014fuel for reflection, smarter design, and relentless follow-through\u2014letting results rise on their own while we stay focused on the work, not the doubters.",
+  "version": "1.0.21",
+  "description": "ZIP = Zeek Info Peek — ZIP into INFO from the Zendesk API. Mission: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. When gatekeeping or \"no shared token\" roadblocks show up, we treat them as the yin to our yang—fuel for reflection, smarter design, and relentless follow-through—letting results rise on their own while we stay focused on the work, not the doubters.",
   "permissions": [
     "sidePanel",
-    "tabs"
+    "tabs",
+    "contextMenus"
   ],
   "host_permissions": [
     "https://adobeprimetime.zendesk.com/*"
@@ -13,8 +14,32 @@
   "side_panel": {
     "default_path": "sidepanel.html"
   },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "action": {
-    "default_title": "ZIP"
+    "default_title": "ZIP",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "commands": {
+    "open-zip-side-panel": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Open or close ZIP side panel"
+    },
+    "open-zip-workspace-tab": {
+      "description": "Open ZIP workspace in a full tab"
+    }
   },
   "background": {
     "service_worker": "background.js"

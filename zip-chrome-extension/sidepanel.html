@@ -6,9 +6,16 @@
   <title>ZIP</title>
   <link rel="stylesheet" href="sidepanel.css" />
 </head>
-<body class="spectrum spectrum--medium spectrum--darkest">
+  <body class="spectrum spectrum--medium spectrum--darkest">
   <header class="topbar">
     <div class="brand">
+      <div class="brand-lockup" aria-hidden="true">
+        <img class="brand-mark" src="assets/brand/source/zeek-info-peek-master-mark.svg" alt="" />
+        <div class="brand-lockup-text">
+          <div class="brand-lockup-title">ZIP</div>
+          <div class="brand-lockup-subtitle">ZEEK INFO PEEK</div>
+        </div>
+      </div>
       <div class="top-avatar-wrap" id="zipTopAvatarWrap" title="Not logged in">
         <img id="zipTopAvatar" class="top-avatar hidden" alt="Zendesk agent avatar" />
         <span id="zipTopAvatarFallback" class="top-avatar-fallback">?</span>
@@ -28,13 +35,17 @@
     <div id="zipLoginScreen" class="login-wrap">
       <div class="login-card">
         <div class="login-card-left">
-          <h2>Not Logged In</h2>
-          <p>Open a Zendesk tab (adobeprimetime.zendesk.com), then sign in or click below to open the login page.</p>
+          <div class="login-brand-lockup" aria-hidden="true">
+            <img class="login-brand-mark" src="assets/brand/source/zeek-info-peek-master-mark.svg" alt="" />
+          </div>
           <button id="zipLoginBtn" class="btn primary">Login with Zendesk</button>
         </div>
-        <blockquote id="zipAppDescription" class="login-card-description" cite="">
-          <!-- Filled from manifest description by sidepanel.js -->
-        </blockquote>
+        <div class="login-card-right">
+          <img class="login-hero-image" src="assets/brand/splash/zeek-info-peek-master-splash-1920x1080.png" alt="ZIP splash art" />
+          <blockquote id="zipAppDescription" class="login-card-description" cite="">
+            <!-- Filled from manifest description by sidepanel.js -->
+          </blockquote>
+        </div>
       </div>
     </div>
     <div id="zipAppScreen" class="hidden">
@@ -76,7 +87,17 @@
             <option value="pending">pending</option>
             <option value="hold">hold</option>
           </select>
-          <button id="zipReloadTicketsBtn" class="btn">Refresh Tickets</button>
+          <button id="zipReloadTicketsBtn" class="btn icon-btn icon-only" title="Refresh" aria-label="Refresh tickets">
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5a7 7 0 1 1-6.93 8h2.03a5 5 0 1 0 1.24-4.1L11 11H4V4l2.81 2.81A8.96 8.96 0 0 1 12 5z" fill="currentColor"></path>
+            </svg>
+          </button>
+          <button id="zipExportCsvBtn" class="btn icon-btn" title="Export current table as CSV" aria-label="Export current ticket table as CSV" disabled>
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v10.17l3.59-3.58L17 11l-5 5-5-5 1.41-1.41L11 13.17V3h1zm-7 14h14v2H5v-2z" fill="currentColor"></path>
+            </svg>
+            <span class="icon-btn-label">CSV</span>
+          </button>
         </div>
       </section>
       <section class="section">

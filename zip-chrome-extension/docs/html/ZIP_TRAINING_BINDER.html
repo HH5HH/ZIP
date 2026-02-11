@@ -1,0 +1,1420 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <base href="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/" />
+  <title>ZIP Training Binder</title>
+  <style>
+    :root {
+      --s2-bg: #f4f4f4;
+      --s2-surface: #ffffff;
+      --s2-border: #dadada;
+      --s2-text: #222222;
+      --s2-muted: #575757;
+      --s2-accent: #ff2d55;
+      --s2-accent-2: #ff7a00;
+      --s2-accent-dark: #be0a26;
+      --s2-link: #1473e6;
+      --s2-code-bg: #f0f0f0;
+      --s2-code-border: #d0d0d0;
+      --s2-pre-bg: #171717;
+      --s2-pre-ink: #f3f3f3;
+      --s2-table-head: #fdecee;
+      --s2-shadow: 0 5px 16px rgba(0,0,0,0.09);
+      --s2-font: "Adobe Clean", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      --s2-mono: "Source Code Pro", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    @page {
+      size: Letter;
+      margin: 0.58in;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--s2-text);
+      background:
+        radial-gradient(80% 38% at 8% 0%, rgba(190,10,38,0.13) 0%, rgba(255,255,255,0) 60%),
+        linear-gradient(180deg, #fbfbfb 0%, var(--s2-bg) 100%);
+      font-family: var(--s2-font);
+      font-size: 11.1pt;
+      line-height: 1.58;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      width: 100%;
+      max-width: 8.5in;
+      margin: 0 auto;
+    }
+    .hero {
+      position: relative;
+      border: 1px solid var(--s2-border);
+      border-radius: 12px;
+      margin-bottom: 18px;
+      overflow: hidden;
+      box-shadow: var(--s2-shadow);
+      background: #101013;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    .hero-bg {
+      display: block;
+      width: 100%;
+      height: 130px;
+      object-fit: cover;
+      opacity: 0.86;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(100deg, rgba(9,9,11,0.92) 10%, rgba(9,9,11,0.46) 72%);
+      pointer-events: none;
+    }
+    .hero-content {
+      position: absolute;
+      inset: 12px 14px;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      color: #ffffff;
+    }
+    .hero-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 6px;
+    }
+    .hero-brand img {
+      width: 21px;
+      height: 21px;
+      filter: drop-shadow(0 0 8px rgba(255, 45, 85, 0.32));
+    }
+    .hero-brand span {
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      color: #f3f3f3;
+    }
+    .hero h1 {
+      margin: 0;
+      border: none;
+      padding: 0;
+      color: #fff;
+      font-size: 21pt;
+      line-height: 1.15;
+      font-weight: 800;
+    }
+    .hero-meta {
+      margin-top: 6px;
+      font-size: 8.8pt;
+      color: rgba(255,255,255,0.86);
+    }
+    main {
+      background: var(--s2-surface);
+      border: 1px solid var(--s2-border);
+      border-radius: 11px;
+      padding: 16px 18px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+    }
+    h1, h2, h3, h4 {
+      color: #1f1f1f;
+      line-height: 1.25;
+      margin-top: 1.1em;
+      margin-bottom: 0.45em;
+      page-break-after: avoid;
+      break-after: avoid-page;
+    }
+    h1 {
+      font-size: 18pt;
+      border-bottom: 2px solid var(--s2-border);
+      padding-bottom: 6px;
+      margin-top: 0.3em;
+    }
+    h2 {
+      font-size: 14.2pt;
+      border-left: 4px solid var(--s2-accent);
+      padding-left: 10px;
+    }
+    h3 {
+      font-size: 12.2pt;
+      color: var(--s2-accent-dark);
+    }
+    p {
+      margin: 0.45em 0 0.7em;
+      orphans: 3;
+      widows: 3;
+    }
+    a {
+      color: var(--s2-link);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(20,115,230,0.35);
+    }
+    ul, ol {
+      margin: 0.32em 0 0.75em 1.25em;
+      padding: 0;
+    }
+    li { margin: 0.22em 0; }
+    blockquote {
+      margin: 0.85em 0;
+      padding: 10px 12px;
+      border-left: 4px solid var(--s2-accent);
+      border-radius: 6px;
+      background: #fff4f6;
+      color: #444;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid var(--s2-border);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    code {
+      font-family: var(--s2-mono);
+      background: var(--s2-code-bg);
+      border: 1px solid var(--s2-code-border);
+      border-radius: 4px;
+      padding: 0.1em 0.34em;
+      font-size: 0.92em;
+      color: #222;
+      word-break: break-word;
+    }
+    pre {
+      margin: 0.7em 0 0.9em;
+      background: var(--s2-pre-bg);
+      color: var(--s2-pre-ink);
+      border: 1px solid #111;
+      border-radius: 8px;
+      padding: 12px;
+      overflow: auto;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    pre code {
+      border: none;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-size: 9.5pt;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.6em 0 0.95em;
+      font-size: 10pt;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    th, td {
+      border: 1px solid var(--s2-border);
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--s2-table-head);
+      font-weight: 700;
+    }
+    tr:nth-child(even) td {
+      background: #fcfcfc;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--s2-border);
+      margin: 1.1em 0;
+    }
+    .footer {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid var(--s2-border);
+      color: var(--s2-muted);
+      font-size: 8.7pt;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <img class="hero-bg" src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/splash/zeek-info-peek-master-splash-1920x1080.png" alt="ZIP splash" />
+      <div class="hero-content">
+        <div class="hero-brand">
+          <img src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/source/zeek-info-peek-master-mark.svg" alt="ZIP mark" />
+          <span>ZEEK INFO PEEK</span>
+        </div>
+        <h1>ZIP Training Binder</h1>
+        <div class="hero-meta">ZIP Documentation Suite • Spectrum 2 branded export • Generated 2026-02-11 13:51:06</div>
+      </div>
+    </header>
+    <main>
+<h1>ZIP Training Binder</h1>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<ol>
+<li>Open <code>chrome://extensions</code>.</li>
+<li>Enable Developer mode.</li>
+<li>Click Load unpacked and choose <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open Zendesk dashboard and launch ZIP.</li>
+<li>If prompted, click <code>Login with Zendesk</code>, then triage from <code>Assigned Tickets</code>.</li>
+</ol>
+<p><img src="assets/brand/zeek-info-peek-master-preview-1024.png" alt="ZIP Master Brand Preview"></p>
+<p>This binder combines all current ZIP user-training documents into one package.</p>
+<p>Included sections:</p>
+<ol>
+<li>PRINT THIS FIRST - Quick Start Card</li>
+<li>Management Release Memo</li>
+<li>Manager One-Page Handout</li>
+<li>End-to-End User Training</li>
+<li>Functionality Inventory and Documentation Workflow</li>
+<li>User UAT Test Cases</li>
+<li>ZIP Extension README</li>
+</ol>
+<p>============================================================</p>
+<h1>PRINT THIS FIRST - Quick Start Card</h1>
+<h1>Source: /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/ZIP_PRINT_THIS_FIRST_QUICK_START.md</h1>
+<h1>ZIP Print This First - Quick Start Card</h1>
+<h2>Urgent Line Paged? Do This Now</h2>
+<ol>
+<li>Open <code>chrome://extensions</code>.</li>
+<li>Turn <strong>Developer mode</strong> ON.</li>
+<li>Click <strong>Load unpacked</strong>.</li>
+<li>Select <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Click ZIP in the toolbar.</li>
+<li>Click <code>Login with Zendesk</code> if prompted.</li>
+<li>Click <code>Assigned Tickets</code> and start triage.</li>
+</ol>
+<p><img src="assets/brand/zeek-info-peek-master-preview-1024.png" alt="ZIP Master Brand Preview"></p>
+<h2>30-Second Operating Pattern</h2>
+<ul>
+<li>Start in <code>Assigned Tickets</code>.</li>
+<li>Sort by <code>Updated</code>.</li>
+<li>Pivot by <code>By Group</code> when balancing team load.</li>
+<li>Use <code>CSV</code> for manager snapshot exports.</li>
+<li>Click ticket IDs to jump directly into Zendesk tickets.</li>
+</ul>
+<h2>Fast Troubleshooting</h2>
+<ul>
+<li>ZIP not opening: reload extension in <code>chrome://extensions</code>.</li>
+<li>Login loop: click <code>Login with Zendesk</code> again and return to ZIP.</li>
+<li>No tickets: clear filters and hit Refresh.</li>
+<li>CSV disabled: ensure at least one visible row.</li>
+</ul>
+<h2>Keyboard and Access Shortcuts</h2>
+<ul>
+<li>Open/toggle ZIP: <code>Ctrl+Shift+Y</code> (Windows/Linux) or <code>Command+Shift+Y</code> (Mac)</li>
+<li>Context menu options:<ul>
+<li><code>Open ZIP Side Panel</code></li>
+<li><code>Open ZIP Workspace Tab (Horizontal)</code></li>
+</ul>
+</li>
+</ul>
+<h2>Install Paths</h2>
+<ul>
+<li>Unpacked folder: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
+<li>Handoff package: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip</code></li>
+</ul>
+<p>============================================================</p>
+<h1>Management Release Memo</h1>
+<h1>Source: /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/ZIP_MANAGEMENT_RELEASE_MEMO.md</h1>
+<h1>ZIP Management Release Memo</h1>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<p>Install and begin work in under two minutes:</p>
+<ol>
+<li>Open <code>chrome://extensions</code>.</li>
+<li>Turn on <strong>Developer mode</strong>.</li>
+<li>Click <strong>Load unpacked</strong> and select <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Open ZIP from the extension icon, then click <code>Login with Zendesk</code> if needed.</li>
+<li>Use <code>Assigned Tickets</code> immediately and begin triage.</li>
+</ol>
+<p><img src="assets/brand/zeek-info-peek-master-preview-1024.png" alt="ZIP Master Brand Preview"></p>
+<h2>Release Snapshot</h2>
+<ul>
+<li>Product: ZIP (Zeek Info Peek)</li>
+<li>Build version: <code>1.0.21</code></li>
+<li>Package: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip</code></li>
+<li>Install path: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
+<li>Brand baseline: <code>/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip</code></li>
+</ul>
+<h2>What Management Asked For (Now Delivered)</h2>
+<ul>
+<li>Unified ZEEK INFO PEEK master-brand iconography and shell presentation.</li>
+<li>Cohesive install pages, extension UI, training docs, and PDF exports.</li>
+<li>Single polished package for pilot install and user validation.</li>
+<li>Quick-start-first documentation for urgent operational use.</li>
+</ul>
+<h2>Team Activation Path</h2>
+<ol>
+<li>Send this first: <code>docs/pdf/ZIP_PRINT_THIS_FIRST_QUICK_START.pdf</code></li>
+<li>Send install page: <code>/Users/minnick/Documents/PASS/ZIP/zip.html</code></li>
+<li>Team loads extension in Dev Mode.</li>
+<li>Team verifies launch methods:</li>
+</ol>
+<ul>
+<li>Action click</li>
+<li>Context menu entry</li>
+<li>Keyboard shortcut (<code>Ctrl+Shift+Y</code> / <code>Command+Shift+Y</code>)</li>
+</ul>
+<ol start="5">
+<li>Team validates ticket triage + CSV export.</li>
+</ol>
+<h2>Pilot Go/No-Go Checklist</h2>
+<ul>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Extension loads without manifest errors.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Login flow opens Zendesk and returns authenticated session.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Assigned ticket list loads and can open ticket links.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Group/View/Org selectors load expected ticket scopes.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Refresh and CSV export produce correct visible-row output.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>User-facing docs and PDFs are branded and readable.</li>
+</ul>
+<h2>Training and Handoff PDFs</h2>
+<ul>
+<li><code>docs/pdf/ZIP_PRINT_THIS_FIRST_QUICK_START.pdf</code></li>
+<li><code>docs/pdf/ZIP_MANAGER_ONE_PAGE_HANDOUT.pdf</code></li>
+<li><code>docs/pdf/ZIP_END_TO_END_USER_TRAINING.pdf</code></li>
+<li><code>docs/pdf/ZIP_FUNCTIONALITY_INVENTORY_AND_DOC_WORKFLOW.pdf</code></li>
+<li><code>docs/pdf/ZIP_USER_UAT_TEST_CASES.pdf</code></li>
+<li><code>docs/pdf/ZIP_TRAINING_BINDER.pdf</code></li>
+<li><code>docs/pdf/ZIP_MANAGEMENT_RELEASE_MEMO.pdf</code></li>
+</ul>
+<h2>Recommended Immediate Operating Playbook</h2>
+<p>When queue pressure spikes:</p>
+<ol>
+<li>Work from <code>Assigned Tickets</code> sorted by <code>Updated</code>.</li>
+<li>Pivot by Group for team balancing.</li>
+<li>Export CSV snapshots to leads for shift-level visibility.</li>
+<li>Open tickets directly from ZIP to cut tab-hopping.</li>
+</ol>
+<p>============================================================</p>
+<h1>Manager One-Page Handout</h1>
+<h1>Source: /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/ZIP_MANAGER_ONE_PAGE_HANDOUT.md</h1>
+<h1>ZIP Manager One-Page Handout</h1>
+<p>Congratulations, your PASS Zendesk life is no longer being throttled.</p>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<ol>
+<li>Open <code>chrome://extensions</code>.</li>
+<li>Turn on Developer mode.</li>
+<li>Click Load unpacked and select <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Open ZIP and click <code>Login with Zendesk</code> if needed.</li>
+<li>Click <code>Assigned Tickets</code> and begin response workflow.</li>
+</ol>
+<p><img src="assets/brand/zeek-info-peek-master-preview-1024.png" alt="ZIP Master Brand Preview"></p>
+<h2>Mission</h2>
+<p>ZIP = Zeek Info Peek. ZIP into INFO from the Zendesk API.</p>
+<p>Mission statement: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows.</p>
+<h2>What ZIP Delivers for Managers</h2>
+<ul>
+<li>Near-real-time visibility into active team tickets.</li>
+<li>Fast pivots by Group, View, and Organization.</li>
+<li>Clean CSV export of exactly what the team is looking at.</li>
+<li>Faster standups with less tab-hopping and manual copying.</li>
+</ul>
+<h2>30-Second Launch</h2>
+<ol>
+<li>Open Zendesk dashboard.</li>
+<li>Open ZIP (extension icon, context menu, or shortcut).</li>
+<li>Select source: Assigned, By Group, By View, or By Org.</li>
+<li>Apply filters and export CSV when needed.</li>
+</ol>
+<h2>Core Team Workflows</h2>
+<h3>1) Daily Queue Pulse</h3>
+<ul>
+<li>Start with Assigned Tickets.</li>
+<li>Switch to By Group for team-level load.</li>
+<li>Sort by Updated for recency.</li>
+</ul>
+<h3>2) Team Snapshot Export</h3>
+<ul>
+<li>Apply source + filters.</li>
+<li>Confirm row count shown in ZIP.</li>
+<li>Click CSV.</li>
+<li>Share output with leads/managers.</li>
+</ul>
+<h3>3) Escalation Drill-Down</h3>
+<ul>
+<li>Click ticket ID from ZIP to jump directly into Zendesk ticket.</li>
+<li>Keep ZIP panel open as persistent context.</li>
+</ul>
+<h2>Launch Methods</h2>
+<ul>
+<li>Action click on ZIP icon.</li>
+<li>Context menu: Open ZIP Side Panel.</li>
+<li>Shortcut: Ctrl+Shift+Y (Windows/Linux) or Command+Shift+Y (Mac).</li>
+<li>Horizontal option: Open ZIP Workspace Tab (Horizontal).</li>
+</ul>
+<h2>User Guardrails</h2>
+<ul>
+<li>ZIP is scoped to Adobe Primetime Zendesk domain.</li>
+<li>ZIP focuses on active work queues (not solved/closed backlog by default).</li>
+<li>CSV exports match the visible table rows and order.</li>
+</ul>
+<h2>Manager KPI Suggestions</h2>
+<p>Track before/after adoption:</p>
+<ul>
+<li>Time to produce queue snapshots.</li>
+<li>Number of manual Zendesk tab switches during standup.</li>
+<li>Time from queue review to first action.</li>
+<li>Percentage of escalations opened from ZIP ticket links.</li>
+</ul>
+<h2>Troubleshooting Quick Checks</h2>
+<ul>
+<li>Panel not opening: reload extension and confirm Zendesk tab context.</li>
+<li>Empty table: clear filters and refresh source.</li>
+<li>Export disabled: ensure visible rows exist.</li>
+</ul>
+<h2>Deployment Notes</h2>
+<ul>
+<li>Team install path: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
+<li>Current package version: 1.0.21</li>
+<li>Brand kit baseline: <code>/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip</code></li>
+</ul>
+<p>============================================================</p>
+<h1>End-to-End User Training</h1>
+<h1>Source: /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/ZIP_END_TO_END_USER_TRAINING.md</h1>
+<h1>ZIP End-to-End User Training</h1>
+<p>Congratulations, your PASS Zendesk life is no longer being throttled.</p>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<ol>
+<li>Open <code>chrome://extensions</code>.</li>
+<li>Enable Developer mode.</li>
+<li>Click Load unpacked and choose <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Open ZIP, authenticate with <code>Login with Zendesk</code> if prompted.</li>
+<li>Work from <code>Assigned Tickets</code>, then pivot by Group/View/Org as needed.</li>
+</ol>
+<p><img src="assets/brand/zeek-info-peek-master-preview-1024.png" alt="ZIP Master Brand Preview"></p>
+<h2>App Mission</h2>
+<p>ZIP = Zeek Info Peek. ZIP into INFO from the Zendesk API.</p>
+<p>Mission: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. When gatekeeping or &quot;no shared token&quot; roadblocks show up, we treat them as the yin to our yang - fuel for reflection, smarter design, and relentless follow-through - letting results rise on their own while we stay focused on the work, not the doubters.</p>
+<h2>What ZIP Is</h2>
+<p>ZIP is a Chrome extension side panel companion for <code>https://adobeprimetime.zendesk.com/*</code>.</p>
+<p>Branding in this release is synced to the approved ZEEK INFO PEEK master media kit and is consistent across:</p>
+<ul>
+<li>Extension iconography</li>
+<li>Side panel shell and login card</li>
+<li>Install pages</li>
+<li>Training PDFs and binder</li>
+</ul>
+<p>It gives agents and managers:</p>
+<ul>
+<li>Fast ticket visibility and filtering.</li>
+<li>Team-level pivots (By Group, By View, By Org).</li>
+<li>One-click refresh of the active ticket source.</li>
+<li>CSV export of exactly what is on screen.</li>
+<li>A GET API runner for Zendesk endpoints.</li>
+<li>Raw JSON inspection and download.</li>
+</ul>
+<h2>Permissions and Trust Model</h2>
+<p>ZIP currently uses:</p>
+<ul>
+<li><code>sidePanel</code></li>
+<li><code>tabs</code></li>
+<li><code>contextMenus</code></li>
+<li>Host permission only for <code>https://adobeprimetime.zendesk.com/*</code></li>
+</ul>
+<p>Practical user impact:</p>
+<ul>
+<li>ZIP does not request blanket all-sites access.</li>
+<li>ZIP operates against the active authenticated Zendesk browser session.</li>
+<li>ZIP performs read operations (GET) in the UI workflows.</li>
+</ul>
+<h2>Day 1 Setup</h2>
+<ol>
+<li>Open <code>chrome://extensions</code>.</li>
+<li>Enable Developer mode.</li>
+<li>Click Load unpacked.</li>
+<li>Select folder: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open Zendesk dashboard: <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Open ZIP with one of the methods below.</li>
+</ol>
+<h2>Opening ZIP (All Supported Methods)</h2>
+<h3>Method A: Action click</h3>
+<ol>
+<li>Go to a Zendesk tab.</li>
+<li>Click the ZIP extension icon.</li>
+<li>ZIP side panel opens.</li>
+</ol>
+<h3>Method B: Context menu</h3>
+<ol>
+<li>Right-click the ZIP extension icon (or page context menu where available).</li>
+<li>Choose <code>Open ZIP Side Panel</code>.</li>
+</ol>
+<h3>Method C: Keyboard shortcut</h3>
+<ol>
+<li>Default shortcut:</li>
+</ol>
+<ul>
+<li>Windows/Linux: <code>Ctrl+Shift+Y</code></li>
+<li>macOS: <code>Command+Shift+Y</code></li>
+</ul>
+<ol start="2">
+<li>Press shortcut on active tab.</li>
+<li>ZIP side panel opens or closes (toggle behavior where supported).</li>
+</ol>
+<h3>Method D: Horizontal workspace tab</h3>
+<p>If your manager prefers a horizontal workspace experience:</p>
+<ol>
+<li>Open context menu.</li>
+<li>Choose <code>Open ZIP Workspace Tab (Horizontal)</code>.</li>
+<li>ZIP opens in a full browser tab with wider layout.</li>
+</ol>
+<h2>First Login and Session Behavior</h2>
+<ol>
+<li>If not signed in, ZIP shows login screen.</li>
+<li>Click <code>Login with Zendesk</code>.</li>
+<li>Sign in on Zendesk.</li>
+<li>Return to ZIP panel.</li>
+<li>ZIP auto-detects login and loads:</li>
+</ol>
+<ul>
+<li>Profile</li>
+<li>Assigned ticket queue</li>
+<li>Organization list</li>
+<li>View list</li>
+<li>Group/member list</li>
+</ul>
+<p>Sign out behavior:</p>
+<ul>
+<li><code>Sign out</code> button triggers Zendesk logout and returns ZIP to login mode.</li>
+</ul>
+<h2>User Interface Tour</h2>
+<h3>Top Bar</h3>
+<ul>
+<li>Agent avatar (or fallback indicator)</li>
+<li>Name, timezone, and email</li>
+<li>Sign out button</li>
+</ul>
+<h3>Ticket Section</h3>
+<ul>
+<li>Primary entry point: <code>Assigned Tickets</code></li>
+<li>Scope selectors:</li>
+<li>By Group</li>
+<li>By View</li>
+<li>By Org</li>
+<li>Table columns:</li>
+<li>Ticket</li>
+<li>Subject</li>
+<li>Status</li>
+<li>Priority</li>
+<li>Created</li>
+<li>Updated</li>
+</ul>
+<h3>Ticket Footer Controls</h3>
+<ul>
+<li>Search field</li>
+<li>Status filter (<code>all</code>, <code>open</code>, <code>pending</code>, <code>hold</code>)</li>
+<li>Refresh button (icon)</li>
+<li>CSV export button</li>
+</ul>
+<h3>API Section</h3>
+<ul>
+<li>Dropdown of Zendesk GET endpoints</li>
+<li>Dynamic parameter fields</li>
+<li><code>Run GET</code> button</li>
+</ul>
+<h3>Raw Result Section</h3>
+<ul>
+<li>Structured result table</li>
+<li><code>Raw.JSON</code> download link</li>
+</ul>
+<h2>Core Daily Workflows</h2>
+<h3>Workflow 1: Triage assigned queue</h3>
+<ol>
+<li>Open ZIP.</li>
+<li>Click <code>Assigned Tickets</code>.</li>
+<li>Sort by <code>Updated</code> descending.</li>
+<li>Click a ticket row or ticket ID.</li>
+<li>Zendesk main tab navigates directly to that ticket.</li>
+</ol>
+<h3>Workflow 2: Team queue by group</h3>
+<ol>
+<li>Use <code>By Group</code> selector.</li>
+<li>Choose a group or a group member.</li>
+<li>ZIP loads corresponding tickets.</li>
+<li>Apply Search and Status filters as needed.</li>
+</ol>
+<h3>Workflow 3: Team queue by view</h3>
+<ol>
+<li>Use <code>By View</code> selector.</li>
+<li>Select the desired Zendesk view.</li>
+<li>ZIP loads view tickets.</li>
+</ol>
+<h3>Workflow 4: Account queue by organization</h3>
+<ol>
+<li>Use <code>By Org</code> selector.</li>
+<li>Select organization.</li>
+<li>ZIP loads org tickets.</li>
+</ol>
+<h3>Workflow 5: Refresh current source</h3>
+<ol>
+<li>Keep current source selected (Assigned/View/Org/Group).</li>
+<li>Click Refresh icon.</li>
+<li>ZIP reloads that same source and reports row count.</li>
+</ol>
+<h3>Workflow 6: Export manager-ready CSV</h3>
+<ol>
+<li>Filter/sort table to your exact desired state.</li>
+<li>Click CSV.</li>
+<li>ZIP downloads CSV of exactly visible rows and order.</li>
+<li>Filename includes context (source, row count, sort, timestamp).</li>
+</ol>
+<h3>Workflow 7: Run an ad hoc Zendesk GET</h3>
+<ol>
+<li>Open <code>ZD API - GET</code> section.</li>
+<li>Choose endpoint.</li>
+<li>Fill parameters (defaults are prefilled where possible from your profile).</li>
+<li>Click <code>Run GET</code>.</li>
+<li>Inspect rendered result table.</li>
+<li>Click <code>Raw.JSON</code> to download payload.</li>
+</ol>
+<h2>How ZIP Filters Ticket Statuses</h2>
+<p>Default ticket loads exclude <code>solved</code> and <code>closed</code> statuses.</p>
+<p>Practically, ZIP is optimized for active work queues.</p>
+<h2>What Managers Should Know</h2>
+<ul>
+<li>CSV export is WYSIWYG for the active table view.</li>
+<li>Horizontal workspace tab is available for broader layouts.</li>
+<li>ZIP can be used as a lightweight operations cockpit during standups.</li>
+</ul>
+<h2>Troubleshooting</h2>
+<h3>ZIP panel does not open</h3>
+<ul>
+<li>Confirm extension is loaded in <code>chrome://extensions</code>.</li>
+<li>Ensure current tab is Zendesk for side-panel mode.</li>
+<li>Try context menu <code>Open ZIP Workspace Tab (Horizontal)</code> as fallback.</li>
+</ul>
+<h3>Login loop or session expired</h3>
+<ul>
+<li>Click <code>Login with Zendesk</code>.</li>
+<li>Complete Zendesk auth in browser.</li>
+<li>Return to ZIP and click version link (<code>ZIP v...</code>) to refresh if needed.</li>
+</ul>
+<h3>No tickets shown</h3>
+<ul>
+<li>Clear Search text.</li>
+<li>Set Status filter to <code>All statuses</code>.</li>
+<li>Re-select source (Assigned/View/Org/Group).</li>
+<li>Click Refresh.</li>
+</ul>
+<h3>CSV button disabled</h3>
+<ul>
+<li>ZIP enables CSV only when at least one ticket row is visible.</li>
+</ul>
+<h2>Recommended Training Runbook (45 minutes)</h2>
+<ol>
+<li>Mission + value framing (5 min)</li>
+<li>Install and launch methods (5 min)</li>
+<li>Ticket workflows (Assigned/Group/View/Org) (15 min)</li>
+<li>CSV manager export drill (5 min)</li>
+<li>API GET and Raw.JSON basics (10 min)</li>
+<li>Troubleshooting and support process (5 min)</li>
+</ol>
+<h2>Support Escalation Data to Capture</h2>
+<p>When reporting a ZIP issue, include:</p>
+<ul>
+<li>ZIP version (footer)</li>
+<li>Browser version</li>
+<li>Active Zendesk URL</li>
+<li>Selected source (Assigned/View/Org/Group)</li>
+<li>Screenshot of status message</li>
+<li>Whether issue reproduces in workspace tab mode</li>
+</ul>
+<p>============================================================</p>
+<h1>Functionality Inventory and Documentation Workflow</h1>
+<h1>Source: /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/ZIP_FUNCTIONALITY_INVENTORY_AND_DOC_WORKFLOW.md</h1>
+<h1>ZIP Functionality Inventory and Documentation Workflow</h1>
+<p>This document explains how to identify, classify, and document all existing and new ZIP functionality for user-facing releases.</p>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<p>For immediate operations before full documentation review:</p>
+<ol>
+<li>Install ZIP in Dev Mode from <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open Zendesk dashboard.</li>
+<li>Open ZIP side panel and authenticate.</li>
+<li>Use <code>Assigned Tickets</code> for immediate triage.</li>
+<li>Return to this workflow doc for full release evidence mapping.</li>
+</ol>
+<h2>1. Documentation Objective</h2>
+<p>Keep user training aligned with reality by treating source code as the canonical source of truth.</p>
+<h2>2. Canonical Source Map</h2>
+<p>Use these files as the system map:</p>
+<ul>
+<li><code>manifest.json</code>: permissions, commands, action behavior, version.</li>
+<li><code>background.js</code>: Side Panel lifecycle, context menus, commands, tab scoping.</li>
+<li><code>content.js</code>: Zendesk API calls, normalization, status filtering, auth error handling.</li>
+<li><code>sidepanel.html</code>: user-visible controls and section structure.</li>
+<li><code>sidepanel.js</code>: UX behavior, event handlers, workflows, exports, status text.</li>
+<li><code>sidepanel.css</code>: interaction constraints and layout behavior.</li>
+<li><code>README.md</code>: current user guidance baseline.</li>
+</ul>
+<h2>3. Functionality Inventory Template</h2>
+<p>For each feature, capture this schema:</p>
+<table>
+<thead>
+<tr>
+<th>Feature ID</th>
+<th>User-facing Name</th>
+<th>Primary User</th>
+<th>Trigger</th>
+<th>Preconditions</th>
+<th>Step Summary</th>
+<th>Output</th>
+<th>Failure Mode</th>
+<th>Source Files</th>
+</tr>
+</thead>
+</table>
+<p>Use IDs like <code>ZIP-OPEN-001</code>, <code>ZIP-TICKETS-005</code>, <code>ZIP-API-009</code>.</p>
+<h2>4. Current ZIP Feature Inventory (v1.0.21)</h2>
+<table>
+<thead>
+<tr>
+<th>Feature ID</th>
+<th>User-facing Name</th>
+<th>Trigger</th>
+<th>Output</th>
+<th>Source Files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ZIP-OPEN-001</td>
+<td>Open panel by extension icon</td>
+<td>Action click</td>
+<td>ZIP side panel opens</td>
+<td><code>manifest.json</code>, <code>background.js</code></td>
+</tr>
+<tr>
+<td>ZIP-OPEN-002</td>
+<td>Open panel via context menu</td>
+<td>Context menu item</td>
+<td>Side panel opens</td>
+<td><code>background.js</code></td>
+</tr>
+<tr>
+<td>ZIP-OPEN-003</td>
+<td>Toggle panel via keyboard</td>
+<td><code>Ctrl+Shift+Y</code> / <code>Command+Shift+Y</code></td>
+<td>Open/close panel (where API supports close)</td>
+<td><code>manifest.json</code>, <code>background.js</code></td>
+</tr>
+<tr>
+<td>ZIP-OPEN-004</td>
+<td>Open horizontal workspace</td>
+<td>Context menu/command</td>
+<td>Full tab <code>sidepanel.html?mode=workspace</code></td>
+<td><code>background.js</code>, <code>sidepanel.css</code>, <code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-SCOPE-001</td>
+<td>Domain-aware availability</td>
+<td>Tab URL change</td>
+<td>Enabled only on Zendesk origin</td>
+<td><code>background.js</code></td>
+</tr>
+<tr>
+<td>ZIP-AUTH-001</td>
+<td>Login with Zendesk</td>
+<td>Login button</td>
+<td>Opens Zendesk sign-in URL</td>
+<td><code>sidepanel.html</code>, <code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-AUTH-002</td>
+<td>Session auto-detect polling</td>
+<td>Logged-out idle</td>
+<td>Auto-refresh when login detected</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-AUTH-003</td>
+<td>Sign out</td>
+<td>Sign out button</td>
+<td>Zendesk logout flow</td>
+<td><code>sidepanel.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-001</td>
+<td>Assigned tickets</td>
+<td>Assigned Tickets link/default load</td>
+<td>Active tickets table</td>
+<td><code>sidepanel.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-002</td>
+<td>Filter by Group or Group member</td>
+<td>By Group selector</td>
+<td>Group/team scoped table</td>
+<td><code>sidepanel.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-003</td>
+<td>Filter by View</td>
+<td>By View selector</td>
+<td>View-scoped table</td>
+<td><code>sidepanel.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-004</td>
+<td>Filter by Org</td>
+<td>By Org selector</td>
+<td>Org-scoped table</td>
+<td><code>sidepanel.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-005</td>
+<td>Search + status filter</td>
+<td>Search input + status dropdown</td>
+<td>Refined visible rows</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-006</td>
+<td>Sort columns</td>
+<td>Ticket header click</td>
+<td>Asc/desc sort</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-007</td>
+<td>Open ticket in Zendesk</td>
+<td>Row click or ticket ID click</td>
+<td>Main tab navigates to ticket URL</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-008</td>
+<td>Refresh active source</td>
+<td>Refresh icon</td>
+<td>Reload same source context</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-EXPORT-001</td>
+<td>Export visible table to CSV</td>
+<td>CSV button</td>
+<td>Context-aware CSV download</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-API-001</td>
+<td>Zendesk GET runner</td>
+<td>API path + params + Run GET</td>
+<td>GET response rendered</td>
+<td><code>sidepanel.js</code>, <code>paths.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-API-002</td>
+<td>Raw JSON download</td>
+<td>Raw.JSON link</td>
+<td>JSON file download</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-UX-001</td>
+<td>Side panel side awareness</td>
+<td>getLayout context</td>
+<td>Left/right visual adaptation</td>
+<td><code>background.js</code>, <code>sidepanel.js</code>, <code>sidepanel.css</code></td>
+</tr>
+<tr>
+<td>ZIP-UX-002</td>
+<td>Narrow-width menu containment</td>
+<td>Resize panel thinner</td>
+<td>Dropdowns remain inside shell</td>
+<td><code>sidepanel.css</code></td>
+</tr>
+<tr>
+<td>ZIP-BRAND-001</td>
+<td>Master icon system</td>
+<td>Extension install/action icon</td>
+<td>Unified ZEEK INFO PEEK iconography</td>
+<td><code>manifest.json</code>, <code>icons/</code>, <code>assets/brand/icons</code></td>
+</tr>
+<tr>
+<td>ZIP-BRAND-002</td>
+<td>Branded login shell</td>
+<td>Logged-out view</td>
+<td>Splash + mark + mission-aligned shell</td>
+<td><code>sidepanel.html</code>, <code>sidepanel.css</code>, <code>assets/brand/splash</code>, <code>assets/brand/source</code></td>
+</tr>
+<tr>
+<td>ZIP-BRAND-003</td>
+<td>Branded docs exports</td>
+<td>Training doc generation</td>
+<td>Spectrum 2 PDFs aligned to master kit</td>
+<td><code>docs/*.md</code>, <code>docs/assets/brand</code>, <code>docs/html</code>, <code>docs/pdf</code></td>
+</tr>
+</tbody>
+</table>
+<h2>5. Classifying Existing vs New for Release Notes</h2>
+<p>Use this rule set each release:</p>
+<ul>
+<li>Existing: Feature present in prior tagged version and behavior unchanged.</li>
+<li>Changed: Feature existed, but output, trigger, text, or constraints changed.</li>
+<li>New: Feature not available in prior tagged version.</li>
+<li>Retired: Feature removed from user access.</li>
+</ul>
+<h2>6. Repeatable Change Detection Workflow</h2>
+<ol>
+<li>Pick baseline and target:</li>
+</ol>
+<ul>
+<li>Baseline: last release tag or prior commit.</li>
+<li>Target: current release commit.</li>
+</ul>
+<ol start="2">
+<li>Run targeted diff:</li>
+</ol>
+<ul>
+<li><code>git diff &lt;baseline&gt;..&lt;target&gt; -- zip-chrome-extension/manifest.json zip-chrome-extension/background.js zip-chrome-extension/sidepanel.html zip-chrome-extension/sidepanel.js zip-chrome-extension/content.js zip-chrome-extension/sidepanel.css zip-chrome-extension/README.md</code></li>
+</ul>
+<ol start="3">
+<li>Map each diff hunk to feature IDs.</li>
+<li>Update inventory rows with <code>New/Changed/Existing/Retired</code> status.</li>
+<li>Update training guide and UAT cases if feature behavior changed.</li>
+</ol>
+<h2>7. User-Facing Release Notes Template</h2>
+<h3>Release <code>&lt;version&gt;</code> - ZIP</h3>
+<ul>
+<li>Mission impact summary in one sentence.</li>
+<li>New:</li>
+<li>Changed:</li>
+<li>Fixed:</li>
+<li>Known limitations:</li>
+<li>User action required (if any):</li>
+</ul>
+<h2>8. Evidence Checklist Before Publishing User Docs</h2>
+<ul>
+<li>Version number matches <code>manifest.json</code>.</li>
+<li>Every user-visible button/menu in <code>sidepanel.html</code> has documentation.</li>
+<li>Every command/context-menu entry has documentation.</li>
+<li>Every download behavior (CSV/JSON) has expected result text.</li>
+<li>UAT pass recorded for launch triggers and ticket workflows.</li>
+</ul>
+<h2>9. Documentation Ownership Model</h2>
+<ul>
+<li>Product owner: approves wording for mission/value alignment.</li>
+<li>Technical owner: validates behavior against source.</li>
+<li>Support owner: validates troubleshooting clarity.</li>
+<li>Training owner: validates onboarding flow for new users.</li>
+</ul>
+<h2>10. Minimum Artifacts Per Release</h2>
+<ul>
+<li>PRINT THIS FIRST quick-start card PDF for urgent onboarding.</li>
+<li>Management release memo with quick-start-first install path.</li>
+<li>Updated training guide.</li>
+<li>Updated functionality inventory.</li>
+<li>Updated UAT test sheet with pass/fail evidence.</li>
+<li>One-page release note for users.</li>
+<li>Regenerated branded HTML/PDF package via <code>scripts/render_branded_docs.sh</code>.</li>
+</ul>
+<p>============================================================</p>
+<h1>User UAT Test Cases</h1>
+<h1>Source: /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/ZIP_USER_UAT_TEST_CASES.md</h1>
+<h1>ZIP User UAT Test Cases</h1>
+<p>Version under test: <code>1.0.21</code></p>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<p>If the team needs to get running immediately:</p>
+<ol>
+<li>Open <code>chrome://extensions</code> and enable Developer mode.</li>
+<li>Load unpacked: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Open ZIP and sign in if prompted.</li>
+<li>Execute triage from <code>Assigned Tickets</code>, then run the full UAT matrix below.</li>
+</ol>
+<h2>Test Execution Notes</h2>
+<ul>
+<li>Execute on latest Chrome stable available to team.</li>
+<li>Capture screenshot for each failed case.</li>
+<li>Record environment: OS, Chrome version, Zendesk role.</li>
+</ul>
+<h2>UAT Matrix</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Scenario</th>
+<th>Preconditions</th>
+<th>Steps</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>UAT-001</td>
+<td>Load extension</td>
+<td>ZIP folder available</td>
+<td>1. Open <code>chrome://extensions</code> 2. Load unpacked ZIP folder</td>
+<td>Extension loads without manifest errors</td>
+</tr>
+<tr>
+<td>UAT-002</td>
+<td>Action click opens panel</td>
+<td>Zendesk tab open</td>
+<td>1. Activate Zendesk tab 2. Click ZIP icon</td>
+<td>ZIP side panel opens</td>
+</tr>
+<tr>
+<td>UAT-003</td>
+<td>Action click from non-Zendesk</td>
+<td>Non-Zendesk tab active</td>
+<td>1. Activate non-Zendesk tab 2. Click ZIP icon</td>
+<td>Side panel remains domain-aware; use context menu/shortcut behavior per policy</td>
+</tr>
+<tr>
+<td>UAT-004</td>
+<td>Context menu open panel</td>
+<td>ZIP installed</td>
+<td>1. Right-click extension icon 2. Click <code>Open ZIP Side Panel</code></td>
+<td>ZIP side panel opens</td>
+</tr>
+<tr>
+<td>UAT-005</td>
+<td>Context menu horizontal workspace</td>
+<td>ZIP installed</td>
+<td>1. Right-click extension icon 2. Click <code>Open ZIP Workspace Tab (Horizontal)</code></td>
+<td>New full tab opens with ZIP workspace layout</td>
+</tr>
+<tr>
+<td>UAT-006</td>
+<td>Keyboard shortcut open/close (Win/Linux)</td>
+<td>Shortcut available</td>
+<td>1. Press <code>Ctrl+Shift+Y</code> on Zendesk tab 2. Press again</td>
+<td>Opens ZIP panel, then closes/toggles where supported</td>
+</tr>
+<tr>
+<td>UAT-007</td>
+<td>Keyboard shortcut open/close (macOS)</td>
+<td>Shortcut available</td>
+<td>1. Press <code>Command+Shift+Y</code> on Zendesk tab 2. Press again</td>
+<td>Opens ZIP panel, then closes/toggles where supported</td>
+</tr>
+<tr>
+<td>UAT-008</td>
+<td>Login button flow</td>
+<td>User not logged into Zendesk</td>
+<td>1. Open ZIP 2. Click <code>Login with Zendesk</code></td>
+<td>Browser opens Zendesk sign-in page</td>
+</tr>
+<tr>
+<td>UAT-009</td>
+<td>Session auto-detect after login</td>
+<td>Logged out at start</td>
+<td>1. Log in through Zendesk 2. Return to ZIP</td>
+<td>ZIP auto-detects session and loads data</td>
+</tr>
+<tr>
+<td>UAT-010</td>
+<td>Sign out flow</td>
+<td>Logged in user</td>
+<td>1. Click <code>Sign out</code></td>
+<td>ZIP returns to login mode</td>
+</tr>
+<tr>
+<td>UAT-011</td>
+<td>Assigned tickets default load</td>
+<td>Logged in user with tickets</td>
+<td>1. Open ZIP 2. Click <code>Assigned Tickets</code></td>
+<td>Active ticket rows appear</td>
+</tr>
+<tr>
+<td>UAT-012</td>
+<td>By Group load</td>
+<td>Group data available</td>
+<td>1. Select group from By Group</td>
+<td>Group ticket list loads</td>
+</tr>
+<tr>
+<td>UAT-013</td>
+<td>By Group member load</td>
+<td>Group member available</td>
+<td>1. Select agent from By Group</td>
+<td>Agent-assigned ticket list loads</td>
+</tr>
+<tr>
+<td>UAT-014</td>
+<td>By View load</td>
+<td>Views available</td>
+<td>1. Select Zendesk view</td>
+<td>View ticket list loads</td>
+</tr>
+<tr>
+<td>UAT-015</td>
+<td>By Org load</td>
+<td>Orgs available</td>
+<td>1. Select organization</td>
+<td>Org ticket list loads</td>
+</tr>
+<tr>
+<td>UAT-016</td>
+<td>Reset source back to Assigned</td>
+<td>Other source selected</td>
+<td>1. Clear selector (set to <code>—</code>)</td>
+<td>Assigned tickets reload</td>
+</tr>
+<tr>
+<td>UAT-017</td>
+<td>Ticket search filter</td>
+<td>Ticket rows loaded</td>
+<td>1. Enter known ticket term in search</td>
+<td>Visible rows match term</td>
+</tr>
+<tr>
+<td>UAT-018</td>
+<td>Status filter</td>
+<td>Ticket rows loaded</td>
+<td>1. Change status filter (<code>open</code>, <code>pending</code>, <code>hold</code>)</td>
+<td>Visible rows match selected status</td>
+</tr>
+<tr>
+<td>UAT-019</td>
+<td>Column sort</td>
+<td>Ticket rows loaded</td>
+<td>1. Click <code>Updated</code> header 2. Click again</td>
+<td>Sort toggles direction</td>
+</tr>
+<tr>
+<td>UAT-020</td>
+<td>Open ticket by row click</td>
+<td>Ticket rows loaded</td>
+<td>1. Click row</td>
+<td>Main Zendesk tab navigates to ticket</td>
+</tr>
+<tr>
+<td>UAT-021</td>
+<td>Open ticket by ID click</td>
+<td>Ticket rows loaded</td>
+<td>1. Click ticket ID link</td>
+<td>Main Zendesk tab navigates to ticket</td>
+</tr>
+<tr>
+<td>UAT-022</td>
+<td>Refresh current source</td>
+<td>Any source active</td>
+<td>1. Click refresh icon</td>
+<td>Same source reloads and status message updates</td>
+</tr>
+<tr>
+<td>UAT-023</td>
+<td>CSV export enabled state</td>
+<td>No rows then rows</td>
+<td>1. Observe CSV disabled with no rows 2. Load rows</td>
+<td>CSV button enables when rows exist</td>
+</tr>
+<tr>
+<td>UAT-024</td>
+<td>CSV exactness</td>
+<td>Known visible subset (e.g., 10 rows)</td>
+<td>1. Apply sort/filter 2. Export CSV</td>
+<td>CSV has same rows, same order, includes ticket URL</td>
+</tr>
+<tr>
+<td>UAT-025</td>
+<td>CSV filename context</td>
+<td>Rows loaded</td>
+<td>1. Export CSV 2. Inspect filename</td>
+<td>Filename includes source/row count/sort/timestamp</td>
+</tr>
+<tr>
+<td>UAT-026</td>
+<td>API GET run</td>
+<td>Logged in session</td>
+<td>1. Select path 2. Set params 3. Click <code>Run GET</code></td>
+<td>Response table renders and status indicates HTTP result</td>
+</tr>
+<tr>
+<td>UAT-027</td>
+<td>Raw.JSON download</td>
+<td>API response present</td>
+<td>1. Click <code>Raw.JSON</code></td>
+<td>JSON file downloads</td>
+</tr>
+<tr>
+<td>UAT-028</td>
+<td>Side panel left/right adaptation</td>
+<td>Chrome supports side panel side switch</td>
+<td>1. Dock side panel left, then right</td>
+<td>ZIP header side accent updates accordingly</td>
+</tr>
+<tr>
+<td>UAT-029</td>
+<td>Narrow-width dropdown containment</td>
+<td>Side panel resizable</td>
+<td>1. Resize panel very narrow 2. Open By Group/View/Org</td>
+<td>Menus stay inside app shell (no overflow)</td>
+</tr>
+<tr>
+<td>UAT-030</td>
+<td>Non-Zendesk scope protection</td>
+<td>Open non-Zendesk page</td>
+<td>1. Switch tabs between Zendesk and non-Zendesk</td>
+<td>ZIP remains focused on Zendesk context</td>
+</tr>
+<tr>
+<td>UAT-031</td>
+<td>Master icon branding</td>
+<td>ZIP installed</td>
+<td>1. Open extension manager and toolbar icon 2. Compare icon glyph</td>
+<td>Icon matches latest master media kit</td>
+</tr>
+<tr>
+<td>UAT-032</td>
+<td>Branded login presentation</td>
+<td>User logged out</td>
+<td>1. Open ZIP side panel</td>
+<td>Login view shows approved mark/splash and readable mission text</td>
+</tr>
+<tr>
+<td>UAT-033</td>
+<td>Branded documentation output</td>
+<td>PDF package generated</td>
+<td>1. Open manager handout/training PDFs 2. Review first page</td>
+<td>PDFs show polished Spectrum 2 branded styling with media kit assets</td>
+</tr>
+</tbody>
+</table>
+<h2>Required Evidence per Test Run</h2>
+<p>For each failed case, capture:</p>
+<ul>
+<li>Screenshot/video.</li>
+<li>Exact timestamp.</li>
+<li>ZIP version.</li>
+<li>Active URL.</li>
+<li>Status message text from ZIP footer.</li>
+<li>Reproduction consistency (<code>Always</code>, <code>Intermittent</code>, <code>One-off</code>).</li>
+</ul>
+<h2>Pass Criteria for Training Launch</h2>
+<ul>
+<li>All launch/access tests (UAT-001 through UAT-007) pass.</li>
+<li>All ticket workflow tests (UAT-011 through UAT-022) pass.</li>
+<li>Export correctness tests (UAT-023 through UAT-025) pass.</li>
+<li>Layout and containment tests (UAT-028 and UAT-029) pass.</li>
+</ul>
+<h2>Defect Severity Guidance</h2>
+<ul>
+<li>P1: Cannot open ZIP or cannot load tickets.</li>
+<li>P2: Wrong dataset, wrong navigation target, broken CSV fidelity.</li>
+<li>P3: Visual/layout issue with workaround.</li>
+<li>P4: Cosmetic text/spacing issue.</li>
+</ul>
+<p>============================================================</p>
+<h1>Extension README</h1>
+<h1>Source: /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/README.md</h1>
+<h1>ZIP Chrome Extension (No 3P Dependencies)</h1>
+<p><strong>ZIP = Zeek Info Peek</strong> — ZIP into INFO from the Zendesk API.</p>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<p>If the urgent line just paged, do this now:</p>
+<ol>
+<li>Open <code>chrome://extensions</code>.</li>
+<li>Toggle <strong>Developer mode</strong> ON.</li>
+<li>Click <strong>Load unpacked</strong>.</li>
+<li>Select <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Click ZIP, then click <code>Login with Zendesk</code> if prompted.</li>
+<li>Click <code>Assigned Tickets</code> and start triage.</li>
+</ol>
+<p><img src="assets/brand/zeek-info-peek-master-preview-1024.png" alt="ZIP Master Brand Preview"></p>
+<p><strong>Mission:</strong> Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. When gatekeeping or &quot;no shared token&quot; roadblocks show up, we treat them as the yin to our yang—fuel for reflection, smarter design, and relentless follow‑through—letting results rise on their own while we stay focused on the work, not the doubters.</p>
+<p>ZIP is now distributed as a pure Chrome Manifest V3 extension.</p>
+<ul>
+<li>No Tampermonkey</li>
+<li>No hosted SPA required</li>
+<li>No OAuth client-id prompt in local HTML</li>
+</ul>
+<p><strong>Versioning:</strong> Increment the <code>version</code> in <code>manifest.json</code> on every revision so all employees stay in sync with the latest build.</p>
+<p>After one-time install, runtime flow is:</p>
+<ol>
+<li>Open Zendesk page</li>
+<li>Click the ZIP bubble</li>
+<li>If logged out, click Login with Zendesk</li>
+<li>After sign-in, ZIP loads profile + assigned tickets automatically</li>
+</ol>
+<p>Logged-out behavior:</p>
+<ul>
+<li>ZIP shows a branded login card and opens Zendesk authentication from the <code>Login with Zendesk</code> button.</li>
+</ul>
+<h2>Brand System (Master Kit)</h2>
+<p>This build is aligned to the latest approved media kit:</p>
+<ul>
+<li><code>/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip</code></li>
+</ul>
+<p>Integrated assets now live in:</p>
+<ul>
+<li><code>assets/brand/icons</code></li>
+<li><code>assets/brand/source</code></li>
+<li><code>assets/brand/splash</code></li>
+<li><code>docs/assets/brand</code></li>
+</ul>
+<p>Current release:</p>
+<ul>
+<li><code>manifest.json</code> version: <code>1.0.21</code></li>
+</ul>
+<h2>Quick Start</h2>
+<ol>
+<li>Open Chrome and go to <code>chrome://extensions</code>.</li>
+<li>Toggle <strong>Developer mode</strong> ON.</li>
+<li>Click <strong>Load unpacked</strong>.</li>
+<li>Select this folder:<ul>
+<li><code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
+</ul>
+</li>
+<li>Open Zendesk:<ul>
+<li><code>https://adobeprimetime.zendesk.com/agent/dashboard</code></li>
+</ul>
+</li>
+<li>ZIP opens and checks session automatically (floating panel button is available if collapsed).</li>
+</ol>
+<h2>Team Handoff</h2>
+<p>You can hand off either of these:</p>
+<ol>
+<li>Folder: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
+<li>Zip: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip</code></li>
+</ol>
+<p>Also available:</p>
+<ul>
+<li>Install helper page: <code>/Users/minnick/Documents/PASS/ZIP/zip.html</code></li>
+</ul>
+<h2>Runtime Behavior</h2>
+<p>Runs only on:</p>
+<ul>
+<li><code>https://adobeprimetime.zendesk.com/*</code></li>
+</ul>
+<p>Uses active logged-in Zendesk browser session to call:</p>
+<ul>
+<li><code>/api/v2/users/me.json</code></li>
+<li><code>/api/v2/search.json?query=type:ticket assignee:{email} status:open status:pending status:hold</code></li>
+</ul>
+<h2>Side Panel Controls</h2>
+<ul>
+<li>Action click opens ZIP side panel (<code>openPanelOnActionClick: true</code>)</li>
+<li>Context menu:<ul>
+<li><code>Open ZIP Side Panel</code></li>
+<li><code>Open ZIP Workspace Tab (Horizontal)</code></li>
+</ul>
+</li>
+<li>Keyboard shortcut command:<ul>
+<li><code>Open or close ZIP side panel</code> (default <code>Ctrl+Shift+Y</code> / <code>Command+Shift+Y</code>)</li>
+</ul>
+</li>
+</ul>
+<p>ZIP is tab-scoped for Zendesk URLs and disabled on irrelevant domains to avoid workspace clutter.</p>
+<h3>Horizontal Docking Note</h3>
+<p>Chrome Side Panel supports left/right docking only (not bottom horizontal docking like DevTools).
+For a horizontal workflow, use <code>Open ZIP Workspace Tab (Horizontal)</code> which opens the same UI in a full tab.</p>
+<h2>Enterprise Option</h2>
+<p>If teammates cannot use &quot;Load unpacked&quot;, your Chrome admin can deploy this extension via managed policy.</p>
+    </main>
+    <footer class="footer">
+      <span>PASS • ZIP (Zeek Info Peek)</span>
+      <span>Master brand kit aligned</span>
+    </footer>
+  </div>
+</body>
+</html>

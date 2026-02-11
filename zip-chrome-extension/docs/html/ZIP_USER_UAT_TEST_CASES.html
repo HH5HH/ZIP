@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <base href="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/" />
+  <title>ZIP User UAT Test Cases</title>
+  <style>
+    :root {
+      --s2-bg: #f4f4f4;
+      --s2-surface: #ffffff;
+      --s2-border: #dadada;
+      --s2-text: #222222;
+      --s2-muted: #575757;
+      --s2-accent: #ff2d55;
+      --s2-accent-2: #ff7a00;
+      --s2-accent-dark: #be0a26;
+      --s2-link: #1473e6;
+      --s2-code-bg: #f0f0f0;
+      --s2-code-border: #d0d0d0;
+      --s2-pre-bg: #171717;
+      --s2-pre-ink: #f3f3f3;
+      --s2-table-head: #fdecee;
+      --s2-shadow: 0 5px 16px rgba(0,0,0,0.09);
+      --s2-font: "Adobe Clean", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      --s2-mono: "Source Code Pro", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    @page {
+      size: Letter;
+      margin: 0.58in;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--s2-text);
+      background:
+        radial-gradient(80% 38% at 8% 0%, rgba(190,10,38,0.13) 0%, rgba(255,255,255,0) 60%),
+        linear-gradient(180deg, #fbfbfb 0%, var(--s2-bg) 100%);
+      font-family: var(--s2-font);
+      font-size: 11.1pt;
+      line-height: 1.58;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      width: 100%;
+      max-width: 8.5in;
+      margin: 0 auto;
+    }
+    .hero {
+      position: relative;
+      border: 1px solid var(--s2-border);
+      border-radius: 12px;
+      margin-bottom: 18px;
+      overflow: hidden;
+      box-shadow: var(--s2-shadow);
+      background: #101013;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    .hero-bg {
+      display: block;
+      width: 100%;
+      height: 130px;
+      object-fit: cover;
+      opacity: 0.86;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(100deg, rgba(9,9,11,0.92) 10%, rgba(9,9,11,0.46) 72%);
+      pointer-events: none;
+    }
+    .hero-content {
+      position: absolute;
+      inset: 12px 14px;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      color: #ffffff;
+    }
+    .hero-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 6px;
+    }
+    .hero-brand img {
+      width: 21px;
+      height: 21px;
+      filter: drop-shadow(0 0 8px rgba(255, 45, 85, 0.32));
+    }
+    .hero-brand span {
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      color: #f3f3f3;
+    }
+    .hero h1 {
+      margin: 0;
+      border: none;
+      padding: 0;
+      color: #fff;
+      font-size: 21pt;
+      line-height: 1.15;
+      font-weight: 800;
+    }
+    .hero-meta {
+      margin-top: 6px;
+      font-size: 8.8pt;
+      color: rgba(255,255,255,0.86);
+    }
+    main {
+      background: var(--s2-surface);
+      border: 1px solid var(--s2-border);
+      border-radius: 11px;
+      padding: 16px 18px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+    }
+    h1, h2, h3, h4 {
+      color: #1f1f1f;
+      line-height: 1.25;
+      margin-top: 1.1em;
+      margin-bottom: 0.45em;
+      page-break-after: avoid;
+      break-after: avoid-page;
+    }
+    h1 {
+      font-size: 18pt;
+      border-bottom: 2px solid var(--s2-border);
+      padding-bottom: 6px;
+      margin-top: 0.3em;
+    }
+    h2 {
+      font-size: 14.2pt;
+      border-left: 4px solid var(--s2-accent);
+      padding-left: 10px;
+    }
+    h3 {
+      font-size: 12.2pt;
+      color: var(--s2-accent-dark);
+    }
+    p {
+      margin: 0.45em 0 0.7em;
+      orphans: 3;
+      widows: 3;
+    }
+    a {
+      color: var(--s2-link);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(20,115,230,0.35);
+    }
+    ul, ol {
+      margin: 0.32em 0 0.75em 1.25em;
+      padding: 0;
+    }
+    li { margin: 0.22em 0; }
+    blockquote {
+      margin: 0.85em 0;
+      padding: 10px 12px;
+      border-left: 4px solid var(--s2-accent);
+      border-radius: 6px;
+      background: #fff4f6;
+      color: #444;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid var(--s2-border);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    code {
+      font-family: var(--s2-mono);
+      background: var(--s2-code-bg);
+      border: 1px solid var(--s2-code-border);
+      border-radius: 4px;
+      padding: 0.1em 0.34em;
+      font-size: 0.92em;
+      color: #222;
+      word-break: break-word;
+    }
+    pre {
+      margin: 0.7em 0 0.9em;
+      background: var(--s2-pre-bg);
+      color: var(--s2-pre-ink);
+      border: 1px solid #111;
+      border-radius: 8px;
+      padding: 12px;
+      overflow: auto;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    pre code {
+      border: none;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-size: 9.5pt;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.6em 0 0.95em;
+      font-size: 10pt;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    th, td {
+      border: 1px solid var(--s2-border);
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--s2-table-head);
+      font-weight: 700;
+    }
+    tr:nth-child(even) td {
+      background: #fcfcfc;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--s2-border);
+      margin: 1.1em 0;
+    }
+    .footer {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid var(--s2-border);
+      color: var(--s2-muted);
+      font-size: 8.7pt;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <img class="hero-bg" src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/splash/zeek-info-peek-master-splash-1920x1080.png" alt="ZIP splash" />
+      <div class="hero-content">
+        <div class="hero-brand">
+          <img src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/source/zeek-info-peek-master-mark.svg" alt="ZIP mark" />
+          <span>ZEEK INFO PEEK</span>
+        </div>
+        <h1>ZIP User UAT Test Cases</h1>
+        <div class="hero-meta">ZIP Documentation Suite • Spectrum 2 branded export • Generated 2026-02-11 13:51:02</div>
+      </div>
+    </header>
+    <main>
+<h1>ZIP User UAT Test Cases</h1>
+<p>Version under test: <code>1.0.21</code></p>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<p>If the team needs to get running immediately:</p>
+<ol>
+<li>Open <code>chrome://extensions</code> and enable Developer mode.</li>
+<li>Load unpacked: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Open ZIP and sign in if prompted.</li>
+<li>Execute triage from <code>Assigned Tickets</code>, then run the full UAT matrix below.</li>
+</ol>
+<h2>Test Execution Notes</h2>
+<ul>
+<li>Execute on latest Chrome stable available to team.</li>
+<li>Capture screenshot for each failed case.</li>
+<li>Record environment: OS, Chrome version, Zendesk role.</li>
+</ul>
+<h2>UAT Matrix</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Scenario</th>
+<th>Preconditions</th>
+<th>Steps</th>
+<th>Expected Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>UAT-001</td>
+<td>Load extension</td>
+<td>ZIP folder available</td>
+<td>1. Open <code>chrome://extensions</code> 2. Load unpacked ZIP folder</td>
+<td>Extension loads without manifest errors</td>
+</tr>
+<tr>
+<td>UAT-002</td>
+<td>Action click opens panel</td>
+<td>Zendesk tab open</td>
+<td>1. Activate Zendesk tab 2. Click ZIP icon</td>
+<td>ZIP side panel opens</td>
+</tr>
+<tr>
+<td>UAT-003</td>
+<td>Action click from non-Zendesk</td>
+<td>Non-Zendesk tab active</td>
+<td>1. Activate non-Zendesk tab 2. Click ZIP icon</td>
+<td>Side panel remains domain-aware; use context menu/shortcut behavior per policy</td>
+</tr>
+<tr>
+<td>UAT-004</td>
+<td>Context menu open panel</td>
+<td>ZIP installed</td>
+<td>1. Right-click extension icon 2. Click <code>Open ZIP Side Panel</code></td>
+<td>ZIP side panel opens</td>
+</tr>
+<tr>
+<td>UAT-005</td>
+<td>Context menu horizontal workspace</td>
+<td>ZIP installed</td>
+<td>1. Right-click extension icon 2. Click <code>Open ZIP Workspace Tab (Horizontal)</code></td>
+<td>New full tab opens with ZIP workspace layout</td>
+</tr>
+<tr>
+<td>UAT-006</td>
+<td>Keyboard shortcut open/close (Win/Linux)</td>
+<td>Shortcut available</td>
+<td>1. Press <code>Ctrl+Shift+Y</code> on Zendesk tab 2. Press again</td>
+<td>Opens ZIP panel, then closes/toggles where supported</td>
+</tr>
+<tr>
+<td>UAT-007</td>
+<td>Keyboard shortcut open/close (macOS)</td>
+<td>Shortcut available</td>
+<td>1. Press <code>Command+Shift+Y</code> on Zendesk tab 2. Press again</td>
+<td>Opens ZIP panel, then closes/toggles where supported</td>
+</tr>
+<tr>
+<td>UAT-008</td>
+<td>Login button flow</td>
+<td>User not logged into Zendesk</td>
+<td>1. Open ZIP 2. Click <code>Login with Zendesk</code></td>
+<td>Browser opens Zendesk sign-in page</td>
+</tr>
+<tr>
+<td>UAT-009</td>
+<td>Session auto-detect after login</td>
+<td>Logged out at start</td>
+<td>1. Log in through Zendesk 2. Return to ZIP</td>
+<td>ZIP auto-detects session and loads data</td>
+</tr>
+<tr>
+<td>UAT-010</td>
+<td>Sign out flow</td>
+<td>Logged in user</td>
+<td>1. Click <code>Sign out</code></td>
+<td>ZIP returns to login mode</td>
+</tr>
+<tr>
+<td>UAT-011</td>
+<td>Assigned tickets default load</td>
+<td>Logged in user with tickets</td>
+<td>1. Open ZIP 2. Click <code>Assigned Tickets</code></td>
+<td>Active ticket rows appear</td>
+</tr>
+<tr>
+<td>UAT-012</td>
+<td>By Group load</td>
+<td>Group data available</td>
+<td>1. Select group from By Group</td>
+<td>Group ticket list loads</td>
+</tr>
+<tr>
+<td>UAT-013</td>
+<td>By Group member load</td>
+<td>Group member available</td>
+<td>1. Select agent from By Group</td>
+<td>Agent-assigned ticket list loads</td>
+</tr>
+<tr>
+<td>UAT-014</td>
+<td>By View load</td>
+<td>Views available</td>
+<td>1. Select Zendesk view</td>
+<td>View ticket list loads</td>
+</tr>
+<tr>
+<td>UAT-015</td>
+<td>By Org load</td>
+<td>Orgs available</td>
+<td>1. Select organization</td>
+<td>Org ticket list loads</td>
+</tr>
+<tr>
+<td>UAT-016</td>
+<td>Reset source back to Assigned</td>
+<td>Other source selected</td>
+<td>1. Clear selector (set to <code>—</code>)</td>
+<td>Assigned tickets reload</td>
+</tr>
+<tr>
+<td>UAT-017</td>
+<td>Ticket search filter</td>
+<td>Ticket rows loaded</td>
+<td>1. Enter known ticket term in search</td>
+<td>Visible rows match term</td>
+</tr>
+<tr>
+<td>UAT-018</td>
+<td>Status filter</td>
+<td>Ticket rows loaded</td>
+<td>1. Change status filter (<code>open</code>, <code>pending</code>, <code>hold</code>)</td>
+<td>Visible rows match selected status</td>
+</tr>
+<tr>
+<td>UAT-019</td>
+<td>Column sort</td>
+<td>Ticket rows loaded</td>
+<td>1. Click <code>Updated</code> header 2. Click again</td>
+<td>Sort toggles direction</td>
+</tr>
+<tr>
+<td>UAT-020</td>
+<td>Open ticket by row click</td>
+<td>Ticket rows loaded</td>
+<td>1. Click row</td>
+<td>Main Zendesk tab navigates to ticket</td>
+</tr>
+<tr>
+<td>UAT-021</td>
+<td>Open ticket by ID click</td>
+<td>Ticket rows loaded</td>
+<td>1. Click ticket ID link</td>
+<td>Main Zendesk tab navigates to ticket</td>
+</tr>
+<tr>
+<td>UAT-022</td>
+<td>Refresh current source</td>
+<td>Any source active</td>
+<td>1. Click refresh icon</td>
+<td>Same source reloads and status message updates</td>
+</tr>
+<tr>
+<td>UAT-023</td>
+<td>CSV export enabled state</td>
+<td>No rows then rows</td>
+<td>1. Observe CSV disabled with no rows 2. Load rows</td>
+<td>CSV button enables when rows exist</td>
+</tr>
+<tr>
+<td>UAT-024</td>
+<td>CSV exactness</td>
+<td>Known visible subset (e.g., 10 rows)</td>
+<td>1. Apply sort/filter 2. Export CSV</td>
+<td>CSV has same rows, same order, includes ticket URL</td>
+</tr>
+<tr>
+<td>UAT-025</td>
+<td>CSV filename context</td>
+<td>Rows loaded</td>
+<td>1. Export CSV 2. Inspect filename</td>
+<td>Filename includes source/row count/sort/timestamp</td>
+</tr>
+<tr>
+<td>UAT-026</td>
+<td>API GET run</td>
+<td>Logged in session</td>
+<td>1. Select path 2. Set params 3. Click <code>Run GET</code></td>
+<td>Response table renders and status indicates HTTP result</td>
+</tr>
+<tr>
+<td>UAT-027</td>
+<td>Raw.JSON download</td>
+<td>API response present</td>
+<td>1. Click <code>Raw.JSON</code></td>
+<td>JSON file downloads</td>
+</tr>
+<tr>
+<td>UAT-028</td>
+<td>Side panel left/right adaptation</td>
+<td>Chrome supports side panel side switch</td>
+<td>1. Dock side panel left, then right</td>
+<td>ZIP header side accent updates accordingly</td>
+</tr>
+<tr>
+<td>UAT-029</td>
+<td>Narrow-width dropdown containment</td>
+<td>Side panel resizable</td>
+<td>1. Resize panel very narrow 2. Open By Group/View/Org</td>
+<td>Menus stay inside app shell (no overflow)</td>
+</tr>
+<tr>
+<td>UAT-030</td>
+<td>Non-Zendesk scope protection</td>
+<td>Open non-Zendesk page</td>
+<td>1. Switch tabs between Zendesk and non-Zendesk</td>
+<td>ZIP remains focused on Zendesk context</td>
+</tr>
+<tr>
+<td>UAT-031</td>
+<td>Master icon branding</td>
+<td>ZIP installed</td>
+<td>1. Open extension manager and toolbar icon 2. Compare icon glyph</td>
+<td>Icon matches latest master media kit</td>
+</tr>
+<tr>
+<td>UAT-032</td>
+<td>Branded login presentation</td>
+<td>User logged out</td>
+<td>1. Open ZIP side panel</td>
+<td>Login view shows approved mark/splash and readable mission text</td>
+</tr>
+<tr>
+<td>UAT-033</td>
+<td>Branded documentation output</td>
+<td>PDF package generated</td>
+<td>1. Open manager handout/training PDFs 2. Review first page</td>
+<td>PDFs show polished Spectrum 2 branded styling with media kit assets</td>
+</tr>
+</tbody>
+</table>
+<h2>Required Evidence per Test Run</h2>
+<p>For each failed case, capture:</p>
+<ul>
+<li>Screenshot/video.</li>
+<li>Exact timestamp.</li>
+<li>ZIP version.</li>
+<li>Active URL.</li>
+<li>Status message text from ZIP footer.</li>
+<li>Reproduction consistency (<code>Always</code>, <code>Intermittent</code>, <code>One-off</code>).</li>
+</ul>
+<h2>Pass Criteria for Training Launch</h2>
+<ul>
+<li>All launch/access tests (UAT-001 through UAT-007) pass.</li>
+<li>All ticket workflow tests (UAT-011 through UAT-022) pass.</li>
+<li>Export correctness tests (UAT-023 through UAT-025) pass.</li>
+<li>Layout and containment tests (UAT-028 and UAT-029) pass.</li>
+</ul>
+<h2>Defect Severity Guidance</h2>
+<ul>
+<li>P1: Cannot open ZIP or cannot load tickets.</li>
+<li>P2: Wrong dataset, wrong navigation target, broken CSV fidelity.</li>
+<li>P3: Visual/layout issue with workaround.</li>
+<li>P4: Cosmetic text/spacing issue.</li>
+</ul>
+    </main>
+    <footer class="footer">
+      <span>PASS • ZIP (Zeek Info Peek)</span>
+      <span>Master brand kit aligned</span>
+    </footer>
+  </div>
+</body>
+</html>

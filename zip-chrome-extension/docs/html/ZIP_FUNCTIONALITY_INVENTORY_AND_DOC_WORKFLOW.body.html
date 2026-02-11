@@ -1,0 +1,286 @@
+<h1>ZIP Functionality Inventory and Documentation Workflow</h1>
+<p>This document explains how to identify, classify, and document all existing and new ZIP functionality for user-facing releases.</p>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<p>For immediate operations before full documentation review:</p>
+<ol>
+<li>Install ZIP in Dev Mode from <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open Zendesk dashboard.</li>
+<li>Open ZIP side panel and authenticate.</li>
+<li>Use <code>Assigned Tickets</code> for immediate triage.</li>
+<li>Return to this workflow doc for full release evidence mapping.</li>
+</ol>
+<h2>1. Documentation Objective</h2>
+<p>Keep user training aligned with reality by treating source code as the canonical source of truth.</p>
+<h2>2. Canonical Source Map</h2>
+<p>Use these files as the system map:</p>
+<ul>
+<li><code>manifest.json</code>: permissions, commands, action behavior, version.</li>
+<li><code>background.js</code>: Side Panel lifecycle, context menus, commands, tab scoping.</li>
+<li><code>content.js</code>: Zendesk API calls, normalization, status filtering, auth error handling.</li>
+<li><code>sidepanel.html</code>: user-visible controls and section structure.</li>
+<li><code>sidepanel.js</code>: UX behavior, event handlers, workflows, exports, status text.</li>
+<li><code>sidepanel.css</code>: interaction constraints and layout behavior.</li>
+<li><code>README.md</code>: current user guidance baseline.</li>
+</ul>
+<h2>3. Functionality Inventory Template</h2>
+<p>For each feature, capture this schema:</p>
+<table>
+<thead>
+<tr>
+<th>Feature ID</th>
+<th>User-facing Name</th>
+<th>Primary User</th>
+<th>Trigger</th>
+<th>Preconditions</th>
+<th>Step Summary</th>
+<th>Output</th>
+<th>Failure Mode</th>
+<th>Source Files</th>
+</tr>
+</thead>
+</table>
+<p>Use IDs like <code>ZIP-OPEN-001</code>, <code>ZIP-TICKETS-005</code>, <code>ZIP-API-009</code>.</p>
+<h2>4. Current ZIP Feature Inventory (v1.0.21)</h2>
+<table>
+<thead>
+<tr>
+<th>Feature ID</th>
+<th>User-facing Name</th>
+<th>Trigger</th>
+<th>Output</th>
+<th>Source Files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ZIP-OPEN-001</td>
+<td>Open panel by extension icon</td>
+<td>Action click</td>
+<td>ZIP side panel opens</td>
+<td><code>manifest.json</code>, <code>background.js</code></td>
+</tr>
+<tr>
+<td>ZIP-OPEN-002</td>
+<td>Open panel via context menu</td>
+<td>Context menu item</td>
+<td>Side panel opens</td>
+<td><code>background.js</code></td>
+</tr>
+<tr>
+<td>ZIP-OPEN-003</td>
+<td>Toggle panel via keyboard</td>
+<td><code>Ctrl+Shift+Y</code> / <code>Command+Shift+Y</code></td>
+<td>Open/close panel (where API supports close)</td>
+<td><code>manifest.json</code>, <code>background.js</code></td>
+</tr>
+<tr>
+<td>ZIP-OPEN-004</td>
+<td>Open horizontal workspace</td>
+<td>Context menu/command</td>
+<td>Full tab <code>sidepanel.html?mode=workspace</code></td>
+<td><code>background.js</code>, <code>sidepanel.css</code>, <code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-SCOPE-001</td>
+<td>Domain-aware availability</td>
+<td>Tab URL change</td>
+<td>Enabled only on Zendesk origin</td>
+<td><code>background.js</code></td>
+</tr>
+<tr>
+<td>ZIP-AUTH-001</td>
+<td>Login with Zendesk</td>
+<td>Login button</td>
+<td>Opens Zendesk sign-in URL</td>
+<td><code>sidepanel.html</code>, <code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-AUTH-002</td>
+<td>Session auto-detect polling</td>
+<td>Logged-out idle</td>
+<td>Auto-refresh when login detected</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-AUTH-003</td>
+<td>Sign out</td>
+<td>Sign out button</td>
+<td>Zendesk logout flow</td>
+<td><code>sidepanel.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-001</td>
+<td>Assigned tickets</td>
+<td>Assigned Tickets link/default load</td>
+<td>Active tickets table</td>
+<td><code>sidepanel.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-002</td>
+<td>Filter by Group or Group member</td>
+<td>By Group selector</td>
+<td>Group/team scoped table</td>
+<td><code>sidepanel.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-003</td>
+<td>Filter by View</td>
+<td>By View selector</td>
+<td>View-scoped table</td>
+<td><code>sidepanel.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-004</td>
+<td>Filter by Org</td>
+<td>By Org selector</td>
+<td>Org-scoped table</td>
+<td><code>sidepanel.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-005</td>
+<td>Search + status filter</td>
+<td>Search input + status dropdown</td>
+<td>Refined visible rows</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-006</td>
+<td>Sort columns</td>
+<td>Ticket header click</td>
+<td>Asc/desc sort</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-007</td>
+<td>Open ticket in Zendesk</td>
+<td>Row click or ticket ID click</td>
+<td>Main tab navigates to ticket URL</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-TICKETS-008</td>
+<td>Refresh active source</td>
+<td>Refresh icon</td>
+<td>Reload same source context</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-EXPORT-001</td>
+<td>Export visible table to CSV</td>
+<td>CSV button</td>
+<td>Context-aware CSV download</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-API-001</td>
+<td>Zendesk GET runner</td>
+<td>API path + params + Run GET</td>
+<td>GET response rendered</td>
+<td><code>sidepanel.js</code>, <code>paths.js</code>, <code>content.js</code></td>
+</tr>
+<tr>
+<td>ZIP-API-002</td>
+<td>Raw JSON download</td>
+<td>Raw.JSON link</td>
+<td>JSON file download</td>
+<td><code>sidepanel.js</code></td>
+</tr>
+<tr>
+<td>ZIP-UX-001</td>
+<td>Side panel side awareness</td>
+<td>getLayout context</td>
+<td>Left/right visual adaptation</td>
+<td><code>background.js</code>, <code>sidepanel.js</code>, <code>sidepanel.css</code></td>
+</tr>
+<tr>
+<td>ZIP-UX-002</td>
+<td>Narrow-width menu containment</td>
+<td>Resize panel thinner</td>
+<td>Dropdowns remain inside shell</td>
+<td><code>sidepanel.css</code></td>
+</tr>
+<tr>
+<td>ZIP-BRAND-001</td>
+<td>Master icon system</td>
+<td>Extension install/action icon</td>
+<td>Unified ZEEK INFO PEEK iconography</td>
+<td><code>manifest.json</code>, <code>icons/</code>, <code>assets/brand/icons</code></td>
+</tr>
+<tr>
+<td>ZIP-BRAND-002</td>
+<td>Branded login shell</td>
+<td>Logged-out view</td>
+<td>Splash + mark + mission-aligned shell</td>
+<td><code>sidepanel.html</code>, <code>sidepanel.css</code>, <code>assets/brand/splash</code>, <code>assets/brand/source</code></td>
+</tr>
+<tr>
+<td>ZIP-BRAND-003</td>
+<td>Branded docs exports</td>
+<td>Training doc generation</td>
+<td>Spectrum 2 PDFs aligned to master kit</td>
+<td><code>docs/*.md</code>, <code>docs/assets/brand</code>, <code>docs/html</code>, <code>docs/pdf</code></td>
+</tr>
+</tbody>
+</table>
+<h2>5. Classifying Existing vs New for Release Notes</h2>
+<p>Use this rule set each release:</p>
+<ul>
+<li>Existing: Feature present in prior tagged version and behavior unchanged.</li>
+<li>Changed: Feature existed, but output, trigger, text, or constraints changed.</li>
+<li>New: Feature not available in prior tagged version.</li>
+<li>Retired: Feature removed from user access.</li>
+</ul>
+<h2>6. Repeatable Change Detection Workflow</h2>
+<ol>
+<li>Pick baseline and target:</li>
+</ol>
+<ul>
+<li>Baseline: last release tag or prior commit.</li>
+<li>Target: current release commit.</li>
+</ul>
+<ol start="2">
+<li>Run targeted diff:</li>
+</ol>
+<ul>
+<li><code>git diff &lt;baseline&gt;..&lt;target&gt; -- zip-chrome-extension/manifest.json zip-chrome-extension/background.js zip-chrome-extension/sidepanel.html zip-chrome-extension/sidepanel.js zip-chrome-extension/content.js zip-chrome-extension/sidepanel.css zip-chrome-extension/README.md</code></li>
+</ul>
+<ol start="3">
+<li>Map each diff hunk to feature IDs.</li>
+<li>Update inventory rows with <code>New/Changed/Existing/Retired</code> status.</li>
+<li>Update training guide and UAT cases if feature behavior changed.</li>
+</ol>
+<h2>7. User-Facing Release Notes Template</h2>
+<h3>Release <code>&lt;version&gt;</code> - ZIP</h3>
+<ul>
+<li>Mission impact summary in one sentence.</li>
+<li>New:</li>
+<li>Changed:</li>
+<li>Fixed:</li>
+<li>Known limitations:</li>
+<li>User action required (if any):</li>
+</ul>
+<h2>8. Evidence Checklist Before Publishing User Docs</h2>
+<ul>
+<li>Version number matches <code>manifest.json</code>.</li>
+<li>Every user-visible button/menu in <code>sidepanel.html</code> has documentation.</li>
+<li>Every command/context-menu entry has documentation.</li>
+<li>Every download behavior (CSV/JSON) has expected result text.</li>
+<li>UAT pass recorded for launch triggers and ticket workflows.</li>
+</ul>
+<h2>9. Documentation Ownership Model</h2>
+<ul>
+<li>Product owner: approves wording for mission/value alignment.</li>
+<li>Technical owner: validates behavior against source.</li>
+<li>Support owner: validates troubleshooting clarity.</li>
+<li>Training owner: validates onboarding flow for new users.</li>
+</ul>
+<h2>10. Minimum Artifacts Per Release</h2>
+<ul>
+<li>PRINT THIS FIRST quick-start card PDF for urgent onboarding.</li>
+<li>Management release memo with quick-start-first install path.</li>
+<li>Updated training guide.</li>
+<li>Updated functionality inventory.</li>
+<li>Updated UAT test sheet with pass/fail evidence.</li>
+<li>One-page release note for users.</li>
+<li>Regenerated branded HTML/PDF package via <code>scripts/render_branded_docs.sh</code>.</li>
+</ul>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff003d"/>
+      <stop offset="35%" stop-color="#ff2d55"/>
+      <stop offset="65%" stop-color="#ff7a00"/>
+      <stop offset="100%" stop-color="#ff003d"/>
+    </linearGradient>
+
+    <linearGradient id="glyphGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#ffe7ff"/>
+    </linearGradient>
+
+    <filter id="mildGlow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 0.22 0" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="512" cy="512" r="320" fill="none" stroke="url(#ringGrad)" stroke-width="90" filter="url(#mildGlow)"/>
+
+  <g filter="url(#mildGlow)">
+    <path d="M320 684 L700 684 L320 340 L700 340"
+          fill="none"
+          stroke="url(#glyphGrad)"
+          stroke-width="96"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+    <polygon points="320,624 240,684 320,744" fill="url(#glyphGrad)"/>
+    <polygon points="700,280 780,340 700,400" fill="url(#glyphGrad)"/>
+  </g>
+</svg>

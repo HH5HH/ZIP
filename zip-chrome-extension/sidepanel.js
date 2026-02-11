@@ -2,8 +2,9 @@
   "use strict";
 
   const BASE = "https://adobeprimetime.zendesk.com";
-  const LOGIN_URL = BASE + "/auth/v3/signin?return_to=" + encodeURIComponent(BASE + "/agent/dashboard");
+  const LOGIN_URL = BASE + "/auth/v3/signin?return_to=" + encodeURIComponent(BASE + "/agent/filters/36464467");
   const TICKET_URL_PREFIX = BASE + "/agent/tickets/";
+  const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
 
   const TICKET_COLUMNS = [
     { key: "id", label: "Ticket", type: "number" },
@@ -36,7 +37,8 @@
     selectedViewId: "",
     selectedByGroupValue: "",
     selectedTicketId: null,
-    groupsWithMembers: []
+    groupsWithMembers: [],
+    sidePanelLayout: "unknown"
   };
 
   let authCheckIntervalId = null;
@@ -88,6 +90,7 @@
     ticketSearch: $("zipTicketSearch"),
     statusFilter: $("zipStatusFilter"),
     reloadTicketsBtn: $("zipReloadTicketsBtn"),
+    exportCsvBtn: $("zipExportCsvBtn"),
     ticketHead: $("zipTicketHead"),
     ticketBody: $("zipTicketBody"),
     assignedTicketsLink: $("zipAssignedTicketsLink"),
@@ -102,6 +105,30 @@
   function getActiveTabId() {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage({ type: "ZIP_GET_ACTIVE_TAB" }, (r) => resolve(r?.tabId ?? null));
+    });
+  }
+
+  function applySidePanelContext(context) {
+    const side = context && (context.layout === "left" || context.layout === "right") ? context.layout : "unknown";
+    state.sidePanelLayout = side;
+    document.body.dataset.sidepanelSide = side;
+    document.body.dataset.sidepanelLayoutSupported = context && context.capabilities && context.capabilities.getLayout ? "1" : "0";
+  }
+
+  function loadSidePanelContext() {
+    return new Promise((resolve) => {
+      if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+        resolve(null);
+        return;
+      }
+      chrome.runtime.sendMessage({ type: "ZIP_GET_SIDEPANEL_CONTEXT" }, (context) => {
+        if (chrome.runtime.lastError) {
+          resolve(null);
+          return;
+        }
+        applySidePanelContext(context || null);
+        resolve(context || null);
+      });
     });
   }
 
@@ -164,6 +191,102 @@
     const hasPayload = state.lastApiPayloadString != null && state.lastApiPayloadString !== "";
     els.rawDownload.style.visibility = hasPayload ? "visible" : "hidden";
     els.rawDownload.download = getDownloadFilename();
+  }
+
+  function updateTicketActionButtons() {
+    const hasRows = Array.isArray(state.filteredTickets) && state.filteredTickets.length > 0;
+    if (els.exportCsvBtn) els.exportCsvBtn.disabled = !hasRows;
+  }
+
+  function sanitizeFilenamePart(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40);
+  }
+
+  function getSelectedText(selectEl) {
+    if (!selectEl || !selectEl.selectedOptions || !selectEl.selectedOptions.length) return "";
+    return String(selectEl.selectedOptions[0].textContent || "").trim();
+  }
+
+  function getTicketSourceFilenamePart() {
+    if (state.ticketSource === "view" && state.selectedViewId) {
+      return "view-" + (sanitizeFilenamePart(getSelectedText(els.viewSelect)) || sanitizeFilenamePart(state.selectedViewId));
+    }
+    if (state.ticketSource === "org" && state.selectedOrgId) {
+      return "org-" + (sanitizeFilenamePart(getSelectedText(els.orgSelect)) || sanitizeFilenamePart(state.selectedOrgId));
+    }
+    if (state.ticketSource === "groupMember" && state.selectedByGroupValue) {
+      const raw = String(state.selectedByGroupValue);
+      const prefix = raw.startsWith("g-") ? "group" : "agent";
+      return prefix + "-" + (sanitizeFilenamePart(getSelectedText(els.groupMemberSelect)) || sanitizeFilenamePart(raw));
+    }
+    if (state.user && state.user.email) {
+      return "assigned-" + sanitizeFilenamePart(state.user.email.split("@")[0] || state.user.email);
+    }
+    return "assigned";
+  }
+
+  function getTimestampForFilename() {
+    const d = new Date();
+    const p2 = (n) => String(n).padStart(2, "0");
+    return String(d.getFullYear()) + p2(d.getMonth() + 1) + p2(d.getDate()) + "-" + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
+  }
+
+  function getTicketCsvFilename() {
+    const parts = [
+      "zip",
+      "tickets",
+      getTicketSourceFilenamePart(),
+      String(state.filteredTickets.length) + "rows",
+      "sort-" + sanitizeFilenamePart(state.sortKey) + "-" + sanitizeFilenamePart(state.sortDir)
+    ];
+    if (state.statusFilter && state.statusFilter !== "all") parts.push("status-" + sanitizeFilenamePart(state.statusFilter));
+    if (String(state.textFilter || "").trim()) parts.push("search");
+    parts.push(getTimestampForFilename());
+    return parts.join("_") + ".csv";
+  }
+
+  function csvEscape(value) {
+    const s = value == null ? "" : String(value);
+    return /[",\r\n]/.test(s) ? "\"" + s.replace(/"/g, "\"\"") + "\"" : s;
+  }
+
+  function exportVisibleTicketsToCsv() {
+    const rows = state.filteredTickets || [];
+    if (!rows.length) {
+      setStatus("No tickets are currently visible to export.", false);
+      return;
+    }
+    const header = ["Ticket", "Ticket URL", "Subject", "Status", "Priority", "Created", "Updated"];
+    const csvRows = rows.map((row) => {
+      const rowId = row && row.id != null ? row.id : "";
+      const rowUrl = (row && row.url && String(row.url).trim()) || (rowId !== "" ? TICKET_URL_PREFIX + rowId : "");
+      return [
+        rowId !== "" ? "#" + rowId : "",
+        rowUrl,
+        row && row.subject != null ? row.subject : "",
+        row && row.status != null ? row.status : "",
+        row && row.priority != null ? row.priority : "",
+        row && row.created_at != null ? row.created_at : "",
+        row && row.updated_at != null ? row.updated_at : ""
+      ];
+    });
+    const csvString = [header, ...csvRows].map((cols) => cols.map(csvEscape).join(",")).join("\r\n");
+    const blob = new Blob([csvString], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = getTicketCsvFilename();
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus("CSV exported. " + rows.length + " rows downloaded.", false);
   }
 
   function cellDisplayValue(val) {
@@ -406,6 +529,7 @@
     if (els.rawTitle) els.rawTitle.textContent = "GET /api/v2/users/me";
     updateRawDownloadLink();
     if (els.ticketBody) els.ticketBody.innerHTML = "";
+    updateTicketActionButtons();
     populateOrgSelect();
     populateViewSelect();
     populateGroupMemberSelect();
@@ -516,6 +640,7 @@
       td.textContent = "No tickets found.";
       tr.appendChild(td);
       els.ticketBody.appendChild(tr);
+      updateTicketActionButtons();
       return;
     }
     state.filteredTickets.forEach((row) => {
@@ -553,6 +678,7 @@
       });
       els.ticketBody.appendChild(tr);
     });
+    updateTicketActionButtons();
   }
 
   function populateApiPathSelect() {
@@ -933,6 +1059,12 @@
         setBusy(false);
       }
     });
+    if (els.exportCsvBtn) {
+      els.exportCsvBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        exportVisibleTicketsToCsv();
+      });
+    }
     if (els.assignedTicketsLink) {
       els.assignedTicketsLink.addEventListener("click", (e) => {
         e.preventDefault();
@@ -1059,12 +1191,15 @@
   }
 
   async function init() {
+    if (IS_WORKSPACE_MODE) document.body.classList.add("zip-workspace");
     document.body.classList.add("zip-logged-out");
+    await loadSidePanelContext();
     wireEvents();
     populateAppDescription();
     populateApiPathSelect();
     renderApiParams();
     renderTicketHeaders();
+    updateTicketActionButtons();
     resetTopIdentity();
     setStatus("", false);
     await refreshAll();

@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <base href="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/" />
+  <title>ZIP Management Release Memo</title>
+  <style>
+    :root {
+      --s2-bg: #f4f4f4;
+      --s2-surface: #ffffff;
+      --s2-border: #dadada;
+      --s2-text: #222222;
+      --s2-muted: #575757;
+      --s2-accent: #ff2d55;
+      --s2-accent-2: #ff7a00;
+      --s2-accent-dark: #be0a26;
+      --s2-link: #1473e6;
+      --s2-code-bg: #f0f0f0;
+      --s2-code-border: #d0d0d0;
+      --s2-pre-bg: #171717;
+      --s2-pre-ink: #f3f3f3;
+      --s2-table-head: #fdecee;
+      --s2-shadow: 0 5px 16px rgba(0,0,0,0.09);
+      --s2-font: "Adobe Clean", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      --s2-mono: "Source Code Pro", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    @page {
+      size: Letter;
+      margin: 0.58in;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--s2-text);
+      background:
+        radial-gradient(80% 38% at 8% 0%, rgba(190,10,38,0.13) 0%, rgba(255,255,255,0) 60%),
+        linear-gradient(180deg, #fbfbfb 0%, var(--s2-bg) 100%);
+      font-family: var(--s2-font);
+      font-size: 11.1pt;
+      line-height: 1.58;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      width: 100%;
+      max-width: 8.5in;
+      margin: 0 auto;
+    }
+    .hero {
+      position: relative;
+      border: 1px solid var(--s2-border);
+      border-radius: 12px;
+      margin-bottom: 18px;
+      overflow: hidden;
+      box-shadow: var(--s2-shadow);
+      background: #101013;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    .hero-bg {
+      display: block;
+      width: 100%;
+      height: 130px;
+      object-fit: cover;
+      opacity: 0.86;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(100deg, rgba(9,9,11,0.92) 10%, rgba(9,9,11,0.46) 72%);
+      pointer-events: none;
+    }
+    .hero-content {
+      position: absolute;
+      inset: 12px 14px;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      color: #ffffff;
+    }
+    .hero-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 6px;
+    }
+    .hero-brand img {
+      width: 21px;
+      height: 21px;
+      filter: drop-shadow(0 0 8px rgba(255, 45, 85, 0.32));
+    }
+    .hero-brand span {
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      color: #f3f3f3;
+    }
+    .hero h1 {
+      margin: 0;
+      border: none;
+      padding: 0;
+      color: #fff;
+      font-size: 21pt;
+      line-height: 1.15;
+      font-weight: 800;
+    }
+    .hero-meta {
+      margin-top: 6px;
+      font-size: 8.8pt;
+      color: rgba(255,255,255,0.86);
+    }
+    main {
+      background: var(--s2-surface);
+      border: 1px solid var(--s2-border);
+      border-radius: 11px;
+      padding: 16px 18px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+    }
+    h1, h2, h3, h4 {
+      color: #1f1f1f;
+      line-height: 1.25;
+      margin-top: 1.1em;
+      margin-bottom: 0.45em;
+      page-break-after: avoid;
+      break-after: avoid-page;
+    }
+    h1 {
+      font-size: 18pt;
+      border-bottom: 2px solid var(--s2-border);
+      padding-bottom: 6px;
+      margin-top: 0.3em;
+    }
+    h2 {
+      font-size: 14.2pt;
+      border-left: 4px solid var(--s2-accent);
+      padding-left: 10px;
+    }
+    h3 {
+      font-size: 12.2pt;
+      color: var(--s2-accent-dark);
+    }
+    p {
+      margin: 0.45em 0 0.7em;
+      orphans: 3;
+      widows: 3;
+    }
+    a {
+      color: var(--s2-link);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(20,115,230,0.35);
+    }
+    ul, ol {
+      margin: 0.32em 0 0.75em 1.25em;
+      padding: 0;
+    }
+    li { margin: 0.22em 0; }
+    blockquote {
+      margin: 0.85em 0;
+      padding: 10px 12px;
+      border-left: 4px solid var(--s2-accent);
+      border-radius: 6px;
+      background: #fff4f6;
+      color: #444;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid var(--s2-border);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    code {
+      font-family: var(--s2-mono);
+      background: var(--s2-code-bg);
+      border: 1px solid var(--s2-code-border);
+      border-radius: 4px;
+      padding: 0.1em 0.34em;
+      font-size: 0.92em;
+      color: #222;
+      word-break: break-word;
+    }
+    pre {
+      margin: 0.7em 0 0.9em;
+      background: var(--s2-pre-bg);
+      color: var(--s2-pre-ink);
+      border: 1px solid #111;
+      border-radius: 8px;
+      padding: 12px;
+      overflow: auto;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    pre code {
+      border: none;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-size: 9.5pt;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.6em 0 0.95em;
+      font-size: 10pt;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    th, td {
+      border: 1px solid var(--s2-border);
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--s2-table-head);
+      font-weight: 700;
+    }
+    tr:nth-child(even) td {
+      background: #fcfcfc;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--s2-border);
+      margin: 1.1em 0;
+    }
+    .footer {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid var(--s2-border);
+      color: var(--s2-muted);
+      font-size: 8.7pt;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <img class="hero-bg" src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/splash/zeek-info-peek-master-splash-1920x1080.png" alt="ZIP splash" />
+      <div class="hero-content">
+        <div class="hero-brand">
+          <img src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/source/zeek-info-peek-master-mark.svg" alt="ZIP mark" />
+          <span>ZEEK INFO PEEK</span>
+        </div>
+        <h1>ZIP Management Release Memo</h1>
+        <div class="hero-meta">ZIP Documentation Suite • Spectrum 2 branded export • Generated 2026-02-11 13:50:50</div>
+      </div>
+    </header>
+    <main>
+<h1>ZIP Management Release Memo</h1>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<p>Install and begin work in under two minutes:</p>
+<ol>
+<li>Open <code>chrome://extensions</code>.</li>
+<li>Turn on <strong>Developer mode</strong>.</li>
+<li>Click <strong>Load unpacked</strong> and select <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Open ZIP from the extension icon, then click <code>Login with Zendesk</code> if needed.</li>
+<li>Use <code>Assigned Tickets</code> immediately and begin triage.</li>
+</ol>
+<p><img src="assets/brand/zeek-info-peek-master-preview-1024.png" alt="ZIP Master Brand Preview"></p>
+<h2>Release Snapshot</h2>
+<ul>
+<li>Product: ZIP (Zeek Info Peek)</li>
+<li>Build version: <code>1.0.21</code></li>
+<li>Package: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip</code></li>
+<li>Install path: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
+<li>Brand baseline: <code>/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip</code></li>
+</ul>
+<h2>What Management Asked For (Now Delivered)</h2>
+<ul>
+<li>Unified ZEEK INFO PEEK master-brand iconography and shell presentation.</li>
+<li>Cohesive install pages, extension UI, training docs, and PDF exports.</li>
+<li>Single polished package for pilot install and user validation.</li>
+<li>Quick-start-first documentation for urgent operational use.</li>
+</ul>
+<h2>Team Activation Path</h2>
+<ol>
+<li>Send this first: <code>docs/pdf/ZIP_PRINT_THIS_FIRST_QUICK_START.pdf</code></li>
+<li>Send install page: <code>/Users/minnick/Documents/PASS/ZIP/zip.html</code></li>
+<li>Team loads extension in Dev Mode.</li>
+<li>Team verifies launch methods:</li>
+</ol>
+<ul>
+<li>Action click</li>
+<li>Context menu entry</li>
+<li>Keyboard shortcut (<code>Ctrl+Shift+Y</code> / <code>Command+Shift+Y</code>)</li>
+</ul>
+<ol start="5">
+<li>Team validates ticket triage + CSV export.</li>
+</ol>
+<h2>Pilot Go/No-Go Checklist</h2>
+<ul>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Extension loads without manifest errors.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Login flow opens Zendesk and returns authenticated session.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Assigned ticket list loads and can open ticket links.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Group/View/Org selectors load expected ticket scopes.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Refresh and CSV export produce correct visible-row output.</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>User-facing docs and PDFs are branded and readable.</li>
+</ul>
+<h2>Training and Handoff PDFs</h2>
+<ul>
+<li><code>docs/pdf/ZIP_PRINT_THIS_FIRST_QUICK_START.pdf</code></li>
+<li><code>docs/pdf/ZIP_MANAGER_ONE_PAGE_HANDOUT.pdf</code></li>
+<li><code>docs/pdf/ZIP_END_TO_END_USER_TRAINING.pdf</code></li>
+<li><code>docs/pdf/ZIP_FUNCTIONALITY_INVENTORY_AND_DOC_WORKFLOW.pdf</code></li>
+<li><code>docs/pdf/ZIP_USER_UAT_TEST_CASES.pdf</code></li>
+<li><code>docs/pdf/ZIP_TRAINING_BINDER.pdf</code></li>
+<li><code>docs/pdf/ZIP_MANAGEMENT_RELEASE_MEMO.pdf</code></li>
+</ul>
+<h2>Recommended Immediate Operating Playbook</h2>
+<p>When queue pressure spikes:</p>
+<ol>
+<li>Work from <code>Assigned Tickets</code> sorted by <code>Updated</code>.</li>
+<li>Pivot by Group for team balancing.</li>
+<li>Export CSV snapshots to leads for shift-level visibility.</li>
+<li>Open tickets directly from ZIP to cut tab-hopping.</li>
+</ol>
+    </main>
+    <footer class="footer">
+      <span>PASS • ZIP (Zeek Info Peek)</span>
+      <span>Master brand kit aligned</span>
+    </footer>
+  </div>
+</body>
+</html>

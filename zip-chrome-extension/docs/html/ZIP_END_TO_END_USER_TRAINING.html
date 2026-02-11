@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <base href="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/" />
+  <title>ZIP End-to-End User Training</title>
+  <style>
+    :root {
+      --s2-bg: #f4f4f4;
+      --s2-surface: #ffffff;
+      --s2-border: #dadada;
+      --s2-text: #222222;
+      --s2-muted: #575757;
+      --s2-accent: #ff2d55;
+      --s2-accent-2: #ff7a00;
+      --s2-accent-dark: #be0a26;
+      --s2-link: #1473e6;
+      --s2-code-bg: #f0f0f0;
+      --s2-code-border: #d0d0d0;
+      --s2-pre-bg: #171717;
+      --s2-pre-ink: #f3f3f3;
+      --s2-table-head: #fdecee;
+      --s2-shadow: 0 5px 16px rgba(0,0,0,0.09);
+      --s2-font: "Adobe Clean", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      --s2-mono: "Source Code Pro", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    @page {
+      size: Letter;
+      margin: 0.58in;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--s2-text);
+      background:
+        radial-gradient(80% 38% at 8% 0%, rgba(190,10,38,0.13) 0%, rgba(255,255,255,0) 60%),
+        linear-gradient(180deg, #fbfbfb 0%, var(--s2-bg) 100%);
+      font-family: var(--s2-font);
+      font-size: 11.1pt;
+      line-height: 1.58;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      width: 100%;
+      max-width: 8.5in;
+      margin: 0 auto;
+    }
+    .hero {
+      position: relative;
+      border: 1px solid var(--s2-border);
+      border-radius: 12px;
+      margin-bottom: 18px;
+      overflow: hidden;
+      box-shadow: var(--s2-shadow);
+      background: #101013;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    .hero-bg {
+      display: block;
+      width: 100%;
+      height: 130px;
+      object-fit: cover;
+      opacity: 0.86;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(100deg, rgba(9,9,11,0.92) 10%, rgba(9,9,11,0.46) 72%);
+      pointer-events: none;
+    }
+    .hero-content {
+      position: absolute;
+      inset: 12px 14px;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      color: #ffffff;
+    }
+    .hero-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 6px;
+    }
+    .hero-brand img {
+      width: 21px;
+      height: 21px;
+      filter: drop-shadow(0 0 8px rgba(255, 45, 85, 0.32));
+    }
+    .hero-brand span {
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      color: #f3f3f3;
+    }
+    .hero h1 {
+      margin: 0;
+      border: none;
+      padding: 0;
+      color: #fff;
+      font-size: 21pt;
+      line-height: 1.15;
+      font-weight: 800;
+    }
+    .hero-meta {
+      margin-top: 6px;
+      font-size: 8.8pt;
+      color: rgba(255,255,255,0.86);
+    }
+    main {
+      background: var(--s2-surface);
+      border: 1px solid var(--s2-border);
+      border-radius: 11px;
+      padding: 16px 18px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.06);
+    }
+    h1, h2, h3, h4 {
+      color: #1f1f1f;
+      line-height: 1.25;
+      margin-top: 1.1em;
+      margin-bottom: 0.45em;
+      page-break-after: avoid;
+      break-after: avoid-page;
+    }
+    h1 {
+      font-size: 18pt;
+      border-bottom: 2px solid var(--s2-border);
+      padding-bottom: 6px;
+      margin-top: 0.3em;
+    }
+    h2 {
+      font-size: 14.2pt;
+      border-left: 4px solid var(--s2-accent);
+      padding-left: 10px;
+    }
+    h3 {
+      font-size: 12.2pt;
+      color: var(--s2-accent-dark);
+    }
+    p {
+      margin: 0.45em 0 0.7em;
+      orphans: 3;
+      widows: 3;
+    }
+    a {
+      color: var(--s2-link);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(20,115,230,0.35);
+    }
+    ul, ol {
+      margin: 0.32em 0 0.75em 1.25em;
+      padding: 0;
+    }
+    li { margin: 0.22em 0; }
+    blockquote {
+      margin: 0.85em 0;
+      padding: 10px 12px;
+      border-left: 4px solid var(--s2-accent);
+      border-radius: 6px;
+      background: #fff4f6;
+      color: #444;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid var(--s2-border);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    code {
+      font-family: var(--s2-mono);
+      background: var(--s2-code-bg);
+      border: 1px solid var(--s2-code-border);
+      border-radius: 4px;
+      padding: 0.1em 0.34em;
+      font-size: 0.92em;
+      color: #222;
+      word-break: break-word;
+    }
+    pre {
+      margin: 0.7em 0 0.9em;
+      background: var(--s2-pre-bg);
+      color: var(--s2-pre-ink);
+      border: 1px solid #111;
+      border-radius: 8px;
+      padding: 12px;
+      overflow: auto;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    pre code {
+      border: none;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font-size: 9.5pt;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.6em 0 0.95em;
+      font-size: 10pt;
+      page-break-inside: avoid;
+      break-inside: avoid-page;
+    }
+    th, td {
+      border: 1px solid var(--s2-border);
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--s2-table-head);
+      font-weight: 700;
+    }
+    tr:nth-child(even) td {
+      background: #fcfcfc;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid var(--s2-border);
+      margin: 1.1em 0;
+    }
+    .footer {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid var(--s2-border);
+      color: var(--s2-muted);
+      font-size: 8.7pt;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <img class="hero-bg" src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/splash/zeek-info-peek-master-splash-1920x1080.png" alt="ZIP splash" />
+      <div class="hero-content">
+        <div class="hero-brand">
+          <img src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/source/zeek-info-peek-master-mark.svg" alt="ZIP mark" />
+          <span>ZEEK INFO PEEK</span>
+        </div>
+        <h1>ZIP End-to-End User Training</h1>
+        <div class="hero-meta">ZIP Documentation Suite • Spectrum 2 branded export • Generated 2026-02-11 13:50:56</div>
+      </div>
+    </header>
+    <main>
+<h1>ZIP End-to-End User Training</h1>
+<p>Congratulations, your PASS Zendesk life is no longer being throttled.</p>
+<h2>Quick Start (Urgent Line Paged)</h2>
+<ol>
+<li>Open <code>chrome://extensions</code>.</li>
+<li>Enable Developer mode.</li>
+<li>Click Load unpacked and choose <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Open ZIP, authenticate with <code>Login with Zendesk</code> if prompted.</li>
+<li>Work from <code>Assigned Tickets</code>, then pivot by Group/View/Org as needed.</li>
+</ol>
+<p><img src="assets/brand/zeek-info-peek-master-preview-1024.png" alt="ZIP Master Brand Preview"></p>
+<h2>App Mission</h2>
+<p>ZIP = Zeek Info Peek. ZIP into INFO from the Zendesk API.</p>
+<p>Mission: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. When gatekeeping or &quot;no shared token&quot; roadblocks show up, we treat them as the yin to our yang - fuel for reflection, smarter design, and relentless follow-through - letting results rise on their own while we stay focused on the work, not the doubters.</p>
+<h2>What ZIP Is</h2>
+<p>ZIP is a Chrome extension side panel companion for <code>https://adobeprimetime.zendesk.com/*</code>.</p>
+<p>Branding in this release is synced to the approved ZEEK INFO PEEK master media kit and is consistent across:</p>
+<ul>
+<li>Extension iconography</li>
+<li>Side panel shell and login card</li>
+<li>Install pages</li>
+<li>Training PDFs and binder</li>
+</ul>
+<p>It gives agents and managers:</p>
+<ul>
+<li>Fast ticket visibility and filtering.</li>
+<li>Team-level pivots (By Group, By View, By Org).</li>
+<li>One-click refresh of the active ticket source.</li>
+<li>CSV export of exactly what is on screen.</li>
+<li>A GET API runner for Zendesk endpoints.</li>
+<li>Raw JSON inspection and download.</li>
+</ul>
+<h2>Permissions and Trust Model</h2>
+<p>ZIP currently uses:</p>
+<ul>
+<li><code>sidePanel</code></li>
+<li><code>tabs</code></li>
+<li><code>contextMenus</code></li>
+<li>Host permission only for <code>https://adobeprimetime.zendesk.com/*</code></li>
+</ul>
+<p>Practical user impact:</p>
+<ul>
+<li>ZIP does not request blanket all-sites access.</li>
+<li>ZIP operates against the active authenticated Zendesk browser session.</li>
+<li>ZIP performs read operations (GET) in the UI workflows.</li>
+</ul>
+<h2>Day 1 Setup</h2>
+<ol>
+<li>Open <code>chrome://extensions</code>.</li>
+<li>Enable Developer mode.</li>
+<li>Click Load unpacked.</li>
+<li>Select folder: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code>.</li>
+<li>Open Zendesk dashboard: <code>https://adobeprimetime.zendesk.com/agent/dashboard</code>.</li>
+<li>Open ZIP with one of the methods below.</li>
+</ol>
+<h2>Opening ZIP (All Supported Methods)</h2>
+<h3>Method A: Action click</h3>
+<ol>
+<li>Go to a Zendesk tab.</li>
+<li>Click the ZIP extension icon.</li>
+<li>ZIP side panel opens.</li>
+</ol>
+<h3>Method B: Context menu</h3>
+<ol>
+<li>Right-click the ZIP extension icon (or page context menu where available).</li>
+<li>Choose <code>Open ZIP Side Panel</code>.</li>
+</ol>
+<h3>Method C: Keyboard shortcut</h3>
+<ol>
+<li>Default shortcut:</li>
+</ol>
+<ul>
+<li>Windows/Linux: <code>Ctrl+Shift+Y</code></li>
+<li>macOS: <code>Command+Shift+Y</code></li>
+</ul>
+<ol start="2">
+<li>Press shortcut on active tab.</li>
+<li>ZIP side panel opens or closes (toggle behavior where supported).</li>
+</ol>
+<h3>Method D: Horizontal workspace tab</h3>
+<p>If your manager prefers a horizontal workspace experience:</p>
+<ol>
+<li>Open context menu.</li>
+<li>Choose <code>Open ZIP Workspace Tab (Horizontal)</code>.</li>
+<li>ZIP opens in a full browser tab with wider layout.</li>
+</ol>
+<h2>First Login and Session Behavior</h2>
+<ol>
+<li>If not signed in, ZIP shows login screen.</li>
+<li>Click <code>Login with Zendesk</code>.</li>
+<li>Sign in on Zendesk.</li>
+<li>Return to ZIP panel.</li>
+<li>ZIP auto-detects login and loads:</li>
+</ol>
+<ul>
+<li>Profile</li>
+<li>Assigned ticket queue</li>
+<li>Organization list</li>
+<li>View list</li>
+<li>Group/member list</li>
+</ul>
+<p>Sign out behavior:</p>
+<ul>
+<li><code>Sign out</code> button triggers Zendesk logout and returns ZIP to login mode.</li>
+</ul>
+<h2>User Interface Tour</h2>
+<h3>Top Bar</h3>
+<ul>
+<li>Agent avatar (or fallback indicator)</li>
+<li>Name, timezone, and email</li>
+<li>Sign out button</li>
+</ul>
+<h3>Ticket Section</h3>
+<ul>
+<li>Primary entry point: <code>Assigned Tickets</code></li>
+<li>Scope selectors:</li>
+<li>By Group</li>
+<li>By View</li>
+<li>By Org</li>
+<li>Table columns:</li>
+<li>Ticket</li>
+<li>Subject</li>
+<li>Status</li>
+<li>Priority</li>
+<li>Created</li>
+<li>Updated</li>
+</ul>
+<h3>Ticket Footer Controls</h3>
+<ul>
+<li>Search field</li>
+<li>Status filter (<code>all</code>, <code>open</code>, <code>pending</code>, <code>hold</code>)</li>
+<li>Refresh button (icon)</li>
+<li>CSV export button</li>
+</ul>
+<h3>API Section</h3>
+<ul>
+<li>Dropdown of Zendesk GET endpoints</li>
+<li>Dynamic parameter fields</li>
+<li><code>Run GET</code> button</li>
+</ul>
+<h3>Raw Result Section</h3>
+<ul>
+<li>Structured result table</li>
+<li><code>Raw.JSON</code> download link</li>
+</ul>
+<h2>Core Daily Workflows</h2>
+<h3>Workflow 1: Triage assigned queue</h3>
+<ol>
+<li>Open ZIP.</li>
+<li>Click <code>Assigned Tickets</code>.</li>
+<li>Sort by <code>Updated</code> descending.</li>
+<li>Click a ticket row or ticket ID.</li>
+<li>Zendesk main tab navigates directly to that ticket.</li>
+</ol>
+<h3>Workflow 2: Team queue by group</h3>
+<ol>
+<li>Use <code>By Group</code> selector.</li>
+<li>Choose a group or a group member.</li>
+<li>ZIP loads corresponding tickets.</li>
+<li>Apply Search and Status filters as needed.</li>
+</ol>
+<h3>Workflow 3: Team queue by view</h3>
+<ol>
+<li>Use <code>By View</code> selector.</li>
+<li>Select the desired Zendesk view.</li>
+<li>ZIP loads view tickets.</li>
+</ol>
+<h3>Workflow 4: Account queue by organization</h3>
+<ol>
+<li>Use <code>By Org</code> selector.</li>
+<li>Select organization.</li>
+<li>ZIP loads org tickets.</li>
+</ol>
+<h3>Workflow 5: Refresh current source</h3>
+<ol>
+<li>Keep current source selected (Assigned/View/Org/Group).</li>
+<li>Click Refresh icon.</li>
+<li>ZIP reloads that same source and reports row count.</li>
+</ol>
+<h3>Workflow 6: Export manager-ready CSV</h3>
+<ol>
+<li>Filter/sort table to your exact desired state.</li>
+<li>Click CSV.</li>
+<li>ZIP downloads CSV of exactly visible rows and order.</li>
+<li>Filename includes context (source, row count, sort, timestamp).</li>
+</ol>
+<h3>Workflow 7: Run an ad hoc Zendesk GET</h3>
+<ol>
+<li>Open <code>ZD API - GET</code> section.</li>
+<li>Choose endpoint.</li>
+<li>Fill parameters (defaults are prefilled where possible from your profile).</li>
+<li>Click <code>Run GET</code>.</li>
+<li>Inspect rendered result table.</li>
+<li>Click <code>Raw.JSON</code> to download payload.</li>
+</ol>
+<h2>How ZIP Filters Ticket Statuses</h2>
+<p>Default ticket loads exclude <code>solved</code> and <code>closed</code> statuses.</p>
+<p>Practically, ZIP is optimized for active work queues.</p>
+<h2>What Managers Should Know</h2>
+<ul>
+<li>CSV export is WYSIWYG for the active table view.</li>
+<li>Horizontal workspace tab is available for broader layouts.</li>
+<li>ZIP can be used as a lightweight operations cockpit during standups.</li>
+</ul>
+<h2>Troubleshooting</h2>
+<h3>ZIP panel does not open</h3>
+<ul>
+<li>Confirm extension is loaded in <code>chrome://extensions</code>.</li>
+<li>Ensure current tab is Zendesk for side-panel mode.</li>
+<li>Try context menu <code>Open ZIP Workspace Tab (Horizontal)</code> as fallback.</li>
+</ul>
+<h3>Login loop or session expired</h3>
+<ul>
+<li>Click <code>Login with Zendesk</code>.</li>
+<li>Complete Zendesk auth in browser.</li>
+<li>Return to ZIP and click version link (<code>ZIP v...</code>) to refresh if needed.</li>
+</ul>
+<h3>No tickets shown</h3>
+<ul>
+<li>Clear Search text.</li>
+<li>Set Status filter to <code>All statuses</code>.</li>
+<li>Re-select source (Assigned/View/Org/Group).</li>
+<li>Click Refresh.</li>
+</ul>
+<h3>CSV button disabled</h3>
+<ul>
+<li>ZIP enables CSV only when at least one ticket row is visible.</li>
+</ul>
+<h2>Recommended Training Runbook (45 minutes)</h2>
+<ol>
+<li>Mission + value framing (5 min)</li>
+<li>Install and launch methods (5 min)</li>
+<li>Ticket workflows (Assigned/Group/View/Org) (15 min)</li>
+<li>CSV manager export drill (5 min)</li>
+<li>API GET and Raw.JSON basics (10 min)</li>
+<li>Troubleshooting and support process (5 min)</li>
+</ol>
+<h2>Support Escalation Data to Capture</h2>
+<p>When reporting a ZIP issue, include:</p>
+<ul>
+<li>ZIP version (footer)</li>
+<li>Browser version</li>
+<li>Active Zendesk URL</li>
+<li>Selected source (Assigned/View/Org/Group)</li>
+<li>Screenshot of status message</li>
+<li>Whether issue reproduces in workspace tab mode</li>
+</ul>
+    </main>
+    <footer class="footer">
+      <span>PASS • ZIP (Zeek Info Peek)</span>
+      <span>Master brand kit aligned</span>
+    </footer>
+  </div>
+</body>
+</html>

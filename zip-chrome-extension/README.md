@@ -2,6 +2,19 @@
 
 **ZIP = Zeek Info Peek** — ZIP into INFO from the Zendesk API.
 
+## Quick Start (Urgent Line Paged)
+
+If the urgent line just paged, do this now:
+1. Open `chrome://extensions`.
+2. Toggle **Developer mode** ON.
+3. Click **Load unpacked**.
+4. Select `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`.
+5. Open `https://adobeprimetime.zendesk.com/agent/dashboard`.
+6. Click ZIP, then click `Login with Zendesk` if prompted.
+7. Click `Assigned Tickets` and start triage.
+
+![ZIP Master Brand Preview](docs/assets/brand/zeek-info-peek-master-preview-1024.png)
+
 **Mission:** Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. When gatekeeping or "no shared token" roadblocks show up, we treat them as the yin to our yang—fuel for reflection, smarter design, and relentless follow‑through—letting results rise on their own while we stay focused on the work, not the doubters.
 
 ZIP is now distributed as a pure Chrome Manifest V3 extension.
@@ -10,7 +23,13 @@ ZIP is now distributed as a pure Chrome Manifest V3 extension.
 - No hosted SPA required
 - No OAuth client-id prompt in local HTML
 
-**Versioning:** Increment the `version` in `manifest.json` on every revision so all employees stay in sync with the latest build.
+**Versioning (Automated):** This repo now auto-increments `manifest.json` on commit when ZIP app files are staged.
+
+- Hook: `.githooks/pre-commit`
+- Bump script: `scripts/auto_bump_manifest_version.sh`
+- One-time setup (already run in this repo): `scripts/install_git_hooks.sh`
+
+Result: every ZIP code/content commit bumps patch version (`x.y.z` -> `x.y.(z+1)`) automatically.
 
 After one-time install, runtime flow is:
 
@@ -21,7 +40,21 @@ After one-time install, runtime flow is:
 
 Logged-out behavior:
 
-- ZIP collapses to the floating ZIP button by default.
+- ZIP shows a branded login card and opens Zendesk authentication from the `Login with Zendesk` button.
+
+## Brand System (Master Kit)
+
+This build is aligned to the latest approved media kit:
+- `/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip`
+
+Integrated assets now live in:
+- `assets/brand/icons`
+- `assets/brand/source`
+- `assets/brand/splash`
+- `docs/assets/brand`
+
+Current release:
+- `manifest.json` version: `1.0.21`
 
 ## Quick Start
 
@@ -55,6 +88,22 @@ Uses active logged-in Zendesk browser session to call:
 
 - `/api/v2/users/me.json`
 - `/api/v2/search.json?query=type:ticket assignee:{email} status:open status:pending status:hold`
+
+## Side Panel Controls
+
+- Action click opens ZIP side panel (`openPanelOnActionClick: true`)
+- Context menu:
+  - `Open ZIP Side Panel`
+  - `Open ZIP Workspace Tab (Horizontal)`
+- Keyboard shortcut command:
+  - `Open or close ZIP side panel` (default `Ctrl+Shift+Y` / `Command+Shift+Y`)
+
+ZIP is tab-scoped for Zendesk URLs and disabled on irrelevant domains to avoid workspace clutter.
+
+### Horizontal Docking Note
+
+Chrome Side Panel supports left/right docking only (not bottom horizontal docking like DevTools).
+For a horizontal workflow, use `Open ZIP Workspace Tab (Horizontal)` which opens the same UI in a full tab.
 
 ## Enterprise Option
 
