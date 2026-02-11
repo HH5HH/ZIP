@@ -1,14 +1,20 @@
 "use strict";
 
 const ZENDESK_ORIGIN = "https://adobeprimetime.zendesk.com";
-const ZENDESK_DASHBOARD_URL = ZENDESK_ORIGIN + "/agent/dashboard";
+const ZENDESK_DASHBOARD_URL = ZENDESK_ORIGIN + "/agent/dashboard?brand_id=2379046";
 const ZIP_PANEL_PATH = "sidepanel.html";
-const MENU_OPEN_PANEL = "zip_open_side_panel";
-const MENU_OPEN_WORKSPACE_TAB = "zip_open_workspace_tab";
+const MENU_TOGGLE_SIDE = "zip_toggle_side";
+const MENU_ASK_ERIC = "zip_ask_eric";
+const ASK_ERIC_EMAIL = "minnick@adobe.com";
+const CHROME_SIDEPANEL_SETTINGS_URL = "chrome://settings/?search=side%20panel";
+const MENU_SIDEPANEL_POSITION_LABEL = "⚙ > Side panel position";
 
 const sidePanelCapabilities = {
   open: typeof chrome.sidePanel?.open === "function",
   close: typeof chrome.sidePanel?.close === "function",
+  setLayout: typeof chrome.sidePanel?.setLayout === "function",
+  setSide: typeof chrome.sidePanel?.setSide === "function",
+  setOptions: typeof chrome.sidePanel?.setOptions === "function",
   getLayout: typeof chrome.sidePanel?.getLayout === "function",
   getOptions: typeof chrome.sidePanel?.getOptions === "function",
   getPanelBehavior: typeof chrome.sidePanel?.getPanelBehavior === "function",
@@ -18,6 +24,7 @@ const sidePanelCapabilities = {
 
 const sidePanelState = {
   layout: "unknown",
+  requestedSide: "",
   lastOpened: null,
   lastClosed: null
 };
@@ -40,8 +47,51 @@ function isZendeskUrl(urlString) {
   }
 }
 
+function normalizeSide(value) {
+  return value === "left" || value === "right" ? value : "";
+}
+
+function getOppositeSide(side) {
+  if (side === "left") return "right";
+  if (side === "right") return "left";
+  return "";
+}
+
+function canProgrammaticallySetSide() {
+  return !!(sidePanelCapabilities.setLayout || sidePanelCapabilities.setSide);
+}
+
+function getRequestedToggleSide(currentSide) {
+  const known = normalizeSide(currentSide);
+  if (known) return getOppositeSide(known);
+  const fromState = normalizeSide(sidePanelState.requestedSide);
+  return fromState ? getOppositeSide(fromState) : "left";
+}
+
+function getToggleMenuTitle(currentSide) {
+  return MENU_SIDEPANEL_POSITION_LABEL;
+}
+
+async function updateToggleMenuTitle(currentSide) {
+  if (!chrome.contextMenus) return;
+  const side = normalizeSide(currentSide) || "unknown";
+  const title = getToggleMenuTitle(side);
+  await new Promise((resolve) => {
+    chrome.contextMenus.update(MENU_TOGGLE_SIDE, { title }, () => {
+      resolve();
+    });
+  });
+}
+
+async function syncLayoutAndToggleMenu() {
+  const side = await refreshLayoutState();
+  await updateToggleMenuTitle(side);
+  return side;
+}
+
 async function configureSidePanelDefaults() {
   try {
+    // Use documented behavior: action click toggles side panel entry.
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   } catch (_) {}
   // Keep ZIP tab-scoped by default and only enable on supported domains.
@@ -89,7 +139,7 @@ function wireLifecycleEvents() {
   if (sidePanelCapabilities.onOpened) {
     chrome.sidePanel.onOpened.addListener((info) => {
       sidePanelState.lastOpened = { ...info, at: nowIso() };
-      refreshLayoutState().catch(() => {});
+      syncLayoutAndToggleMenu().catch(() => {});
     });
   }
   if (sidePanelCapabilities.onClosed) {
@@ -102,14 +152,20 @@ function wireLifecycleEvents() {
 async function createContextMenus() {
   if (!chrome.contextMenus) return;
   await new Promise((resolve) => chrome.contextMenus.removeAll(() => resolve()));
+  const currentSide = normalizeSide(sidePanelState.layout) || "unknown";
   chrome.contextMenus.create({
-    id: MENU_OPEN_PANEL,
-    title: "Open ZIP Side Panel",
+    id: MENU_TOGGLE_SIDE,
+    title: getToggleMenuTitle(currentSide),
     contexts: ["action", "page"]
   });
   chrome.contextMenus.create({
-    id: MENU_OPEN_WORKSPACE_TAB,
-    title: "Open ZIP Workspace Tab (Horizontal)",
+    id: "zip_menu_sep_feedback",
+    type: "separator",
+    contexts: ["action", "page"]
+  });
+  chrome.contextMenus.create({
+    id: MENU_ASK_ERIC,
+    title: "Ask Eric",
     contexts: ["action", "page"]
   });
 }
@@ -123,17 +179,56 @@ async function getActiveTab() {
   }
 }
 
-async function openWorkspaceTab() {
-  const url = chrome.runtime.getURL(ZIP_PANEL_PATH + "?mode=workspace");
+async function getZendeskTabInCurrentWindow() {
   try {
-    const tab = await chrome.tabs.create({ url });
-    return { ok: true, tabId: tab?.id ?? null };
-  } catch (err) {
-    return { ok: false, error: err && err.message ? err.message : "Unable to open workspace tab" };
+    const tabs = await chrome.tabs.query({ currentWindow: true, url: ZENDESK_ORIGIN + "/*" });
+    return tabs && tabs[0] ? tabs[0] : null;
+  } catch (_) {
+    return null;
   }
 }
 
-async function openZipSidePanelFromGesture(tab) {
+async function openAskEricEmail(tab) {
+  const lines = [
+    "Hi Eric,",
+    "",
+    "Question / feedback:",
+    ""
+  ];
+  if (tab && tab.url) lines.push("Context URL: " + tab.url);
+  const params = new URLSearchParams({
+    subject: "ZIP Question / Feedback",
+    body: lines.join("\n")
+  });
+  const url = "mailto:" + ASK_ERIC_EMAIL + "?" + params.toString();
+  try {
+    await chrome.tabs.create({ url });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : "Unable to open mail client" };
+  }
+}
+
+async function openSidePanelSettings() {
+  try {
+    const existing = await chrome.tabs.query({ url: "chrome://settings/*", currentWindow: true });
+    const tab = existing && existing[0] ? existing[0] : null;
+    if (tab && tab.id != null) {
+      await chrome.tabs.update(tab.id, { active: true, url: CHROME_SIDEPANEL_SETTINGS_URL });
+      return { ok: true, tabId: tab.id, reused: true, url: CHROME_SIDEPANEL_SETTINGS_URL };
+    }
+  } catch (_) {}
+  try {
+    const created = await chrome.tabs.create({ url: CHROME_SIDEPANEL_SETTINGS_URL });
+    return { ok: true, tabId: created?.id ?? null, reused: false, url: CHROME_SIDEPANEL_SETTINGS_URL };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : "Unable to open Chrome side panel settings" };
+  }
+}
+
+async function openZipSidePanelFromGesture(tab, options = {}) {
+  const skipToggle = !!(options && options.skipToggle);
+
   if (!sidePanelCapabilities.open) {
     return { ok: false, error: "This Chrome version does not support sidePanel.open()" };
   }
@@ -143,46 +238,112 @@ async function openZipSidePanelFromGesture(tab) {
     return { ok: false, error: "No active tab available" };
   }
 
+  let targetTab = activeTab;
+  if (!isZendeskUrl(targetTab.url || "")) {
+    const existingZendeskTab = await getZendeskTabInCurrentWindow();
+    if (existingZendeskTab && existingZendeskTab.id != null) {
+      targetTab = existingZendeskTab;
+      try {
+        await chrome.tabs.update(targetTab.id, { active: true });
+      } catch (_) {}
+    } else {
+      try {
+        const createdZendeskTab = await chrome.tabs.create({ url: ZENDESK_DASHBOARD_URL });
+        if (!createdZendeskTab || createdZendeskTab.id == null) {
+          return { ok: false, error: "Unable to open Zendesk tab." };
+        }
+        targetTab = createdZendeskTab;
+      } catch (err) {
+        return { ok: false, error: err && err.message ? err.message : "Unable to open Zendesk tab." };
+      }
+    }
+  }
+
   // Toggle behavior when close() and lifecycle events are available.
-  if (sidePanelCapabilities.close && sidePanelCapabilities.onOpened && sidePanelCapabilities.onClosed) {
+  if (!skipToggle && sidePanelCapabilities.close && sidePanelCapabilities.onOpened && sidePanelCapabilities.onClosed) {
     const openedAt = toTime(sidePanelState.lastOpened && sidePanelState.lastOpened.at);
     const closedAt = toTime(sidePanelState.lastClosed && sidePanelState.lastClosed.at);
-    const openedForThisTab = sidePanelState.lastOpened && sidePanelState.lastOpened.tabId === activeTab.id;
+    const openedForThisTab = sidePanelState.lastOpened && sidePanelState.lastOpened.tabId === targetTab.id;
     if (openedForThisTab && openedAt > closedAt) {
       try {
-        await chrome.sidePanel.close({ tabId: activeTab.id });
-        return { ok: true, tabId: activeTab.id, closed: true };
+        await chrome.sidePanel.close({ tabId: targetTab.id });
+        return { ok: true, tabId: targetTab.id, closed: true };
       } catch (_) {}
     }
   }
 
-  if (!isZendeskUrl(activeTab.url || "")) {
-    // If user triggers ZIP from an irrelevant site, open Zendesk first.
-    try {
-      const zdTab = await chrome.tabs.create({ url: ZENDESK_DASHBOARD_URL });
-      if (!zdTab || zdTab.id == null) {
-        return { ok: false, error: "Unable to open Zendesk tab" };
-      }
-      await setOptionsForTab(zdTab.id, ZENDESK_DASHBOARD_URL);
-      await chrome.sidePanel.open({ tabId: zdTab.id });
-      return { ok: true, tabId: zdTab.id, openedZendeskTab: true };
-    } catch (err) {
-      return { ok: false, error: err && err.message ? err.message : "Unable to open side panel" };
-    }
-  }
-
   try {
-    await setOptionsForTab(activeTab.id, activeTab.url || "");
-    await chrome.sidePanel.open({ tabId: activeTab.id });
-    return { ok: true, tabId: activeTab.id, openedZendeskTab: false };
+    await setOptionsForTab(targetTab.id, targetTab.url || "");
+    await chrome.sidePanel.open({ tabId: targetTab.id });
+    const actualSide = await refreshLayoutState();
+    return { ok: true, tabId: targetTab.id, openedZendeskTab: targetTab.id !== activeTab.id, actualSide };
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : "Unable to open side panel" };
   }
 }
 
+async function setSideIfSupported(requestedSide) {
+  const side = normalizeSide(requestedSide);
+  if (!side) return { supported: false, applied: false, method: null };
+  if (sidePanelCapabilities.setLayout) {
+    try {
+      await chrome.sidePanel.setLayout({ side });
+      return { supported: true, applied: true, method: "setLayout" };
+    } catch (_) {}
+  }
+  if (sidePanelCapabilities.setSide) {
+    try {
+      await chrome.sidePanel.setSide({ side });
+      return { supported: true, applied: true, method: "setSide" };
+    } catch (_) {}
+  }
+  return { supported: false, applied: false, method: null };
+}
+
+async function toggleZipSidePanelSide(tab) {
+  const currentSide = await refreshLayoutState();
+  const requestedSide = getRequestedToggleSide(currentSide);
+  sidePanelState.requestedSide = requestedSide;
+  const sideSetResult = await setSideIfSupported(requestedSide);
+  if (!sideSetResult.applied) {
+    const openResult = await openZipSidePanelFromGesture(tab, { skipToggle: true });
+    const settingsResult = await openSidePanelSettings();
+    const actualSide = openResult.actualSide || (await refreshLayoutState());
+    await updateToggleMenuTitle(actualSide);
+    return {
+      ...openResult,
+      requestedSide,
+      actualSide,
+      sideChanged: false,
+      canProgrammaticallySetSide: false,
+      sideSetMethod: null,
+      needsManualSideChange: true,
+      settingsOpened: settingsResult.ok,
+      settingsUrl: settingsResult.ok ? settingsResult.url : null,
+      error: settingsResult.ok ? "Switch side in Chrome settings, then click toggle again." : settingsResult.error
+    };
+  }
+  const result = await openZipSidePanelFromGesture(tab, { skipToggle: true });
+  const actualSide = result.actualSide || (await refreshLayoutState());
+  await updateToggleMenuTitle(actualSide);
+  const sideChanged = actualSide === requestedSide;
+  return {
+    ...result,
+    requestedSide,
+    actualSide,
+    sideChanged,
+    canProgrammaticallySetSide: canProgrammaticallySetSide(),
+    sideSetMethod: sideSetResult.method
+  };
+}
+
 async function getSidePanelContext() {
   const context = {
     layout: await refreshLayoutState(),
+    supportedSides: ["left", "right"],
+    supportsTopBottom: false,
+    canProgrammaticallySetSide: canProgrammaticallySetSide(),
+    requestedSide: normalizeSide(sidePanelState.requestedSide) || null,
     capabilities: sidePanelCapabilities,
     lastOpened: sidePanelState.lastOpened,
     lastClosed: sidePanelState.lastClosed,
@@ -215,6 +376,7 @@ async function bootstrap() {
   await refreshLayoutState();
   await syncAllTabOptions();
   await createContextMenus();
+  await updateToggleMenuTitle(sidePanelState.layout);
 }
 
 wireLifecycleEvents();
@@ -240,22 +402,18 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === MENU_OPEN_PANEL) {
-    openZipSidePanelFromGesture(tab).catch(() => {});
+  if (info.menuItemId === MENU_TOGGLE_SIDE) {
+    toggleZipSidePanelSide(tab).catch(() => {});
     return;
   }
-  if (info.menuItemId === MENU_OPEN_WORKSPACE_TAB) {
-    openWorkspaceTab().catch(() => {});
+  if (info.menuItemId === MENU_ASK_ERIC) {
+    openAskEricEmail(tab).catch(() => {});
   }
 });
 
 chrome.commands.onCommand.addListener((command) => {
   if (command === "open-zip-side-panel") {
-    openZipSidePanelFromGesture().catch(() => {});
-    return;
-  }
-  if (command === "open-zip-workspace-tab") {
-    openWorkspaceTab().catch(() => {});
+    openZipSidePanelFromGesture(undefined).catch(() => {});
   }
 });
 

@@ -5,6 +5,8 @@
   const LOGIN_URL = BASE + "/auth/v3/signin?return_to=" + encodeURIComponent(BASE + "/agent/filters/36464467");
   const TICKET_URL_PREFIX = BASE + "/agent/tickets/";
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
+  const DEFAULT_FOOTER_HINT = "Tip: ⚙ > Side panel position (Chrome browser setting)";
+  const FOOTER_HINT_TOOLTIP = "Chrome controls side panel placement. Use extension context menu: ⚙ > Side panel position.";
 
   const TICKET_COLUMNS = [
     { key: "id", label: "Ticket", type: "number" },
@@ -32,6 +34,10 @@
     lastApiPayloadString: "",
     organizations: [],
     views: [],
+    viewCountsById: Object.create(null),
+    viewCountLoadSeq: 0,
+    viewLabelPadLength: 0,
+    viewSelectLoading: false,
     ticketSource: "assigned",
     selectedOrgId: "",
     selectedViewId: "",
@@ -96,6 +102,7 @@
     assignedTicketsLink: $("zipAssignedTicketsLink"),
     orgSelect: $("zipOrgSelect"),
     viewSelect: $("zipViewSelect"),
+    viewLoadingSpinner: $("zipViewLoadingSpinner"),
     groupMemberSelect: $("zipGroupMemberSelect"),
     apiPathSelect: $("zipApiPathSelect"),
     apiParams: $("zipApiParams"),
@@ -160,18 +167,36 @@
     });
   }
 
+  function applyGlobalBusyUi() {
+    const isLoading = !!(state.busy || state.viewSelectLoading);
+    if (els.topAvatarWrap) {
+      els.topAvatarWrap.classList.toggle("loading", isLoading);
+      els.topAvatarWrap.title = isLoading ? "Loading…" : (els.topAvatarWrap.dataset.idleTitle || "Not logged in");
+    }
+  }
+
   function setBusy(on) {
     state.busy = !!on;
     if (els.apiRunBtn) els.apiRunBtn.disabled = state.busy;
-    if (els.topAvatarWrap) {
-      els.topAvatarWrap.classList.toggle("loading", state.busy);
-      els.topAvatarWrap.title = state.busy ? "Loading…" : (els.topAvatarWrap.dataset.idleTitle || "Not logged in");
+    applyGlobalBusyUi();
+  }
+
+  function setViewSelectLoading(on) {
+    const isLoading = !!on;
+    state.viewSelectLoading = isLoading;
+    if (els.viewSelect) {
+      els.viewSelect.disabled = isLoading;
+      els.viewSelect.setAttribute("aria-busy", isLoading ? "true" : "false");
     }
+    if (els.viewLoadingSpinner) {
+      els.viewLoadingSpinner.classList.toggle("hidden", !isLoading);
+    }
+    applyGlobalBusyUi();
   }
 
   function setStatus(msg, isError) {
     if (!els.status) return;
-    els.status.textContent = msg || "";
+    els.status.textContent = msg || DEFAULT_FOOTER_HINT;
     els.status.classList.toggle("error", !!isError);
   }
 
@@ -517,6 +542,9 @@
     state.filteredTickets = [];
     state.organizations = [];
     state.views = [];
+    state.viewCountsById = Object.create(null);
+    state.viewCountLoadSeq += 1;
+    state.viewLabelPadLength = 0;
     state.ticketSource = "assigned";
     state.selectedOrgId = "";
     state.selectedViewId = "";
@@ -530,6 +558,7 @@
     updateRawDownloadLink();
     if (els.ticketBody) els.ticketBody.innerHTML = "";
     updateTicketActionButtons();
+    setViewSelectLoading(false);
     populateOrgSelect();
     populateViewSelect();
     populateGroupMemberSelect();
@@ -832,14 +861,28 @@
   }
 
   async function loadViews() {
+    const loadSeq = state.viewCountLoadSeq + 1;
+    state.viewCountLoadSeq = loadSeq;
+    state.viewCountsById = Object.create(null);
+    state.viewLabelPadLength = 0;
+    setViewSelectLoading(true);
+    renderViewSelectLoadingPlaceholder();
     try {
       const result = await sendToZendeskTab({ action: "loadViews" });
       state.views = result.views || [];
       if (result.error) throw new Error(result.error);
+      state.viewCountsById = await loadViewCountsForSelect(loadSeq, state.views.slice());
+      if (loadSeq !== state.viewCountLoadSeq) return;
+      state.viewLabelPadLength = (state.views || []).reduce((max, view) => Math.max(max, getViewBaseLabel(view).length), 0);
       populateViewSelect();
     } catch (_) {
+      if (loadSeq !== state.viewCountLoadSeq) return;
       state.views = [];
+      state.viewCountsById = Object.create(null);
+      state.viewLabelPadLength = 0;
       populateViewSelect();
+    } finally {
+      if (loadSeq === state.viewCountLoadSeq) setViewSelectLoading(false);
     }
   }
 
@@ -897,6 +940,63 @@
     }
   }
 
+  function getViewBaseLabel(view) {
+    return (view && view.title ? String(view.title).trim() : "") || ("View " + (view && view.id != null ? view.id : ""));
+  }
+
+  function renderViewSelectLoadingPlaceholder() {
+    if (!els.viewSelect) return;
+    els.viewSelect.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "counting tickets in views";
+    els.viewSelect.appendChild(opt);
+    els.viewSelect.value = "";
+  }
+
+  function getViewLabel(view) {
+    const id = view && view.id != null ? String(view.id) : "";
+    const base = getViewBaseLabel(view);
+    const count = state.viewCountsById[id];
+    const countText = typeof count === "number" && Number.isFinite(count) ? String(count) : "?";
+    const basePadded = state.viewLabelPadLength > 0 ? base.padEnd(state.viewLabelPadLength, " ") : base;
+    return basePadded + "  [ " + countText + " ]";
+  }
+
+  async function loadViewCountsForSelect(loadSeq, viewsSnapshot) {
+    const list = Array.isArray(viewsSnapshot) ? viewsSnapshot : [];
+    const countsById = Object.create(null);
+    if (!list.length) return countsById;
+    const maxConcurrent = 4;
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (nextIndex < list.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        const view = list[currentIndex];
+        if (!view || view.id == null) continue;
+        const viewId = String(view.id);
+        countsById[viewId] = null;
+        if (loadSeq !== state.viewCountLoadSeq) return;
+        try {
+          const result = await sendToZendeskTab({ action: "loadViewCount", viewId });
+          if (loadSeq !== state.viewCountLoadSeq) return;
+          if (!result || result.error || result.count == null) continue;
+          const count = Number(result.count);
+          if (!Number.isFinite(count)) continue;
+          countsById[viewId] = Math.max(0, Math.trunc(count));
+        } catch (_) {}
+      }
+    };
+
+    const workers = [];
+    const workerCount = Math.min(maxConcurrent, list.length);
+    for (let i = 0; i < workerCount; i += 1) workers.push(worker());
+    await Promise.all(workers);
+    return countsById;
+  }
+
   function populateViewSelect() {
     if (!els.viewSelect) return;
     const selected = state.selectedViewId || "";
@@ -908,7 +1008,7 @@
     (state.views || []).forEach((v) => {
       const opt = document.createElement("option");
       opt.value = String(v.id);
-      opt.textContent = (v.title || "").trim() || "View " + v.id;
+      opt.textContent = getViewLabel(v);
       els.viewSelect.appendChild(opt);
     });
     els.viewSelect.value = selected;
@@ -993,6 +1093,12 @@
   }
 
   function wireEvents() {
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", () => { loadSidePanelContext(); });
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) loadSidePanelContext();
+      });
+    }
     if (els.loginBtn) els.loginBtn.addEventListener("click", (e) => { e.preventDefault(); startLogin(); });
     if (els.appVersionLink) {
       els.appVersionLink.addEventListener("click", (e) => {
@@ -1193,6 +1299,7 @@
   async function init() {
     if (IS_WORKSPACE_MODE) document.body.classList.add("zip-workspace");
     document.body.classList.add("zip-logged-out");
+    if (els.status) els.status.title = FOOTER_HINT_TOOLTIP;
     await loadSidePanelContext();
     wireEvents();
     populateAppDescription();

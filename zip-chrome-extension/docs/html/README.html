@@ -249,7 +249,7 @@
           <span>ZEEK INFO PEEK</span>
         </div>
         <h1>ZIP Chrome Extension (No 3P Dependencies)</h1>
-        <div class="hero-meta">ZIP Documentation Suite • Spectrum 2 branded export • Generated 2026-02-11 15:35:34</div>
+        <div class="hero-meta">ZIP Documentation Suite • Spectrum 2 branded export • Generated 2026-02-11 16:09:51</div>
       </div>
     </header>
     <main>
@@ -293,9 +293,10 @@
 <li>ZIP shows a branded login card and opens Zendesk authentication from the <code>Login with Zendesk</code> button.</li>
 </ul>
 <h2>Brand System (Master Kit)</h2>
-<p>This build is aligned to the latest approved media kit:</p>
+<p>This build is aligned to the latest approved media assets:</p>
 <ul>
-<li><code>/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip</code></li>
+<li>Core media kit: <code>/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip</code></li>
+<li>Current app icon pack: <code>/Users/minnick/Downloads/ZIP_APP_ICON_PACK_round.zip</code></li>
 </ul>
 <p>Integrated assets now live in:</p>
 <ul>
@@ -306,7 +307,7 @@
 </ul>
 <p>Current release:</p>
 <ul>
-<li><code>manifest.json</code> version: <code>1.0.21</code></li>
+<li><code>manifest.json</code> version: use current value in <code>zip-chrome-extension/manifest.json</code></li>
 </ul>
 <h2>Quick Start</h2>
 <ol>
@@ -347,7 +348,7 @@
 <ul>
 <li>Action click opens ZIP side panel (<code>openPanelOnActionClick: true</code>)</li>
 <li>Context menu:<ul>
-<li><code>Toggle ZIP Side Panel Side (...)</code> (dynamic label based on current side)</li>
+<li><code>⚙ &gt; Side panel position</code></li>
 <li><code>Ask Eric</code></li>
 </ul>
 </li>
@@ -361,7 +362,7 @@
 <p>Chrome Side Panel supports left/right docking only (not top/bottom).
 ZIP reads current side via <code>chrome.sidePanel.getLayout()</code> and keeps UI/context menu state in sync.
 If Chrome exposes a programmatic setter in the running browser (<code>setLayout</code>/<code>setSide</code>), ZIP will use it.
-When no setter is available, side placement remains controlled by Chrome/browser settings.</p>
+When no setter is available, side placement remains controlled by Chrome/browser settings and ZIP opens side panel settings as fallback.</p>
 <h2>Enterprise Option</h2>
 <p>If teammates cannot use &quot;Load unpacked&quot;, your Chrome admin can deploy this extension via managed policy.</p>
     </main>

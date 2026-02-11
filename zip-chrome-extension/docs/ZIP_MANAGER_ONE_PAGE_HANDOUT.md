@@ -47,9 +47,9 @@ Mission statement: Ship secure, scalable automations that connect our tools and 
 
 ## Launch Methods
 - Action click on ZIP icon.
-- Context menu: Open ZIP Side Panel.
+- Context menu: `⚙ > Side panel position` (opens Chrome side panel settings).
 - Shortcut: Ctrl+Shift+Y (Windows/Linux) or Command+Shift+Y (Mac).
-- Horizontal option: Open ZIP Workspace Tab (Horizontal).
+- Feedback option: `Ask Eric`.
 
 ## User Guardrails
 - ZIP is scoped to Adobe Primetime Zendesk domain.
@@ -70,5 +70,6 @@ Track before/after adoption:
 
 ## Deployment Notes
 - Team install path: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
-- Current package version: 1.0.21
+- Current package version: use `manifest.json` from the distributed build
 - Brand kit baseline: `/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip`
+- App icon pack baseline: `/Users/minnick/Downloads/ZIP_APP_ICON_PACK_round.zip`

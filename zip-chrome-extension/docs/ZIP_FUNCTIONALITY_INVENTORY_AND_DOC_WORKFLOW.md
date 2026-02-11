@@ -31,14 +31,14 @@ For each feature, capture this schema:
 
 Use IDs like `ZIP-OPEN-001`, `ZIP-TICKETS-005`, `ZIP-API-009`.
 
-## 4. Current ZIP Feature Inventory (v1.0.21)
+## 4. Current ZIP Feature Inventory
 
 | Feature ID | User-facing Name | Trigger | Output | Source Files |
 |---|---|---|---|---|
 | ZIP-OPEN-001 | Open panel by extension icon | Action click | ZIP side panel opens | `manifest.json`, `background.js` |
-| ZIP-OPEN-002 | Open panel via context menu | Context menu item | Side panel opens | `background.js` |
+| ZIP-OPEN-002 | Open side panel position settings | Context menu `⚙ > Side panel position` | Opens Chrome side panel settings | `background.js` |
 | ZIP-OPEN-003 | Toggle panel via keyboard | `Ctrl+Shift+Y` / `Command+Shift+Y` | Open/close panel (where API supports close) | `manifest.json`, `background.js` |
-| ZIP-OPEN-004 | Open horizontal workspace | Context menu/command | Full tab `sidepanel.html?mode=workspace` | `background.js`, `sidepanel.css`, `sidepanel.js` |
+| ZIP-OPEN-004 | Quick feedback mailto | Context menu `Ask Eric` | Opens email client pre-addressed to maintainer | `background.js` |
 | ZIP-SCOPE-001 | Domain-aware availability | Tab URL change | Enabled only on Zendesk origin | `background.js` |
 | ZIP-AUTH-001 | Login with Zendesk | Login button | Opens Zendesk sign-in URL | `sidepanel.html`, `sidepanel.js` |
 | ZIP-AUTH-002 | Session auto-detect polling | Logged-out idle | Auto-refresh when login detected | `sidepanel.js` |

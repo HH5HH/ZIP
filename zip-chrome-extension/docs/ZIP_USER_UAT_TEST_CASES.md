@@ -1,6 +1,6 @@
 # ZIP User UAT Test Cases
 
-Version under test: `1.0.21`
+Version under test: use current value in `zip-chrome-extension/manifest.json`
 
 ## Quick Start (Urgent Line Paged)
 If the team needs to get running immediately:
@@ -22,8 +22,8 @@ If the team needs to get running immediately:
 | UAT-001 | Load extension | ZIP folder available | 1. Open `chrome://extensions` 2. Load unpacked ZIP folder | Extension loads without manifest errors |
 | UAT-002 | Action click opens panel | Zendesk tab open | 1. Activate Zendesk tab 2. Click ZIP icon | ZIP side panel opens |
 | UAT-003 | Action click from non-Zendesk | Non-Zendesk tab active | 1. Activate non-Zendesk tab 2. Click ZIP icon | Side panel remains domain-aware; use context menu/shortcut behavior per policy |
-| UAT-004 | Context menu open panel | ZIP installed | 1. Right-click extension icon 2. Click `Open ZIP Side Panel` | ZIP side panel opens |
-| UAT-005 | Context menu horizontal workspace | ZIP installed | 1. Right-click extension icon 2. Click `Open ZIP Workspace Tab (Horizontal)` | New full tab opens with ZIP workspace layout |
+| UAT-004 | Context menu side panel position settings | ZIP installed | 1. Right-click extension icon 2. Click `⚙ > Side panel position` | Chrome opens side panel settings page |
+| UAT-005 | Context menu Ask Eric feedback | ZIP installed | 1. Right-click extension icon 2. Click `Ask Eric` | Default mail client opens with prefilled recipient/subject |
 | UAT-006 | Keyboard shortcut open/close (Win/Linux) | Shortcut available | 1. Press `Ctrl+Shift+Y` on Zendesk tab 2. Press again | Opens ZIP panel, then closes/toggles where supported |
 | UAT-007 | Keyboard shortcut open/close (macOS) | Shortcut available | 1. Press `Command+Shift+Y` on Zendesk tab 2. Press again | Opens ZIP panel, then closes/toggles where supported |
 | UAT-008 | Login button flow | User not logged into Zendesk | 1. Open ZIP 2. Click `Login with Zendesk` | Browser opens Zendesk sign-in page |

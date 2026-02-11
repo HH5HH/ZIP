@@ -54,8 +54,8 @@
 <ul>
 <li>Open/toggle ZIP: <code>Ctrl+Shift+Y</code> (Windows/Linux) or <code>Command+Shift+Y</code> (Mac)</li>
 <li>Context menu options:<ul>
-<li><code>Open ZIP Side Panel</code></li>
-<li><code>Open ZIP Workspace Tab (Horizontal)</code></li>
+<li><code>⚙ &gt; Side panel position</code> (opens Chrome side panel settings)</li>
+<li><code>Ask Eric</code></li>
 </ul>
 </li>
 </ul>
@@ -82,10 +82,11 @@
 <h2>Release Snapshot</h2>
 <ul>
 <li>Product: ZIP (Zeek Info Peek)</li>
-<li>Build version: <code>1.0.21</code></li>
+<li>Build version: use current value in <code>zip-chrome-extension/manifest.json</code></li>
 <li>Package: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip</code></li>
 <li>Install path: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
 <li>Brand baseline: <code>/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip</code></li>
+<li>App icon pack baseline: <code>/Users/minnick/Downloads/ZIP_APP_ICON_PACK_round.zip</code></li>
 </ul>
 <h2>What Management Asked For (Now Delivered)</h2>
 <ul>
@@ -190,9 +191,9 @@
 <h2>Launch Methods</h2>
 <ul>
 <li>Action click on ZIP icon.</li>
-<li>Context menu: Open ZIP Side Panel.</li>
+<li>Context menu: <code>⚙ &gt; Side panel position</code> (opens Chrome side panel settings).</li>
 <li>Shortcut: Ctrl+Shift+Y (Windows/Linux) or Command+Shift+Y (Mac).</li>
-<li>Horizontal option: Open ZIP Workspace Tab (Horizontal).</li>
+<li>Feedback option: <code>Ask Eric</code>.</li>
 </ul>
 <h2>User Guardrails</h2>
 <ul>
@@ -217,8 +218,9 @@
 <h2>Deployment Notes</h2>
 <ul>
 <li>Team install path: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
-<li>Current package version: 1.0.21</li>
+<li>Current package version: use <code>manifest.json</code> from the distributed build</li>
 <li>Brand kit baseline: <code>/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip</code></li>
+<li>App icon pack baseline: <code>/Users/minnick/Downloads/ZIP_APP_ICON_PACK_round.zip</code></li>
 </ul>
 <p>============================================================</p>
 <h1>End-to-End User Training</h1>
@@ -289,7 +291,8 @@
 <h3>Method B: Context menu</h3>
 <ol>
 <li>Right-click the ZIP extension icon (or page context menu where available).</li>
-<li>Choose <code>Open ZIP Side Panel</code>.</li>
+<li>Choose <code>⚙ &gt; Side panel position</code>.</li>
+<li>Chrome opens side panel settings so you can switch Left/Right placement.</li>
 </ol>
 <h3>Method C: Keyboard shortcut</h3>
 <ol>
@@ -303,12 +306,13 @@
 <li>Press shortcut on active tab.</li>
 <li>ZIP side panel opens or closes (toggle behavior where supported).</li>
 </ol>
-<h3>Method D: Horizontal workspace tab</h3>
-<p>If your manager prefers a horizontal workspace experience:</p>
+<h3>Method D: Side panel position settings</h3>
+<p>If you want ZIP on the opposite side of Chrome:</p>
 <ol>
 <li>Open context menu.</li>
-<li>Choose <code>Open ZIP Workspace Tab (Horizontal)</code>.</li>
-<li>ZIP opens in a full browser tab with wider layout.</li>
+<li>Choose <code>⚙ &gt; Side panel position</code>.</li>
+<li>In Chrome settings, change side panel placement to Left or Right.</li>
+<li>Return to Zendesk and open ZIP again.</li>
 </ol>
 <h2>First Login and Session Behavior</h2>
 <ol>
@@ -425,7 +429,7 @@
 <h2>What Managers Should Know</h2>
 <ul>
 <li>CSV export is WYSIWYG for the active table view.</li>
-<li>Horizontal workspace tab is available for broader layouts.</li>
+<li>Side panel placement (Left/Right) is controlled at Chrome settings level.</li>
 <li>ZIP can be used as a lightweight operations cockpit during standups.</li>
 </ul>
 <h2>Troubleshooting</h2>
@@ -433,7 +437,8 @@
 <ul>
 <li>Confirm extension is loaded in <code>chrome://extensions</code>.</li>
 <li>Ensure current tab is Zendesk for side-panel mode.</li>
-<li>Try context menu <code>Open ZIP Workspace Tab (Horizontal)</code> as fallback.</li>
+<li>Use ZIP icon action click or keyboard shortcut.</li>
+<li>Use context menu <code>⚙ &gt; Side panel position</code> if side placement needs adjustment.</li>
 </ul>
 <h3>Login loop or session expired</h3>
 <ul>
@@ -516,7 +521,7 @@
 </thead>
 </table>
 <p>Use IDs like <code>ZIP-OPEN-001</code>, <code>ZIP-TICKETS-005</code>, <code>ZIP-API-009</code>.</p>
-<h2>4. Current ZIP Feature Inventory (v1.0.21)</h2>
+<h2>4. Current ZIP Feature Inventory</h2>
 <table>
 <thead>
 <tr>
@@ -537,9 +542,9 @@
 </tr>
 <tr>
 <td>ZIP-OPEN-002</td>
-<td>Open panel via context menu</td>
-<td>Context menu item</td>
-<td>Side panel opens</td>
+<td>Open side panel position settings</td>
+<td>Context menu <code>⚙ &gt; Side panel position</code></td>
+<td>Opens Chrome side panel settings</td>
 <td><code>background.js</code></td>
 </tr>
 <tr>
@@ -551,10 +556,10 @@
 </tr>
 <tr>
 <td>ZIP-OPEN-004</td>
-<td>Open horizontal workspace</td>
-<td>Context menu/command</td>
-<td>Full tab <code>sidepanel.html?mode=workspace</code></td>
-<td><code>background.js</code>, <code>sidepanel.css</code>, <code>sidepanel.js</code></td>
+<td>Quick feedback mailto</td>
+<td>Context menu <code>Ask Eric</code></td>
+<td>Opens email client pre-addressed to maintainer</td>
+<td><code>background.js</code></td>
 </tr>
 <tr>
 <td>ZIP-SCOPE-001</td>
@@ -764,7 +769,7 @@
 <h1>User UAT Test Cases</h1>
 <h1>Source: /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/ZIP_USER_UAT_TEST_CASES.md</h1>
 <h1>ZIP User UAT Test Cases</h1>
-<p>Version under test: <code>1.0.21</code></p>
+<p>Version under test: use current value in <code>zip-chrome-extension/manifest.json</code></p>
 <h2>Quick Start (Urgent Line Paged)</h2>
 <p>If the team needs to get running immediately:</p>
 <ol>
@@ -815,17 +820,17 @@
 </tr>
 <tr>
 <td>UAT-004</td>
-<td>Context menu open panel</td>
+<td>Context menu side panel position settings</td>
 <td>ZIP installed</td>
-<td>1. Right-click extension icon 2. Click <code>Open ZIP Side Panel</code></td>
-<td>ZIP side panel opens</td>
+<td>1. Right-click extension icon 2. Click <code>⚙ &gt; Side panel position</code></td>
+<td>Chrome opens side panel settings page</td>
 </tr>
 <tr>
 <td>UAT-005</td>
-<td>Context menu horizontal workspace</td>
+<td>Context menu Ask Eric feedback</td>
 <td>ZIP installed</td>
-<td>1. Right-click extension icon 2. Click <code>Open ZIP Workspace Tab (Horizontal)</code></td>
-<td>New full tab opens with ZIP workspace layout</td>
+<td>1. Right-click extension icon 2. Click <code>Ask Eric</code></td>
+<td>Default mail client opens with prefilled recipient/subject</td>
 </tr>
 <tr>
 <td>UAT-006</td>
@@ -1050,7 +1055,7 @@
 <li>P4: Cosmetic text/spacing issue.</li>
 </ul>
 <p>============================================================</p>
-<h1>Extension README</h1>
+<h1>ZIP Extension README</h1>
 <h1>Source: /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/README.md</h1>
 <h1>ZIP Chrome Extension (No 3P Dependencies)</h1>
 <p><strong>ZIP = Zeek Info Peek</strong> — ZIP into INFO from the Zendesk API.</p>
@@ -1065,7 +1070,7 @@
 <li>Click ZIP, then click <code>Login with Zendesk</code> if prompted.</li>
 <li>Click <code>Assigned Tickets</code> and start triage.</li>
 </ol>
-<p><img src="assets/brand/zeek-info-peek-master-preview-1024.png" alt="ZIP Master Brand Preview"></p>
+<p><img src="docs/assets/brand/zeek-info-peek-master-preview-1024.png" alt="ZIP Master Brand Preview"></p>
 <p><strong>Mission:</strong> Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. When gatekeeping or &quot;no shared token&quot; roadblocks show up, we treat them as the yin to our yang—fuel for reflection, smarter design, and relentless follow‑through—letting results rise on their own while we stay focused on the work, not the doubters.</p>
 <p>ZIP is now distributed as a pure Chrome Manifest V3 extension.</p>
 <ul>
@@ -1073,7 +1078,13 @@
 <li>No hosted SPA required</li>
 <li>No OAuth client-id prompt in local HTML</li>
 </ul>
-<p><strong>Versioning:</strong> Increment the <code>version</code> in <code>manifest.json</code> on every revision so all employees stay in sync with the latest build.</p>
+<p><strong>Versioning (Automated):</strong> This repo now auto-increments <code>manifest.json</code> on commit when ZIP app files are staged.</p>
+<ul>
+<li>Hook: <code>.githooks/pre-commit</code></li>
+<li>Bump script: <code>scripts/auto_bump_manifest_version.sh</code></li>
+<li>One-time setup (already run in this repo): <code>scripts/install_git_hooks.sh</code></li>
+</ul>
+<p>Result: every ZIP code/content commit bumps patch version (<code>x.y.z</code> -&gt; <code>x.y.(z+1)</code>) automatically.</p>
 <p>After one-time install, runtime flow is:</p>
 <ol>
 <li>Open Zendesk page</li>
@@ -1086,9 +1097,10 @@
 <li>ZIP shows a branded login card and opens Zendesk authentication from the <code>Login with Zendesk</code> button.</li>
 </ul>
 <h2>Brand System (Master Kit)</h2>
-<p>This build is aligned to the latest approved media kit:</p>
+<p>This build is aligned to the latest approved media assets:</p>
 <ul>
-<li><code>/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip</code></li>
+<li>Core media kit: <code>/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip</code></li>
+<li>Current app icon pack: <code>/Users/minnick/Downloads/ZIP_APP_ICON_PACK_round.zip</code></li>
 </ul>
 <p>Integrated assets now live in:</p>
 <ul>
@@ -1099,7 +1111,7 @@
 </ul>
 <p>Current release:</p>
 <ul>
-<li><code>manifest.json</code> version: <code>1.0.21</code></li>
+<li><code>manifest.json</code> version: use current value in <code>zip-chrome-extension/manifest.json</code></li>
 </ul>
 <h2>Quick Start</h2>
 <ol>
@@ -1140,8 +1152,8 @@
 <ul>
 <li>Action click opens ZIP side panel (<code>openPanelOnActionClick: true</code>)</li>
 <li>Context menu:<ul>
-<li><code>Open ZIP Side Panel</code></li>
-<li><code>Open ZIP Workspace Tab (Horizontal)</code></li>
+<li><code>⚙ &gt; Side panel position</code></li>
+<li><code>Ask Eric</code></li>
 </ul>
 </li>
 <li>Keyboard shortcut command:<ul>
@@ -1150,8 +1162,10 @@
 </li>
 </ul>
 <p>ZIP is tab-scoped for Zendesk URLs and disabled on irrelevant domains to avoid workspace clutter.</p>
-<h3>Horizontal Docking Note</h3>
-<p>Chrome Side Panel supports left/right docking only (not bottom horizontal docking like DevTools).
-For a horizontal workflow, use <code>Open ZIP Workspace Tab (Horizontal)</code> which opens the same UI in a full tab.</p>
+<h3>Left/Right Positioning Note</h3>
+<p>Chrome Side Panel supports left/right docking only (not top/bottom).
+ZIP reads current side via <code>chrome.sidePanel.getLayout()</code> and keeps UI/context menu state in sync.
+If Chrome exposes a programmatic setter in the running browser (<code>setLayout</code>/<code>setSide</code>), ZIP will use it.
+When no setter is available, side placement remains controlled by Chrome/browser settings and ZIP opens side panel settings as fallback.</p>
 <h2>Enterprise Option</h2>
 <p>If teammates cannot use &quot;Load unpacked&quot;, your Chrome admin can deploy this extension via managed policy.</p>

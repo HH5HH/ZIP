@@ -28,8 +28,8 @@
 ## Keyboard and Access Shortcuts
 - Open/toggle ZIP: `Ctrl+Shift+Y` (Windows/Linux) or `Command+Shift+Y` (Mac)
 - Context menu options:
-  - `Open ZIP Side Panel`
-  - `Open ZIP Workspace Tab (Horizontal)`
+  - `⚙ > Side panel position` (opens Chrome side panel settings)
+  - `Ask Eric`
 
 ## Install Paths
 - Unpacked folder: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`

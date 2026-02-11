@@ -178,42 +178,6 @@ body.zip-workspace #zipAppScreen .section:first-child {
   flex: 1;
 }
 
-.brand-lockup {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  margin-right: var(--space-xs);
-  padding-right: var(--space-xs);
-  border-right: 1px solid rgba(255, 255, 255, 0.16);
-}
-
-.brand-mark {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  filter: drop-shadow(0 0 6px var(--zip-glow-soft));
-}
-
-.brand-lockup-text {
-  min-width: 0;
-  line-height: 1.1;
-}
-
-.brand-lockup-title {
-  font-size: var(--spectrum-font-size-100);
-  font-weight: var(--spectrum-font-weight-bold);
-  letter-spacing: 0.06em;
-  color: var(--fg-default);
-}
-
-.brand-lockup-subtitle {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--fg-subtle);
-}
-
 .top-identity-wrap {
   display: flex;
   flex-direction: column;
@@ -296,14 +260,6 @@ body.zip-workspace #zipAppScreen .section:first-child {
 }
 
 @media (max-width: 520px) {
-  .brand-lockup-subtitle {
-    display: none;
-  }
-  .brand-lockup {
-    border-right: none;
-    margin-right: 0;
-    padding-right: 0;
-  }
   .top-identity-wrap {
     max-width: 150px;
   }
@@ -424,6 +380,64 @@ body.zip-workspace #zipAppScreen .section:first-child {
 
 .zip-footer-version:hover { color: var(--fg-primary); text-decoration: underline; }
 
+.zip-footer-brand-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  padding: 3px 8px 3px 5px;
+  background: linear-gradient(135deg, rgba(255, 0, 61, 0.12) 0%, rgba(255, 122, 0, 0.08) 100%), var(--bg-recessed);
+  text-decoration: none;
+  color: var(--fg-default);
+  max-width: 68%;
+  min-width: 0;
+}
+
+.zip-footer-brand-refresh:hover {
+  border-color: var(--spectrum-red-600);
+  box-shadow: 0 0 0 2px rgba(255, 45, 85, 0.15);
+  text-decoration: none;
+}
+
+.zip-footer-brand-mark {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0 6px var(--zip-glow-soft));
+}
+
+.zip-footer-brand-sep {
+  font-size: 9px;
+  color: var(--fg-subtle);
+  flex: 0 0 auto;
+}
+
+.zip-footer-brand-subtitle {
+  font-size: 9px;
+  color: var(--fg-default);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: var(--spectrum-font-weight-bold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zip-footer-brand-build {
+  flex: 0 0 auto;
+  font-size: 9px;
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 560px) {
+  .zip-footer-brand-refresh {
+    max-width: 74%;
+    padding: 3px 6px 3px 5px;
+  }
+}
+
 .status {
   margin: 0 0 var(--space-xs);
   padding: var(--space-xs) var(--space-sm);
@@ -449,12 +463,12 @@ body.zip-workspace #zipAppScreen .section:first-child {
 }
 
 .login-card {
-  width: min(100%, 860px);
-  min-height: 360px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-md);
-  align-items: flex-start;
+  width: min(100%, 760px);
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-sm);
+  align-items: stretch;
   border: 1px solid var(--border-default);
   border-radius: 12px;
   background:
@@ -465,42 +479,37 @@ body.zip-workspace #zipAppScreen .section:first-child {
 }
 
 .login-card-left {
-  flex: 1 1 260px;
-  min-width: 240px;
-  max-width: 340px;
+  min-width: 0;
+  max-width: none;
+  display: flex;
+  justify-content: center;
 }
 
-.login-brand-lockup {
-  display: inline-flex;
-  align-items: center;
-  margin-bottom: var(--space-sm);
-}
-
-.login-brand-mark {
-  width: 28px;
-  height: 28px;
-  filter: drop-shadow(0 0 8px var(--zip-glow-soft));
+.login-card-left .btn.primary {
+  min-width: 220px;
 }
 
 .login-card-right {
-  flex: 1 1 420px;
-  min-width: 280px;
+  min-width: 0;
+  max-width: none;
   display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
 }
 
 .login-hero-image {
+  display: block;
   width: 100%;
-  max-height: 185px;
-  object-fit: cover;
+  height: auto;
+  max-height: none;
+  object-fit: contain;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }
 
 .login-card-description {
-  flex: 1;
   margin: 0;
   padding: var(--space-sm) var(--space-md);
   border: 1px solid var(--border-default);
@@ -511,8 +520,8 @@ body.zip-workspace #zipAppScreen .section:first-child {
   font-size: var(--spectrum-font-size-200);
   line-height: 1.5;
   font-style: normal;
-  min-height: 180px;
-  max-height: 24em;
+  min-height: 150px;
+  max-height: 22em;
   overflow-y: auto;
 }
 
@@ -524,9 +533,13 @@ body.zip-workspace #zipAppScreen .section:first-child {
     max-width: none;
     min-width: 100%;
   }
-  .login-hero-image {
-    max-height: 150px;
+
+  .login-card-left .btn.primary {
+    width: 100%;
+    min-width: 0;
   }
+
+  .login-hero-image { max-height: none; }
 }
 
 .section {
@@ -602,6 +615,22 @@ body.zip-workspace #zipAppScreen .section:first-child {
   white-space: nowrap;
 }
 
+.by-view-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inline-spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  border-top-color: var(--fg-primary);
+  animation: zip-avatar-spin 0.7s linear infinite;
+  flex: 0 0 auto;
+}
+
 .org-select {
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -616,6 +645,11 @@ body.zip-workspace #zipAppScreen .section:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.view-select {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 520px) {
@@ -799,9 +833,6 @@ td a:hover { text-decoration: underline; }
 .raw-nested-table tr:nth-child(even) {
   background: var(--spectrum-gray-200);
 }
-
-/* When logged in, hide the "ZIP" title in header (avatar + identity shown instead) */
-.title-logged-out { display: none; }
 
 /* Logged-out: show branded login card and hide app shell chrome */
 body.zip-logged-out .topbar { display: none !important; }

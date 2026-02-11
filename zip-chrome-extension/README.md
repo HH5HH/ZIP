@@ -44,8 +44,9 @@ Logged-out behavior:
 
 ## Brand System (Master Kit)
 
-This build is aligned to the latest approved media kit:
-- `/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip`
+This build is aligned to the latest approved media assets:
+- Core media kit: `/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip`
+- Current app icon pack: `/Users/minnick/Downloads/ZIP_APP_ICON_PACK_round.zip`
 
 Integrated assets now live in:
 - `assets/brand/icons`
@@ -54,7 +55,7 @@ Integrated assets now live in:
 - `docs/assets/brand`
 
 Current release:
-- `manifest.json` version: `1.0.21`
+- `manifest.json` version: use current value in `zip-chrome-extension/manifest.json`
 
 ## Quick Start
 
@@ -93,7 +94,7 @@ Uses active logged-in Zendesk browser session to call:
 
 - Action click opens ZIP side panel (`openPanelOnActionClick: true`)
 - Context menu:
-  - `Toggle ZIP Side Panel Side (...)` (dynamic label based on current side)
+  - `⚙ > Side panel position`
   - `Ask Eric`
 - Keyboard shortcut command:
   - `Open or close ZIP side panel` (default `Ctrl+Shift+Y` / `Command+Shift+Y`)
@@ -105,7 +106,7 @@ ZIP is tab-scoped for Zendesk URLs and disabled on irrelevant domains to avoid w
 Chrome Side Panel supports left/right docking only (not top/bottom).
 ZIP reads current side via `chrome.sidePanel.getLayout()` and keeps UI/context menu state in sync.
 If Chrome exposes a programmatic setter in the running browser (`setLayout`/`setSide`), ZIP will use it.
-When no setter is available, side placement remains controlled by Chrome/browser settings.
+When no setter is available, side placement remains controlled by Chrome/browser settings and ZIP opens side panel settings as fallback.
 
 ## Enterprise Option
 

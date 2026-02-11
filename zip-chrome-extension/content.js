@@ -148,8 +148,33 @@
       });
       nextUrl = res.payload.next_page || null;
     }
-    list.sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: "base" }));
     return { views: list };
+  }
+
+  function parseViewCount(payload) {
+    if (!payload || typeof payload !== "object") return null;
+    const container = (payload.view_count && typeof payload.view_count === "object")
+      ? payload.view_count
+      : payload;
+    const raw = container.value != null ? container.value : container.count;
+    if (raw == null) return null;
+    const num = Number(raw);
+    if (!Number.isFinite(num)) return null;
+    return Math.max(0, Math.trunc(num));
+  }
+
+  async function loadViewCount(viewId) {
+    if (!viewId) return { viewId: "", count: null };
+    const id = String(viewId);
+    const url = BASE + "/api/v2/views/" + encodeURIComponent(id) + "/count.json";
+    const res = await fetchJson(url);
+    if (res.status === 401 || res.status === 403) {
+      return { viewId: id, error: "Session expired", count: null };
+    }
+    if (!res.ok || !res.payload) {
+      return { viewId: id, error: "View count failed (HTTP " + res.status + ")", count: null };
+    }
+    return { viewId: id, count: parseViewCount(res.payload) };
   }
 
   async function loadTicketsByView(viewId) {
@@ -286,6 +311,10 @@
         }
         if (inner.action === "loadViews") {
           const result = await loadViews();
+          return { type: "ZIP_RESPONSE", requestId, result };
+        }
+        if (inner.action === "loadViewCount") {
+          const result = await loadViewCount(inner.viewId || "");
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "loadTicketsByView") {

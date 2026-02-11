@@ -62,7 +62,8 @@ Practical user impact:
 
 ### Method B: Context menu
 1. Right-click the ZIP extension icon (or page context menu where available).
-2. Choose `Open ZIP Side Panel`.
+2. Choose `⚙ > Side panel position`.
+3. Chrome opens side panel settings so you can switch Left/Right placement.
 
 ### Method C: Keyboard shortcut
 1. Default shortcut:
@@ -71,11 +72,12 @@ Practical user impact:
 2. Press shortcut on active tab.
 3. ZIP side panel opens or closes (toggle behavior where supported).
 
-### Method D: Horizontal workspace tab
-If your manager prefers a horizontal workspace experience:
+### Method D: Side panel position settings
+If you want ZIP on the opposite side of Chrome:
 1. Open context menu.
-2. Choose `Open ZIP Workspace Tab (Horizontal)`.
-3. ZIP opens in a full browser tab with wider layout.
+2. Choose `⚙ > Side panel position`.
+3. In Chrome settings, change side panel placement to Left or Right.
+4. Return to Zendesk and open ZIP again.
 
 ## First Login and Session Behavior
 1. If not signed in, ZIP shows login screen.
@@ -177,14 +179,15 @@ Practically, ZIP is optimized for active work queues.
 
 ## What Managers Should Know
 - CSV export is WYSIWYG for the active table view.
-- Horizontal workspace tab is available for broader layouts.
+- Side panel placement (Left/Right) is controlled at Chrome settings level.
 - ZIP can be used as a lightweight operations cockpit during standups.
 
 ## Troubleshooting
 ### ZIP panel does not open
 - Confirm extension is loaded in `chrome://extensions`.
 - Ensure current tab is Zendesk for side-panel mode.
-- Try context menu `Open ZIP Workspace Tab (Horizontal)` as fallback.
+- Use ZIP icon action click or keyboard shortcut.
+- Use context menu `⚙ > Side panel position` if side placement needs adjustment.
 
 ### Login loop or session expired
 - Click `Login with Zendesk`.
