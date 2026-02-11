@@ -71,4 +71,4 @@ Track before/after adoption:
 ## Deployment Notes
 - Team install path: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
 - Current package version: 1.0.21
-- Brand kit baseline: `/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip`
+- Brand kit baseline: `/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip`

@@ -45,7 +45,7 @@ Logged-out behavior:
 ## Brand System (Master Kit)
 
 This build is aligned to the latest approved media kit:
-- `/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip`
+- `/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip`
 
 Integrated assets now live in:
 - `assets/brand/icons`
@@ -93,17 +93,19 @@ Uses active logged-in Zendesk browser session to call:
 
 - Action click opens ZIP side panel (`openPanelOnActionClick: true`)
 - Context menu:
-  - `Open ZIP Side Panel`
-  - `Open ZIP Workspace Tab (Horizontal)`
+  - `Toggle ZIP Side Panel Side (...)` (dynamic label based on current side)
+  - `Ask Eric`
 - Keyboard shortcut command:
   - `Open or close ZIP side panel` (default `Ctrl+Shift+Y` / `Command+Shift+Y`)
 
 ZIP is tab-scoped for Zendesk URLs and disabled on irrelevant domains to avoid workspace clutter.
 
-### Horizontal Docking Note
+### Left/Right Positioning Note
 
-Chrome Side Panel supports left/right docking only (not bottom horizontal docking like DevTools).
-For a horizontal workflow, use `Open ZIP Workspace Tab (Horizontal)` which opens the same UI in a full tab.
+Chrome Side Panel supports left/right docking only (not top/bottom).
+ZIP reads current side via `chrome.sidePanel.getLayout()` and keeps UI/context menu state in sync.
+If Chrome exposes a programmatic setter in the running browser (`setLayout`/`setSide`), ZIP will use it.
+When no setter is available, side placement remains controlled by Chrome/browser settings.
 
 ## Enterprise Option
 

@@ -1,62 +1,15 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#070007"/>
-      <stop offset="100%" stop-color="#000000"/>
-    </linearGradient>
-    <radialGradient id="bgGlow" cx="35%" cy="30%" r="80%">
-      <stop offset="0%" stop-color="#3a0012" stop-opacity="0.35"/>
-      <stop offset="55%" stop-color="#000000" stop-opacity="0"/>
-      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    <radialGradient id="bg" cx="50%" cy="45%" r="75%">
+      <stop offset="0%" stop-color="#ff3c1e"/>
+      <stop offset="100%" stop-color="#b40000"/>
     </radialGradient>
-
-    <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#ff003d"/>
-      <stop offset="35%" stop-color="#ff2d55"/>
-      <stop offset="65%" stop-color="#ff7a00"/>
-      <stop offset="100%" stop-color="#ff003d"/>
-    </linearGradient>
-
-    <linearGradient id="glyphGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#ffe7ff"/>
-    </linearGradient>
-
-    <filter id="mildGlow" x="-15%" y="-15%" width="130%" height="130%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
-      <feColorMatrix in="blur" type="matrix"
-        values="1 0 0 0 0
-                0 1 0 0 0
-                0 0 1 0 0
-                0 0 0 0.22 0" result="glow"/>
-      <feMerge>
-        <feMergeNode in="glow"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
   </defs>
-
-  <!-- Background -->
-  <rect width="1024" height="1024" fill="url(#bgGrad)"/>
-  <rect width="1024" height="1024" fill="url(#bgGlow)"/>
-
-  <!-- RUN-DMC inspired bars -->
-  <rect x="0" y="0" width="1024" height="140" fill="#be0a26"/>
-  <rect x="0" y="884" width="1024" height="140" fill="#be0a26"/>
-
-  <!-- Modernized Primetime/ZIP ring -->
-  <circle cx="512" cy="512" r="320" fill="none" stroke="url(#ringGrad)" stroke-width="90" filter="url(#mildGlow)"/>
-
-  <!-- ZIP mark: forward/back "Z" -->
-  <g filter="url(#mildGlow)">
-    <path d="M320 684 L700 684 L320 340 L700 340"
-          fill="none"
-          stroke="url(#glyphGrad)"
-          stroke-width="96"
-          stroke-linecap="round"
-          stroke-linejoin="round"/>
-    <polygon points="320,624 240,684 320,744" fill="url(#glyphGrad)"/>
-    <polygon points="700,280 780,340 700,400" fill="url(#glyphGrad)"/>
-  </g>
+  <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>
+  <!-- Optional border -->
+  <rect x="1" y="1" width="1022" height="1022" fill="none" stroke="#000000" stroke-opacity="0.65" stroke-width="10"/>
+  <!-- Z mark -->
+  <polygon points="280.00,184.00 840.00,184.00 744.00,358.00 184.00,358.00" fill="#ffffff"/>
+  <polygon points="184.00,666.00 744.00,666.00 840.00,840.00 280.00,840.00" fill="#ffffff"/>
+  <polygon points="767.85,280.82 848.15,435.18 256.15,743.18 175.85,588.82" fill="#ffffff"/>
 </svg>

@@ -245,11 +245,11 @@
       <img class="hero-bg" src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/splash/zeek-info-peek-master-splash-1920x1080.png" alt="ZIP splash" />
       <div class="hero-content">
         <div class="hero-brand">
-          <img src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/source/zeek-info-peek-master-mark.svg" alt="ZIP mark" />
+          <img src="file:///Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/assets/brand/source/zeek-info-peek-master-icon.svg" alt="ZIP app icon" />
           <span>ZEEK INFO PEEK</span>
         </div>
         <h1>ZIP Chrome Extension (No 3P Dependencies)</h1>
-        <div class="hero-meta">ZIP Documentation Suite • Spectrum 2 branded export • Generated 2026-02-11 13:50:44</div>
+        <div class="hero-meta">ZIP Documentation Suite • Spectrum 2 branded export • Generated 2026-02-11 15:35:34</div>
       </div>
     </header>
     <main>
@@ -295,7 +295,7 @@
 <h2>Brand System (Master Kit)</h2>
 <p>This build is aligned to the latest approved media kit:</p>
 <ul>
-<li><code>/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip</code></li>
+<li><code>/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip</code></li>
 </ul>
 <p>Integrated assets now live in:</p>
 <ul>
@@ -347,8 +347,8 @@
 <ul>
 <li>Action click opens ZIP side panel (<code>openPanelOnActionClick: true</code>)</li>
 <li>Context menu:<ul>
-<li><code>Open ZIP Side Panel</code></li>
-<li><code>Open ZIP Workspace Tab (Horizontal)</code></li>
+<li><code>Toggle ZIP Side Panel Side (...)</code> (dynamic label based on current side)</li>
+<li><code>Ask Eric</code></li>
 </ul>
 </li>
 <li>Keyboard shortcut command:<ul>
@@ -357,9 +357,11 @@
 </li>
 </ul>
 <p>ZIP is tab-scoped for Zendesk URLs and disabled on irrelevant domains to avoid workspace clutter.</p>
-<h3>Horizontal Docking Note</h3>
-<p>Chrome Side Panel supports left/right docking only (not bottom horizontal docking like DevTools).
-For a horizontal workflow, use <code>Open ZIP Workspace Tab (Horizontal)</code> which opens the same UI in a full tab.</p>
+<h3>Left/Right Positioning Note</h3>
+<p>Chrome Side Panel supports left/right docking only (not top/bottom).
+ZIP reads current side via <code>chrome.sidePanel.getLayout()</code> and keeps UI/context menu state in sync.
+If Chrome exposes a programmatic setter in the running browser (<code>setLayout</code>/<code>setSide</code>), ZIP will use it.
+When no setter is available, side placement remains controlled by Chrome/browser settings.</p>
 <h2>Enterprise Option</h2>
 <p>If teammates cannot use &quot;Load unpacked&quot;, your Chrome admin can deploy this extension via managed policy.</p>
     </main>

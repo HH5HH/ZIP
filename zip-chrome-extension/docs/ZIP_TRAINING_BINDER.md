@@ -86,7 +86,7 @@ Install and begin work in under two minutes:
 - Build version: `1.0.21`
 - Package: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip`
 - Install path: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
-- Brand baseline: `/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip`
+- Brand baseline: `/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip`
 
 ## What Management Asked For (Now Delivered)
 - Unified ZEEK INFO PEEK master-brand iconography and shell presentation.
@@ -207,7 +207,7 @@ Track before/after adoption:
 ## Deployment Notes
 - Team install path: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
 - Current package version: 1.0.21
-- Brand kit baseline: `/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip`
+- Brand kit baseline: `/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip`
 
 
 ============================================================
@@ -680,7 +680,7 @@ Logged-out behavior:
 ## Brand System (Master Kit)
 
 This build is aligned to the latest approved media kit:
-- `/Users/minnick/Documents/PASS/ZIP/zeek-info-peek-master-brand-pack.zip`
+- `/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip`
 
 Integrated assets now live in:
 - `assets/brand/icons`
