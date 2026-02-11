@@ -11,11 +11,6 @@ fi
 
 MANIFEST_PATH="zip-chrome-extension/manifest.json"
 
-# If manifest is already staged in this commit, assume version was handled manually.
-if git diff --cached --name-only --diff-filter=ACMR | grep -qx "$MANIFEST_PATH"; then
-  exit 0
-fi
-
 new_version="$($BUMP_SCRIPT --if-staged-zip-changes)"
 if [[ -n "$new_version" ]]; then
   git add "$MANIFEST_PATH"

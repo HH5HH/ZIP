@@ -1,3 +1,6 @@
 .DS_Store
 zeek-info-peek-master-brand-pack.zip
 zip-chrome-extension.zip
+dist/
+ZIP_TEAM_DISTRIBUTION_v*.zip
+ZIP_APP_ICON_PACK_*.zip
