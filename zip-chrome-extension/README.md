@@ -15,7 +15,7 @@ If the urgent line just paged, do this now:
 
 ![ZIP Master Brand Preview](docs/assets/brand/zeek-info-peek-master-preview-1024.png)
 
-**Mission:** Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. When gatekeeping or "no shared token" roadblocks show up, we treat them as the yin to our yang—fuel for reflection, smarter design, and relentless follow‑through—letting results rise on their own while we stay focused on the work, not the doubters.
+**Mission:** Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. Don't get stuck wasting cycles on blockers. If ZIP can make your job faster, better, or more enjoyable, please share feedback.
 
 ZIP is now distributed as a pure Chrome Manifest V3 extension.
 

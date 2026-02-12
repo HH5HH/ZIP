@@ -41,6 +41,10 @@
       <section class="section">
         <div class="ticket-section-header">
           <h3 class="ticket-section-title"><a href="#" id="zipAssignedTicketsLink" class="ticket-section-link">Assigned Tickets</a></h3>
+          <div id="zipTicketNetworkIndicator" class="ticket-network-indicator hidden" aria-live="polite">
+            <span class="inline-spinner" aria-hidden="true"></span>
+            <span id="zipTicketNetworkLabel">Building filters…</span>
+          </div>
           <div class="ticket-section-filters">
             <div class="ticket-section-by-group">
               <label for="zipGroupMemberSelect" class="by-org-label">By Group</label>
@@ -51,15 +55,16 @@
             <div class="ticket-section-by-view">
               <label for="zipViewSelect" class="by-org-label by-view-label">
                 <span>By View</span>
-                <span id="zipViewLoadingSpinner" class="inline-spinner hidden" aria-hidden="true"></span>
               </label>
               <select id="zipViewSelect" class="org-select view-select">
                 <option value="">—</option>
               </select>
             </div>
             <div class="ticket-section-by-org">
-              <label for="zipOrgSelect" class="by-org-label">By Org</label>
-              <select id="zipOrgSelect" class="org-select">
+              <label for="zipOrgSelect" class="by-org-label by-view-label">
+                <span>By Org</span>
+              </label>
+              <select id="zipOrgSelect" class="org-select org-count-select">
                 <option value="">—</option>
               </select>
             </div>
@@ -97,9 +102,11 @@
         <div class="api-form">
           <div class="control-row">
             <select id="zipApiPathSelect"></select>
-            <button id="zipApiRunBtn" class="btn primary">Run GET</button>
           </div>
           <div id="zipApiParams" class="api-form"></div>
+          <div class="control-row api-run-row">
+            <button id="zipApiRunBtn" class="btn primary">Run GET</button>
+          </div>
         </div>
       </section>
       <section class="section">
@@ -126,6 +133,14 @@
       <span class="zip-footer-brand-build">v<span id="zipAppVersion" class="app-version-num">—</span></span>
     </a>
   </footer>
+  <div id="zipContextMenu" class="zip-context-menu hidden" role="menu" aria-label="ZIP context menu">
+    <div class="zip-context-menu-root" role="presentation">
+      <img class="zip-context-menu-logo" src="assets/brand/source/zeek-info-peek-master-icon.svg" alt="" aria-hidden="true" />
+      <span id="zipContextMenuBuild" class="zip-context-menu-build">ZIP</span>
+    </div>
+    <button id="zipContextMenuToggleSide" class="zip-context-menu-item" type="button" role="menuitem">⚙ > Side panel position</button>
+    <button id="zipContextMenuAskEric" class="zip-context-menu-item" type="button" role="menuitem">Ask Eric</button>
+  </div>
   <script src="paths.js"></script>
   <script src="sidepanel.js"></script>
 </body>

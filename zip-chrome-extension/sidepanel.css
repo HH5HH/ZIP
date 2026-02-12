@@ -3,6 +3,12 @@
 
 * { box-sizing: border-box; }
 
+html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 /*
  * Spectrum 2 Darkest theme – CSS custom properties
  * Mirrors @spectrum-css/tokens + spectrum--darkest colorstop.
@@ -111,7 +117,10 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
   background:
     radial-gradient(120% 80% at 10% 0%, rgba(190, 10, 38, 0.2) 0%, rgba(0, 0, 0, 0) 48%),
     linear-gradient(180deg, #0c0c0f 0%, var(--bg-default) 42%, #070707 100%);
@@ -119,8 +128,8 @@ body {
   font-family: var(--font-system);
   font-size: var(--spectrum-font-size-200);
   line-height: 1.5;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
 }
 
@@ -325,7 +334,6 @@ body.zip-workspace #zipAppScreen .section:first-child {
 }
 
 .body {
-  flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
@@ -429,6 +437,67 @@ body.zip-workspace #zipAppScreen .section:first-child {
   font-size: 9px;
   color: var(--fg-subtle);
   font-family: var(--font-mono);
+}
+
+.zip-context-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483647;
+  min-width: 220px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(160deg, rgba(255, 0, 61, 0.12) 0%, rgba(23, 23, 23, 0.98) 40%, rgba(255, 122, 0, 0.08) 100%),
+    var(--bg-recessed);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+}
+
+.zip-context-menu-root {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.25);
+  margin-bottom: 4px;
+}
+
+.zip-context-menu-logo {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.zip-context-menu-build {
+  color: var(--fg-default);
+  font-size: var(--spectrum-font-size-100);
+  font-weight: var(--spectrum-font-weight-bold);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.zip-context-menu-item {
+  display: block;
+  width: 100%;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-default);
+  text-align: left;
+  padding: 7px 8px;
+  font-size: var(--spectrum-font-size-100);
+  font-family: var(--font-system);
+  cursor: pointer;
+}
+
+.zip-context-menu-item:hover,
+.zip-context-menu-item:focus-visible {
+  background: var(--spectrum-gray-200);
+  color: var(--fg-primary);
+  outline: none;
 }
 
 @media (max-width: 560px) {
@@ -577,6 +646,22 @@ body.zip-workspace #zipAppScreen .section:first-child {
   min-width: 0;
 }
 
+.ticket-network-indicator {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--fg-subtle);
+  font-size: var(--spectrum-font-size-75);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .ticket-section-link {
   color: var(--fg-primary);
   font-size: var(--spectrum-font-size-100);
@@ -647,7 +732,9 @@ body.zip-workspace #zipAppScreen .section:first-child {
   white-space: nowrap;
 }
 
-.view-select {
+.view-select,
+.org-count-select,
+.group-member-select {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
@@ -697,6 +784,11 @@ body.zip-workspace #zipAppScreen .section:first-child {
 
 .api-form .param-row { margin-top: 6px; }
 
+.api-run-row {
+  margin-top: var(--space-xs);
+  justify-content: flex-start;
+}
+
 .api-form .param-row label {
   display: inline-block;
   min-width: 80px;
@@ -705,8 +797,11 @@ body.zip-workspace #zipAppScreen .section:first-child {
 }
 
 .table-wrap {
-  max-height: 280px;
+  max-height: clamp(280px, 50vh, 520px);
   overflow: auto;
+  /* Keep last ticket row clear of horizontal scrollbar track. */
+  scrollbar-gutter: stable;
+  padding-bottom: var(--space-xs);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: rgba(0, 0, 0, 0.2);
@@ -740,6 +835,41 @@ td a {
 }
 
 td a:hover { text-decoration: underline; }
+
+.ticket-subject-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ticket-subject-text {
+  min-width: 0;
+}
+
+.jira-indicator-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: #2684ff;
+  color: #fff !important;
+  text-decoration: none !important;
+  flex: 0 0 auto;
+}
+
+.jira-indicator-link:hover {
+  background: #1f6fd8;
+  text-decoration: none !important;
+}
+
+.jira-indicator-icon {
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
+  font-family: var(--font-system);
+}
 
 .ticket-row { cursor: pointer; }
 

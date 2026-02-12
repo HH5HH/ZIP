@@ -3,11 +3,51 @@
 const ZENDESK_ORIGIN = "https://adobeprimetime.zendesk.com";
 const ZENDESK_DASHBOARD_URL = ZENDESK_ORIGIN + "/agent/dashboard?brand_id=2379046";
 const ZIP_PANEL_PATH = "sidepanel.html";
+const MENU_ROOT = "zip_root";
 const MENU_TOGGLE_SIDE = "zip_toggle_side";
 const MENU_ASK_ERIC = "zip_ask_eric";
 const ASK_ERIC_EMAIL = "minnick@adobe.com";
 const CHROME_SIDEPANEL_SETTINGS_URL = "chrome://settings/?search=side%20panel";
 const MENU_SIDEPANEL_POSITION_LABEL = "⚙ > Side panel position";
+const MENU_CONTEXTS = ["action"];
+const contextMenuState = {
+  grouped: true
+};
+
+function getZipBuildVersion() {
+  try {
+    const manifest = chrome.runtime.getManifest();
+    return manifest && manifest.version ? String(manifest.version) : "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function getZipRootMenuTitle() {
+  const version = getZipBuildVersion();
+  return version ? "ZIP v" + version : "ZIP";
+}
+
+function getToggleMenuItemTitle(currentSide) {
+  const base = getToggleMenuTitle(currentSide);
+  if (contextMenuState.grouped) return base;
+  return getZipRootMenuTitle() + " | " + base;
+}
+
+function getAskEricMenuTitle() {
+  if (contextMenuState.grouped) return "Ask Eric";
+  return getZipRootMenuTitle() + " | Ask Eric";
+}
+
+async function createContextMenuItem(createProps) {
+  await new Promise((resolve, reject) => {
+    chrome.contextMenus.create(createProps, () => {
+      const err = chrome.runtime.lastError;
+      if (err) reject(new Error(err.message || "contextMenus.create failed"));
+      else resolve();
+    });
+  });
+}
 
 const sidePanelCapabilities = {
   open: typeof chrome.sidePanel?.open === "function",
@@ -75,7 +115,7 @@ function getToggleMenuTitle(currentSide) {
 async function updateToggleMenuTitle(currentSide) {
   if (!chrome.contextMenus) return;
   const side = normalizeSide(currentSide) || "unknown";
-  const title = getToggleMenuTitle(side);
+  const title = getToggleMenuItemTitle(side);
   await new Promise((resolve) => {
     chrome.contextMenus.update(MENU_TOGGLE_SIDE, { title }, () => {
       resolve();
@@ -153,21 +193,40 @@ async function createContextMenus() {
   if (!chrome.contextMenus) return;
   await new Promise((resolve) => chrome.contextMenus.removeAll(() => resolve()));
   const currentSide = normalizeSide(sidePanelState.layout) || "unknown";
-  chrome.contextMenus.create({
-    id: MENU_TOGGLE_SIDE,
-    title: getToggleMenuTitle(currentSide),
-    contexts: ["action", "page"]
-  });
-  chrome.contextMenus.create({
-    id: "zip_menu_sep_feedback",
-    type: "separator",
-    contexts: ["action", "page"]
-  });
-  chrome.contextMenus.create({
-    id: MENU_ASK_ERIC,
-    title: "Ask Eric",
-    contexts: ["action", "page"]
-  });
+  contextMenuState.grouped = true;
+  try {
+    await createContextMenuItem({
+      id: MENU_ROOT,
+      title: getZipRootMenuTitle(),
+      contexts: MENU_CONTEXTS
+    });
+    await createContextMenuItem({
+      id: MENU_TOGGLE_SIDE,
+      parentId: MENU_ROOT,
+      title: getToggleMenuItemTitle(currentSide),
+      contexts: MENU_CONTEXTS
+    });
+    await createContextMenuItem({
+      id: MENU_ASK_ERIC,
+      parentId: MENU_ROOT,
+      title: getAskEricMenuTitle(),
+      contexts: MENU_CONTEXTS
+    });
+  } catch (err) {
+    // Fallback: if grouped action menus are unsupported, create flat action items.
+    contextMenuState.grouped = false;
+    await new Promise((resolve) => chrome.contextMenus.removeAll(() => resolve()));
+    await createContextMenuItem({
+      id: MENU_TOGGLE_SIDE,
+      title: getToggleMenuItemTitle(currentSide),
+      contexts: MENU_CONTEXTS
+    });
+    await createContextMenuItem({
+      id: MENU_ASK_ERIC,
+      title: getAskEricMenuTitle(),
+      contexts: MENU_CONTEXTS
+    });
+  }
 }
 
 async function getActiveTab() {
@@ -446,6 +505,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ tabId });
       }
     });
+    return true;
+  }
+  if (msg.type === "ZIP_CONTEXT_MENU_ACTION") {
+    const action = (msg.action || "").trim();
+    (async () => {
+      if (action === "toggleSide") return toggleZipSidePanelSide(undefined);
+      if (action === "askEric") {
+        const tab = await getActiveTab();
+        return openAskEricEmail(tab);
+      }
+      return { ok: false, error: "Unknown context menu action" };
+    })()
+      .then((result) => sendResponse(result || { ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : "Action failed" }));
     return true;
   }
   if (msg.type === "ZIP_GET_SIDEPANEL_CONTEXT") {
