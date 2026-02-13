@@ -318,8 +318,27 @@ body.zip-workspace #zipAppScreen .section:first-child {
   padding: 6px;
 }
 
-.docs-btn {
+.docs-menu {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-recessed);
   color: var(--fg-primary);
+  min-height: 32px;
+  max-width: min(52vw, 260px);
+  padding: 0 var(--space-xs);
+  font: var(--spectrum-font-weight-medium) var(--spectrum-font-size-100)/1.2 var(--font-system);
+  cursor: pointer;
+}
+
+.docs-menu:hover {
+  background: var(--spectrum-gray-200);
+  border-color: var(--spectrum-gray-500);
+}
+
+.docs-menu:focus {
+  outline: none;
+  border-color: var(--spectrum-focus-color);
+  box-shadow: 0 0 0 2px var(--spectrum-focus-ring-color);
 }
 
 .btn-icon {

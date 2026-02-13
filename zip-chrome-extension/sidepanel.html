@@ -20,11 +20,18 @@
       </div>
     </div>
     <div class="actions">
-      <button id="zipDocsBtn" class="btn icon-btn icon-only docs-btn" title="PASS Docs" aria-label="Open PASS documentation">
-        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M6 3h9l3 3v15H6V3zm9 1.5V7h2.5L15 4.5zM8 9h8v1.5H8V9zm0 3.5h8V14H8v-1.5zm0 3.5h6v1.5H8V16z" fill="currentColor"></path>
-        </svg>
-      </button>
+      <select id="zipDocsMenu" class="docs-menu" title="Open Adobe Pass resources" aria-label="Open Adobe Pass resources">
+        <option value=""></option>
+        <option value="https://status.adobe.com/products/503478">status.adobe</option>
+        <option value="https://experienceleague.adobe.com/en/docs/pass">pass docs</option>
+        <option value="https://developer.adobe.com/adobe-pass/api/dcr_api/interactive/">DCR v2</option>
+        <option value="https://developer.adobe.com/adobe-pass/api/rest_api_v2/interactive/">REST v2</option>
+        <option value="https://experienceleague.adobe.com/en/docs/pass/authentication/integration-guide-programmers/features-premium/esm/entitlement-service-monitoring-api">ESM v3</option>
+        <option value="https://tve.zendesk.com/hc/en-us/articles/33912526308372-Adobe-Pass-Authentication-Degradation-API-v3">Degradation v3</option>
+        <option value="" disabled>────────</option>
+        <option value="https://sp.auth-staging.adobe.com/apitest/api.html">apitest</option>
+        <option value="https://tve.zendesk.com/hc/en-us">pt hub</option>
+      </select>
       <button id="zipSignoutBtn" class="btn">Sign out</button>
     </div>
   </header>
