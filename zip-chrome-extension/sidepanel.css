@@ -318,6 +318,10 @@ body.zip-workspace #zipAppScreen .section:first-child {
   padding: 6px;
 }
 
+.docs-btn {
+  color: var(--fg-primary);
+}
+
 .btn-icon {
   width: 14px;
   height: 14px;

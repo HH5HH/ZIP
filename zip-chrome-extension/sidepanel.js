@@ -8,6 +8,7 @@
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
   const DEFAULT_FOOTER_HINT = "Tip: Right-click ZIP panel for ZIP menu actions";
   const FOOTER_HINT_TOOLTIP = "Right-click anywhere in ZIP to open the ZIP context menu.";
+  const PASS_DOCS_URL = "https://experienceleague.adobe.com/en/docs/pass";
 
   const TICKET_COLUMNS = [
     { key: "id", label: "Ticket", type: "number" },
@@ -129,6 +130,7 @@
     appDescription: $("zipAppDescription"),
     appScreen: $("zipAppScreen"),
     loginBtn: $("zipLoginBtn"),
+    docsBtn: $("zipDocsBtn"),
     signoutBtn: $("zipSignoutBtn"),
     appVersionLink: $("zipAppVersionLink"),
     appVersion: $("zipAppVersion"),
@@ -1932,6 +1934,16 @@
     if (els.contextMenuGetLatest) {
       els.contextMenuGetLatest.addEventListener("click", () => {
         runContextMenuAction("getLatest");
+      });
+    }
+    if (els.docsBtn) {
+      els.docsBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.create) {
+          chrome.tabs.create({ url: PASS_DOCS_URL }, () => {});
+        } else {
+          window.open(PASS_DOCS_URL, "_blank", "noopener");
+        }
       });
     }
     if (els.loginBtn) els.loginBtn.addEventListener("click", (e) => { e.preventDefault(); startLogin(); });
