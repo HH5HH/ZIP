@@ -138,6 +138,7 @@
     contextMenuBuild: $("zipContextMenuBuild"),
     contextMenuToggleSide: $("zipContextMenuToggleSide"),
     contextMenuAskEric: $("zipContextMenuAskEric"),
+    contextMenuGetLatest: $("zipContextMenuGetLatest"),
     rawTitle: $("zipRawTitle"),
     rawThead: $("zipRawThead"),
     rawBody: $("zipRawBody"),
@@ -203,20 +204,56 @@
     els.contextMenu.classList.add("hidden");
   }
 
+  function applyContextMenuUpdateState(updateInfo) {
+    if (!els.contextMenuGetLatest) return;
+    const showGetLatest = !!(updateInfo && updateInfo.updateAvailable);
+    els.contextMenuGetLatest.classList.toggle("hidden", !showGetLatest);
+  }
+
+  function loadContextMenuUpdateState(force) {
+    return new Promise((resolve) => {
+      if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+        applyContextMenuUpdateState(null);
+        resolve(null);
+        return;
+      }
+      chrome.runtime.sendMessage({ type: "ZIP_GET_UPDATE_STATE", force: !!force }, (response) => {
+        if (chrome.runtime.lastError) {
+          applyContextMenuUpdateState(null);
+          resolve(null);
+          return;
+        }
+        const info = response || null;
+        applyContextMenuUpdateState(info);
+        resolve(info);
+      });
+    });
+  }
+
   function showContextMenuAt(clientX, clientY) {
     if (!els.contextMenu) return;
     const menu = els.contextMenu;
     menu.classList.remove("hidden");
-    menu.style.left = "0px";
-    menu.style.top = "0px";
-    const rect = menu.getBoundingClientRect();
-    const pad = 6;
-    const maxLeft = Math.max(pad, window.innerWidth - rect.width - pad);
-    const maxTop = Math.max(pad, window.innerHeight - rect.height - pad);
-    const left = Math.min(Math.max(clientX, pad), maxLeft);
-    const top = Math.min(Math.max(clientY, pad), maxTop);
-    menu.style.left = left + "px";
-    menu.style.top = top + "px";
+    function placeMenu() {
+      menu.style.left = "0px";
+      menu.style.top = "0px";
+      const rect = menu.getBoundingClientRect();
+      const pad = 6;
+      const maxLeft = Math.max(pad, window.innerWidth - rect.width - pad);
+      const maxTop = Math.max(pad, window.innerHeight - rect.height - pad);
+      const left = Math.min(Math.max(clientX, pad), maxLeft);
+      const top = Math.min(Math.max(clientY, pad), maxTop);
+      menu.style.left = left + "px";
+      menu.style.top = top + "px";
+    }
+    placeMenu();
+    loadContextMenuUpdateState(false)
+      .then(() => {
+        if (els.contextMenu && !els.contextMenu.classList.contains("hidden")) {
+          placeMenu();
+        }
+      })
+      .catch(() => {});
   }
 
   function sendContextMenuAction(action) {
@@ -262,6 +299,14 @@
           return;
         }
         setStatus("Opening Ask Eric email draft…", false);
+        return;
+      }
+      if (action === "getLatest") {
+        if (response && response.ok === false) {
+          setStatus("Get Latest failed: " + (response.error || "Unknown error"), true);
+          return;
+        }
+        setStatus("Opening latest ZIP package and chrome://extensions…", false);
       }
     } catch (err) {
       setStatus("Context menu action failed: " + (err && err.message ? err.message : "Unknown error"), true);
@@ -328,6 +373,7 @@
     state.orgSelectLoading = isLoading;
     if (els.orgSelect) {
       els.orgSelect.setAttribute("aria-busy", isLoading ? "true" : "false");
+      els.orgSelect.disabled = isLoading;
     }
     updateTicketNetworkIndicator();
     applyGlobalBusyUi();
@@ -338,6 +384,7 @@
     state.viewSelectLoading = isLoading;
     if (els.viewSelect) {
       els.viewSelect.setAttribute("aria-busy", isLoading ? "true" : "false");
+      els.viewSelect.disabled = isLoading;
     }
     updateTicketNetworkIndicator();
     applyGlobalBusyUi();
@@ -348,6 +395,7 @@
     state.groupSelectLoading = isLoading;
     if (els.groupMemberSelect) {
       els.groupMemberSelect.setAttribute("aria-busy", isLoading ? "true" : "false");
+      els.groupMemberSelect.disabled = isLoading;
     }
     updateTicketNetworkIndicator();
     applyGlobalBusyUi();
@@ -1134,10 +1182,11 @@
   }
 
   function appendSplitCountOptions(selectEl, splitRows, getValue, getLabel) {
-    const appendRows = (rows) => {
+    const appendRows = (rows, disableRows) => {
       rows.forEach((row) => {
         const opt = document.createElement("option");
         opt.value = getValue(row.item);
+        opt.disabled = !!disableRows;
         opt.textContent = getLabel(row.item, row.count);
         selectEl.appendChild(opt);
       });
@@ -1152,7 +1201,7 @@
 
     if (splitRows.active.length) {
       appendHeading("ACTIVE (>0 tickets)");
-      appendRows(splitRows.active);
+      appendRows(splitRows.active, false);
     }
     if (splitRows.active.length && splitRows.inactive.length) {
       const sep = document.createElement("option");
@@ -1163,7 +1212,7 @@
     }
     if (splitRows.inactive.length) {
       appendHeading("INACTIVE (0 tickets)");
-      appendRows(splitRows.inactive);
+      appendRows(splitRows.inactive, true);
     }
   }
 
@@ -1176,7 +1225,7 @@
     els.orgSelect.innerHTML = "";
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "counting tickets in orgs";
+    opt.textContent = "...";
     els.orgSelect.appendChild(opt);
     els.orgSelect.value = "";
   }
@@ -1190,13 +1239,12 @@
     return basePadded + "  [ " + countText + " ]";
   }
 
-  async function loadOrgCountsForSelect(loadSeq, orgsSnapshot, onProgress) {
+  async function loadOrgCountsForSelect(loadSeq, orgsSnapshot) {
     const list = Array.isArray(orgsSnapshot) ? orgsSnapshot : [];
     const countsById = Object.create(null);
     if (!list.length) return countsById;
     const maxConcurrent = 12;
     let nextIndex = 0;
-    let completed = 0;
 
     const worker = async () => {
       while (nextIndex < list.length) {
@@ -1213,11 +1261,6 @@
           if (!result || result.error || result.count == null) continue;
           countsById[orgId] = normalizeTicketCount(result.count);
         } catch (_) {}
-        completed += 1;
-        const hasActiveNow = countsById[orgId] > 0;
-        if (typeof onProgress === "function" && (hasActiveNow || completed === 1 || completed % 25 === 0 || completed === list.length)) {
-          onProgress(countsById);
-        }
       }
     };
 
@@ -1246,13 +1289,8 @@
       const cachedCounts = countsFromCacheForIds(ORG_COUNT_CACHE_KEY, orgIds);
       if (Object.keys(cachedCounts).length) {
         state.orgCountsById = cachedCounts;
-        populateOrgSelect();
       }
-      state.orgCountsById = await loadOrgCountsForSelect(loadSeq, state.organizations.slice(), (progressCounts) => {
-        if (loadSeq !== state.orgCountLoadSeq) return;
-        state.orgCountsById = progressCounts;
-        populateOrgSelect();
-      });
+      state.orgCountsById = await loadOrgCountsForSelect(loadSeq, state.organizations.slice());
       if (loadSeq !== state.orgCountLoadSeq) return;
       populateOrgSelect();
       writeCountCache(ORG_COUNT_CACHE_KEY, state.orgCountsById);
@@ -1273,7 +1311,7 @@
     els.orgSelect.innerHTML = "";
     const opt0 = document.createElement("option");
     opt0.value = "";
-    opt0.textContent = "—";
+    opt0.textContent = "By Organization";
     els.orgSelect.appendChild(opt0);
 
     const splitRows = splitAndSortByTicketCount(
@@ -1308,7 +1346,6 @@
       const cachedCounts = countsFromCacheForIds(VIEW_COUNT_CACHE_KEY, viewIds);
       if (Object.keys(cachedCounts).length) {
         state.viewCountsById = cachedCounts;
-        populateViewSelect();
       }
       state.viewCountsById = await loadViewCountsForSelect(loadSeq, state.views.slice());
       if (loadSeq !== state.viewCountLoadSeq) return;
@@ -1325,30 +1362,79 @@
     }
   }
 
+  function parseGroupFilterValue(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return { kind: "", groupId: "", userId: "", lookupKey: "" };
+    if (raw.startsWith("g-")) {
+      const groupId = raw.slice(2).trim();
+      return {
+        kind: groupId ? "group" : "",
+        groupId,
+        userId: "",
+        lookupKey: groupId ? ("g:" + groupId) : ""
+      };
+    }
+    if (raw.startsWith("u-")) {
+      const payload = raw.slice(2);
+      const marker = "|g-";
+      const markerIndex = payload.indexOf(marker);
+      const userId = (markerIndex >= 0 ? payload.slice(0, markerIndex) : payload).trim();
+      const groupId = (markerIndex >= 0 ? payload.slice(markerIndex + marker.length) : "").trim();
+      return {
+        kind: userId ? "agent" : "",
+        groupId,
+        userId,
+        lookupKey: userId ? ("u:" + userId) : ""
+      };
+    }
+    return { kind: "", groupId: "", userId: "", lookupKey: "" };
+  }
+
   function buildGroupFilterOptions(groupsWithMembers) {
     const list = [];
-    const seen = new Set();
-    (Array.isArray(groupsWithMembers) ? groupsWithMembers : []).forEach(({ group, agents }) => {
-      if (group && group.id != null) {
-        const value = "g-" + String(group.id);
-        if (!seen.has(value)) {
-          seen.add(value);
-          list.push({
-            value,
-            kind: "group",
-            name: (group.name || "").trim() || ("Group " + group.id)
-          });
-        }
-      }
-      (Array.isArray(agents) ? agents : []).forEach((agent) => {
-        if (!agent || agent.id == null) return;
-        const value = "u-" + String(agent.id);
-        if (seen.has(value)) return;
-        seen.add(value);
+    const groups = (Array.isArray(groupsWithMembers) ? groupsWithMembers : []).slice();
+    groups.sort((a, b) => {
+      const an = (a && a.group && a.group.name ? String(a.group.name).trim() : "") || "";
+      const bn = (b && b.group && b.group.name ? String(b.group.name).trim() : "") || "";
+      return an.localeCompare(bn, undefined, { sensitivity: "base" });
+    });
+    const seenGroupValues = new Set();
+    const seenMembershipValues = new Set();
+    groups.forEach(({ group, agents }) => {
+      if (!group || group.id == null) return;
+      const groupId = String(group.id);
+      const groupName = (group.name || "").trim() || ("Group " + groupId);
+      const groupValue = "g-" + groupId;
+      if (!seenGroupValues.has(groupValue)) {
+        seenGroupValues.add(groupValue);
         list.push({
-          value,
+          value: groupValue,
+          kind: "group",
+          groupId,
+          groupName,
+          name: groupName
+        });
+      }
+      const sortedAgents = (Array.isArray(agents) ? agents : []).slice().sort((a, b) => {
+        const an = (a && a.name ? String(a.name).trim() : "") || "";
+        const bn = (b && b.name ? String(b.name).trim() : "") || "";
+        return an.localeCompare(bn, undefined, { sensitivity: "base" });
+      });
+      const seenAgentsInGroup = new Set();
+      sortedAgents.forEach((agent) => {
+        if (!agent || agent.id == null) return;
+        const agentId = String(agent.id);
+        if (seenAgentsInGroup.has(agentId)) return;
+        seenAgentsInGroup.add(agentId);
+        const membershipValue = "u-" + agentId + "|g-" + groupId;
+        if (seenMembershipValues.has(membershipValue)) return;
+        seenMembershipValues.add(membershipValue);
+        list.push({
+          value: membershipValue,
           kind: "agent",
-          name: (agent.name || "").trim() || ("Agent " + agent.id)
+          groupId,
+          groupName,
+          name: (agent.name || "").trim() || ("Agent " + agentId)
         });
       });
     });
@@ -1361,8 +1447,7 @@
 
   function getGroupDisplayBaseLabel(option) {
     const base = getGroupBaseLabel(option);
-    const suffix = option && option.kind === "group" ? " (group)" : " (agent)";
-    return base + suffix;
+    return option && option.kind === "agent" ? ("    " + base) : base;
   }
 
   function renderGroupSelectLoadingPlaceholder() {
@@ -1370,27 +1455,30 @@
     els.groupMemberSelect.innerHTML = "";
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "counting tickets in groups";
+    opt.textContent = "...";
     els.groupMemberSelect.appendChild(opt);
     els.groupMemberSelect.value = "";
   }
 
-  function getGroupLabel(option, countOverride) {
+  function getGroupLabel(option, countOverride, countPadLengthOverride) {
     const key = String(option && option.value ? option.value : "");
     const base = getGroupDisplayBaseLabel(option);
     const count = countOverride != null ? countOverride : state.groupCountsByValue[key];
     const countText = String(normalizeTicketCount(count));
+    const countWidth = Number(countPadLengthOverride) > 0 ? Number(countPadLengthOverride) : countText.length;
+    const countPadded = countText.padStart(countWidth, " ");
     const basePadded = state.groupLabelPadLength > 0 ? base.padEnd(state.groupLabelPadLength, " ") : base;
-    return basePadded + "  [ " + countText + " ]";
+    if (option && option.kind === "agent") return basePadded + "  [ " + countPadded + " ]";
+    return basePadded + " - [ " + countPadded + " ]";
   }
 
-  async function loadGroupCountsForSelect(loadSeq, optionsSnapshot, onProgress) {
+  async function loadGroupCountsForSelect(loadSeq, optionsSnapshot) {
     const list = Array.isArray(optionsSnapshot) ? optionsSnapshot : [];
     const countsByValue = Object.create(null);
     if (!list.length) return countsByValue;
     const maxConcurrent = 12;
+    const pendingCountByLookup = Object.create(null);
     let nextIndex = 0;
-    let completed = 0;
 
     const worker = async () => {
       while (nextIndex < list.length) {
@@ -1401,25 +1489,25 @@
         if (!value) continue;
         countsByValue[value] = 0;
         if (loadSeq !== state.groupLoadSeq) return;
-        const dashIndex = value.indexOf("-");
-        const prefix = dashIndex > 0 ? value.slice(0, dashIndex) : "";
-        const id = dashIndex > 0 ? value.slice(dashIndex + 1) : "";
+        const parsed = parseGroupFilterValue(value);
+        const lookupKey = parsed.lookupKey;
         try {
-          let result = null;
-          if (prefix === "g" && id) {
-            result = await sendToZendeskTab({ action: "loadGroupTicketCount", groupId: id });
-          } else if (prefix === "u" && id) {
-            result = await sendToZendeskTab({ action: "loadAssigneeTicketCount", userId: id });
+          if (!lookupKey) continue;
+          if (!pendingCountByLookup[lookupKey]) {
+            pendingCountByLookup[lookupKey] = (async () => {
+              let result = null;
+              if (parsed.kind === "group" && parsed.groupId) {
+                result = await sendToZendeskTab({ action: "loadGroupTicketCount", groupId: parsed.groupId });
+              } else if (parsed.kind === "agent" && parsed.userId) {
+                result = await sendToZendeskTab({ action: "loadAssigneeTicketCount", userId: parsed.userId });
+              }
+              if (!result || result.error || result.count == null) return 0;
+              return normalizeTicketCount(result.count);
+            })();
           }
+          countsByValue[value] = await pendingCountByLookup[lookupKey];
           if (loadSeq !== state.groupLoadSeq) return;
-          if (!result || result.error || result.count == null) continue;
-          countsByValue[value] = normalizeTicketCount(result.count);
         } catch (_) {}
-        completed += 1;
-        const hasActiveNow = countsByValue[value] > 0;
-        if (typeof onProgress === "function" && (hasActiveNow || completed === 1 || completed % 25 === 0 || completed === list.length)) {
-          onProgress(countsByValue);
-        }
       }
     };
 
@@ -1450,13 +1538,8 @@
       const cachedCounts = countsFromCacheForIds(GROUP_COUNT_CACHE_KEY, values);
       if (Object.keys(cachedCounts).length) {
         state.groupCountsByValue = cachedCounts;
-        populateGroupMemberSelect();
       }
-      state.groupCountsByValue = await loadGroupCountsForSelect(loadSeq, state.groupOptions.slice(), (progressCounts) => {
-        if (loadSeq !== state.groupLoadSeq) return;
-        state.groupCountsByValue = progressCounts;
-        populateGroupMemberSelect();
-      });
+      state.groupCountsByValue = await loadGroupCountsForSelect(loadSeq, state.groupOptions.slice());
       if (loadSeq !== state.groupLoadSeq) return;
       populateGroupMemberSelect();
       writeCountCache(GROUP_COUNT_CACHE_KEY, state.groupCountsByValue);
@@ -1478,19 +1561,125 @@
     els.groupMemberSelect.innerHTML = "";
     const opt0 = document.createElement("option");
     opt0.value = "";
-    opt0.textContent = "—";
+    opt0.textContent = "By Group / Agent";
     els.groupMemberSelect.appendChild(opt0);
-    const splitRows = splitAndSortByTicketCount(
-      state.groupOptions,
-      getGroupBaseLabel,
-      (option) => state.groupCountsByValue[String(option && option.value ? option.value : "")]
-    );
-    appendSplitCountOptions(
-      els.groupMemberSelect,
-      splitRows,
-      (option) => String(option.value),
-      (option, count) => getGroupLabel(option, count)
-    );
+
+    const buildGroupOptionBlocks = () => {
+      const blocksById = Object.create(null);
+      const blocks = [];
+      (Array.isArray(state.groupOptions) ? state.groupOptions : []).forEach((option) => {
+        if (!option || !option.groupId) return;
+        const groupId = String(option.groupId);
+        let block = blocksById[groupId];
+        if (!block) {
+          block = {
+            groupId,
+            groupName: (option.groupName || "").trim() || ("Group " + groupId),
+            groupOption: null,
+            agents: []
+          };
+          blocksById[groupId] = block;
+          blocks.push(block);
+        }
+        if (option.kind === "group") block.groupOption = option;
+        else if (option.kind === "agent") block.agents.push(option);
+      });
+
+      blocks.forEach((block) => {
+        if (!block.groupOption) {
+          block.groupOption = {
+            value: "g-" + block.groupId,
+            kind: "group",
+            groupId: block.groupId,
+            groupName: block.groupName,
+            name: block.groupName
+          };
+        }
+        block.agents.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" }));
+      });
+
+      blocks.sort((a, b) => String(a.groupName || "").localeCompare(String(b.groupName || ""), undefined, { sensitivity: "base" }));
+      return blocks;
+    };
+
+    const buildRowsForSection = (groupBlocks, includeActive) => {
+      const rows = [];
+      const matchesSection = (count) => includeActive ? count > 0 : count === 0;
+      const sectionDisabled = !includeActive;
+      groupBlocks.forEach((block) => {
+        const groupValue = String(block.groupOption && block.groupOption.value ? block.groupOption.value : "");
+        const groupCount = normalizeTicketCount(state.groupCountsByValue[groupValue]);
+        const groupMatches = matchesSection(groupCount);
+
+        const agentRows = [];
+        block.agents.forEach((agentOption) => {
+          const agentValue = String(agentOption && agentOption.value ? agentOption.value : "");
+          const agentCount = normalizeTicketCount(state.groupCountsByValue[agentValue]);
+          if (!matchesSection(agentCount)) return;
+          agentRows.push({ option: agentOption, count: agentCount, disabled: sectionDisabled });
+        });
+
+        if (!groupMatches && !agentRows.length) return;
+        rows.push({ option: block.groupOption, count: groupCount, disabled: sectionDisabled || !groupMatches });
+        agentRows.forEach((agentRow) => rows.push(agentRow));
+      });
+      return rows;
+    };
+
+    const appendRows = (rows) => {
+      let groupCount = 0;
+      const countPadLength = (Array.isArray(state.groupOptions) ? state.groupOptions : []).reduce((max, option) => {
+        const value = String(option && option.value ? option.value : "");
+        const len = String(normalizeTicketCount(state.groupCountsByValue[value])).length;
+        return len > max ? len : max;
+      }, 1);
+      rows.forEach((row) => {
+        if (row && row.option && row.option.kind === "group") {
+          if (groupCount > 0) {
+            const groupSep = document.createElement("option");
+            groupSep.value = "";
+            groupSep.disabled = true;
+            groupSep.textContent = "────────────";
+            els.groupMemberSelect.appendChild(groupSep);
+          }
+          groupCount += 1;
+        }
+        const opt = document.createElement("option");
+        opt.value = row.disabled ? "" : String(row.option.value || "");
+        opt.disabled = !!row.disabled;
+        opt.textContent = getGroupLabel(row.option, row.count, countPadLength);
+        els.groupMemberSelect.appendChild(opt);
+      });
+    };
+
+    const groupBlocks = buildGroupOptionBlocks();
+    const activeRows = buildRowsForSection(groupBlocks, true);
+    const inactiveRows = buildRowsForSection(groupBlocks, false);
+
+    if (activeRows.length) {
+      const heading = document.createElement("option");
+      heading.value = "";
+      heading.disabled = true;
+      heading.textContent = "ACTIVE (>0 tickets)";
+      els.groupMemberSelect.appendChild(heading);
+      appendRows(activeRows);
+    }
+    if (activeRows.length && inactiveRows.length) {
+      const sep = document.createElement("option");
+      sep.value = "";
+      sep.disabled = true;
+      sep.textContent = "────────────────────────";
+      els.groupMemberSelect.appendChild(sep);
+    }
+    if (inactiveRows.length) {
+      const heading = document.createElement("option");
+      heading.value = "";
+      heading.disabled = true;
+      heading.textContent = "INACTIVE (0 tickets)";
+      els.groupMemberSelect.appendChild(heading);
+      appendRows(inactiveRows);
+    }
+
     els.groupMemberSelect.value = selected;
   }
 
@@ -1508,6 +1697,13 @@
     }
   }
 
+  function loadTicketsByGroupSelectionValue(value) {
+    const parsed = parseGroupFilterValue(value);
+    if (parsed.kind === "group" && parsed.groupId) return loadTicketsByGroupId(parsed.groupId);
+    if (parsed.kind === "agent" && parsed.userId) return loadTicketsByAssigneeId(parsed.userId);
+    return Promise.resolve();
+  }
+
   function getViewBaseLabel(view) {
     return (view && view.title ? String(view.title).trim() : "") || ("View " + (view && view.id != null ? view.id : ""));
   }
@@ -1517,7 +1713,7 @@
     els.viewSelect.innerHTML = "";
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "counting tickets in views";
+    opt.textContent = "...";
     els.viewSelect.appendChild(opt);
     els.viewSelect.value = "";
   }
@@ -1584,7 +1780,7 @@
     els.viewSelect.innerHTML = "";
     const opt0 = document.createElement("option");
     opt0.value = "";
-    opt0.textContent = "—";
+    opt0.textContent = "By View";
     els.viewSelect.appendChild(opt0);
 
     const splitRows = splitAndSortByTicketCount(
@@ -1699,10 +1895,16 @@
 
   function wireEvents() {
     if (typeof window !== "undefined") {
-      window.addEventListener("focus", () => { loadSidePanelContext(); });
+      window.addEventListener("focus", () => {
+        loadSidePanelContext();
+        loadContextMenuUpdateState(false).catch(() => {});
+      });
       window.addEventListener("blur", () => { hideContextMenu(); });
       document.addEventListener("visibilitychange", () => {
-        if (!document.hidden) loadSidePanelContext();
+        if (!document.hidden) {
+          loadSidePanelContext();
+          loadContextMenuUpdateState(false).catch(() => {});
+        }
       });
     }
     document.addEventListener("contextmenu", (e) => {
@@ -1727,6 +1929,11 @@
         runContextMenuAction("askEric");
       });
     }
+    if (els.contextMenuGetLatest) {
+      els.contextMenuGetLatest.addEventListener("click", () => {
+        runContextMenuAction("getLatest");
+      });
+    }
     if (els.loginBtn) els.loginBtn.addEventListener("click", (e) => { e.preventDefault(); startLogin(); });
     if (els.appVersionLink) {
       els.appVersionLink.addEventListener("click", (e) => {
@@ -1741,6 +1948,7 @@
       } catch (_) {}
     }
     setContextMenuBuildLabel();
+    loadContextMenuUpdateState(false).catch(() => {});
     if (els.signoutBtn) els.signoutBtn.addEventListener("click", signout);
     if (els.topIdentityEmail) {
       els.topIdentityEmail.addEventListener("click", (e) => {
@@ -1781,9 +1989,7 @@
         } else if (state.ticketSource === "org" && state.selectedOrgId) {
           await loadTicketsByOrg(state.selectedOrgId);
         } else if (state.ticketSource === "groupMember" && state.selectedByGroupValue) {
-          const v = state.selectedByGroupValue;
-          if (v.startsWith("g-")) await loadTicketsByGroupId(v.slice(2));
-          else if (v.startsWith("u-")) await loadTicketsByAssigneeId(v.slice(2));
+          await loadTicketsByGroupSelectionValue(state.selectedByGroupValue);
         } else {
           await loadAssignedTickets();
         }
@@ -1889,11 +2095,7 @@
         clearTicketTable();
         setStatus("Loading tickets…", false);
         setBusy(true);
-        const loadPromise = val.startsWith("g-")
-          ? loadTicketsByGroupId(val.slice(2))
-          : val.startsWith("u-")
-            ? loadTicketsByAssigneeId(val.slice(2))
-            : Promise.resolve();
+        const loadPromise = loadTicketsByGroupSelectionValue(val);
         loadPromise
           .then(() => setStatus("Tickets loaded. " + state.filteredTickets.length + " rows shown.", false))
           .catch((err) => setStatus("Tickets failed: " + (err && err.message ? err.message : "Unknown error"), true))

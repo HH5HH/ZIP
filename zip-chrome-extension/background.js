@@ -6,12 +6,28 @@ const ZIP_PANEL_PATH = "sidepanel.html";
 const MENU_ROOT = "zip_root";
 const MENU_TOGGLE_SIDE = "zip_toggle_side";
 const MENU_ASK_ERIC = "zip_ask_eric";
+const MENU_GET_LATEST = "zip_get_latest";
 const ASK_ERIC_EMAIL = "minnick@adobe.com";
+const GITHUB_OWNER = "HH5HH";
+const GITHUB_REPO = "ZIP";
+const ZIP_LATEST_MANIFEST_URL = "https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/main/zip-chrome-extension/manifest.json";
+const ZIP_LATEST_MANIFEST_API_URL = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/zip-chrome-extension/manifest.json?ref=main";
+const ZIP_LATEST_PACKAGE_URL = "https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/main/zip-chrome-extension.zip";
+const CHROME_EXTENSIONS_URL = "chrome://extensions";
+const UPDATE_CHECK_TTL_MS = 10 * 60 * 1000;
 const CHROME_SIDEPANEL_SETTINGS_URL = "chrome://settings/?search=side%20panel";
 const MENU_SIDEPANEL_POSITION_LABEL = "⚙ > Side panel position";
 const MENU_CONTEXTS = ["action"];
 const contextMenuState = {
   grouped: true
+};
+const updateState = {
+  currentVersion: "",
+  latestVersion: "",
+  updateAvailable: false,
+  lastCheckedAt: 0,
+  checkError: "",
+  inFlight: null
 };
 
 function getZipBuildVersion() {
@@ -37,6 +53,124 @@ function getToggleMenuItemTitle(currentSide) {
 function getAskEricMenuTitle() {
   if (contextMenuState.grouped) return "Ask Eric";
   return getZipRootMenuTitle() + " | Ask Eric";
+}
+
+function parseVersionPart(value) {
+  const parsed = Number.parseInt(String(value || "").trim(), 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function compareVersions(a, b) {
+  const aParts = String(a || "").split(".");
+  const bParts = String(b || "").split(".");
+  const len = Math.max(aParts.length, bParts.length);
+  for (let i = 0; i < len; i += 1) {
+    const aPart = parseVersionPart(aParts[i]);
+    const bPart = parseVersionPart(bParts[i]);
+    if (aPart > bPart) return 1;
+    if (aPart < bPart) return -1;
+  }
+  return 0;
+}
+
+function extractVersionFromManifestObject(manifest) {
+  const version = manifest && manifest.version ? String(manifest.version).trim() : "";
+  if (!version) throw new Error("Latest version unavailable");
+  return version;
+}
+
+async function fetchLatestZipVersionFromRaw() {
+  const response = await fetch(ZIP_LATEST_MANIFEST_URL, { cache: "no-store" });
+  if (!response.ok) throw new Error("HTTP " + response.status);
+  const manifest = await response.json();
+  return extractVersionFromManifestObject(manifest);
+}
+
+async function fetchLatestZipVersionFromGithubApi() {
+  const response = await fetch(ZIP_LATEST_MANIFEST_API_URL, { cache: "no-store" });
+  if (!response.ok) throw new Error("HTTP " + response.status);
+  const payload = await response.json();
+  const encoded = payload && payload.content ? String(payload.content).replace(/\s+/g, "") : "";
+  if (!encoded) throw new Error("GitHub API content unavailable");
+  let decoded = "";
+  try {
+    decoded = atob(encoded);
+  } catch (_) {
+    throw new Error("Failed to decode GitHub manifest");
+  }
+  let manifest = null;
+  try {
+    manifest = JSON.parse(decoded);
+  } catch (_) {
+    throw new Error("Failed to parse GitHub manifest");
+  }
+  return extractVersionFromManifestObject(manifest);
+}
+
+async function fetchLatestZipVersion() {
+  let lastError = null;
+  const resolvers = [fetchLatestZipVersionFromRaw, fetchLatestZipVersionFromGithubApi];
+  for (const resolveVersion of resolvers) {
+    try {
+      return await resolveVersion();
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("Latest version unavailable");
+}
+
+function getUpdateStatePayload() {
+  return {
+    currentVersion: updateState.currentVersion || getZipBuildVersion(),
+    latestVersion: updateState.latestVersion || "",
+    updateAvailable: !!updateState.updateAvailable,
+    checkedAt: updateState.lastCheckedAt || 0,
+    checkError: updateState.checkError || ""
+  };
+}
+
+async function refreshUpdateState(options = {}) {
+  const force = !!options.force;
+  const now = Date.now();
+  const currentVersion = getZipBuildVersion();
+  updateState.currentVersion = currentVersion;
+
+  if (!force && updateState.lastCheckedAt && (now - updateState.lastCheckedAt) < UPDATE_CHECK_TTL_MS) {
+    return { ...getUpdateStatePayload(), changed: false };
+  }
+
+  if (updateState.inFlight) {
+    return updateState.inFlight;
+  }
+
+  updateState.inFlight = (async () => {
+    const prevLatestVersion = updateState.latestVersion;
+    const prevUpdateAvailable = !!updateState.updateAvailable;
+    const prevCheckError = updateState.checkError;
+    try {
+      const latestVersion = await fetchLatestZipVersion();
+      updateState.latestVersion = latestVersion;
+      updateState.updateAvailable = compareVersions(currentVersion, latestVersion) < 0;
+      updateState.checkError = "";
+    } catch (err) {
+      updateState.latestVersion = "";
+      updateState.updateAvailable = false;
+      updateState.checkError = err && err.message ? err.message : "Version check failed";
+    } finally {
+      updateState.lastCheckedAt = Date.now();
+      updateState.inFlight = null;
+    }
+    const payload = getUpdateStatePayload();
+    const changed = (
+      prevLatestVersion !== updateState.latestVersion
+      || prevUpdateAvailable !== !!updateState.updateAvailable
+      || prevCheckError !== updateState.checkError
+    );
+    return { ...payload, changed };
+  })();
+
+  return updateState.inFlight;
 }
 
 async function createContextMenuItem(createProps) {
@@ -193,6 +327,7 @@ async function createContextMenus() {
   if (!chrome.contextMenus) return;
   await new Promise((resolve) => chrome.contextMenus.removeAll(() => resolve()));
   const currentSide = normalizeSide(sidePanelState.layout) || "unknown";
+  const shouldShowGetLatest = !!updateState.updateAvailable;
   contextMenuState.grouped = true;
   try {
     await createContextMenuItem({
@@ -212,6 +347,14 @@ async function createContextMenus() {
       title: getAskEricMenuTitle(),
       contexts: MENU_CONTEXTS
     });
+    if (shouldShowGetLatest) {
+      await createContextMenuItem({
+        id: MENU_GET_LATEST,
+        parentId: MENU_ROOT,
+        title: "Get Latest",
+        contexts: MENU_CONTEXTS
+      });
+    }
   } catch (err) {
     // Fallback: if grouped action menus are unsupported, create flat action items.
     contextMenuState.grouped = false;
@@ -226,6 +369,13 @@ async function createContextMenus() {
       title: getAskEricMenuTitle(),
       contexts: MENU_CONTEXTS
     });
+    if (shouldShowGetLatest) {
+      await createContextMenuItem({
+        id: MENU_GET_LATEST,
+        title: "Get Latest",
+        contexts: MENU_CONTEXTS
+      });
+    }
   }
 }
 
@@ -266,6 +416,29 @@ async function openAskEricEmail(tab) {
   } catch (err) {
     return { ok: false, error: err && err.message ? err.message : "Unable to open mail client" };
   }
+}
+
+async function openGetLatestFlow() {
+  const result = {
+    ok: false,
+    downloadUrl: ZIP_LATEST_PACKAGE_URL,
+    latestVersion: updateState.latestVersion || "",
+    downloadOpened: false,
+    extensionsOpened: false
+  };
+  try {
+    await chrome.tabs.create({ url: ZIP_LATEST_PACKAGE_URL });
+    result.downloadOpened = true;
+  } catch (_) {}
+  try {
+    await chrome.tabs.create({ url: CHROME_EXTENSIONS_URL });
+    result.extensionsOpened = true;
+  } catch (_) {}
+  result.ok = result.downloadOpened || result.extensionsOpened;
+  if (!result.ok) {
+    result.error = "Unable to open update links";
+  }
+  return result;
 }
 
 async function openSidePanelSettings() {
@@ -434,6 +607,7 @@ async function bootstrap() {
   await configureSidePanelDefaults();
   await refreshLayoutState();
   await syncAllTabOptions();
+  await refreshUpdateState({ force: true }).catch(() => {});
   await createContextMenus();
   await updateToggleMenuTitle(sidePanelState.layout);
 }
@@ -449,6 +623,15 @@ chrome.runtime.onStartup.addListener(() => {
   bootstrap().catch(() => {});
 });
 
+setInterval(() => {
+  refreshUpdateState({ force: true })
+    .then((info) => {
+      if (!info || !info.changed) return;
+      return createContextMenus().then(() => updateToggleMenuTitle(sidePanelState.layout));
+    })
+    .catch(() => {});
+}, UPDATE_CHECK_TTL_MS);
+
 chrome.tabs.onUpdated.addListener((tabId, _info, tab) => {
   if (!tab?.url) return;
   setOptionsForTab(tabId, tab.url).catch(() => {});
@@ -463,6 +646,10 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === MENU_TOGGLE_SIDE) {
     toggleZipSidePanelSide(tab).catch(() => {});
+    return;
+  }
+  if (info.menuItemId === MENU_GET_LATEST) {
+    openGetLatestFlow().catch(() => {});
     return;
   }
   if (info.menuItemId === MENU_ASK_ERIC) {
@@ -515,10 +702,24 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const tab = await getActiveTab();
         return openAskEricEmail(tab);
       }
+      if (action === "getLatest") {
+        return openGetLatestFlow();
+      }
       return { ok: false, error: "Unknown context menu action" };
     })()
       .then((result) => sendResponse(result || { ok: true }))
       .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : "Action failed" }));
+    return true;
+  }
+  if (msg.type === "ZIP_GET_UPDATE_STATE") {
+    refreshUpdateState({ force: !!msg.force })
+      .then((info) => {
+        if (info && info.changed) {
+          createContextMenus().then(() => updateToggleMenuTitle(sidePanelState.layout)).catch(() => {});
+        }
+        sendResponse(getUpdateStatePayload());
+      })
+      .catch(() => sendResponse(getUpdateStatePayload()));
     return true;
   }
   if (msg.type === "ZIP_GET_SIDEPANEL_CONTEXT") {

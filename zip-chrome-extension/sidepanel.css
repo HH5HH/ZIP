@@ -133,10 +133,6 @@ body {
   overflow: hidden;
 }
 
-body[data-sidepanel-side="left"] .topbar {
-  border-left: 2px solid var(--fg-primary);
-}
-
 body[data-sidepanel-side="right"] .topbar {
   border-right: 2px solid var(--fg-primary);
 }
@@ -692,18 +688,6 @@ body.zip-workspace #zipAppScreen .section:first-child {
   flex: 1 1 180px;
   min-width: 0;
   max-width: 100%;
-}
-
-.by-org-label {
-  font-size: var(--spectrum-font-size-75);
-  color: var(--fg-subtle);
-  white-space: nowrap;
-}
-
-.by-view-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .inline-spinner {
