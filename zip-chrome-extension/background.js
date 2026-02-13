@@ -2,12 +2,15 @@
 
 const ZENDESK_ORIGIN = "https://adobeprimetime.zendesk.com";
 const ZENDESK_DASHBOARD_URL = ZENDESK_ORIGIN + "/agent/dashboard?brand_id=2379046";
+const ASSIGNED_FILTER_PATH = "/agent/filters/36464467";
+const ASSIGNED_FILTER_URL = ZENDESK_ORIGIN + ASSIGNED_FILTER_PATH;
 const ZIP_PANEL_PATH = "sidepanel.html";
 const MENU_ROOT = "zip_root";
 const MENU_TOGGLE_SIDE = "zip_toggle_side";
 const MENU_ASK_ERIC = "zip_ask_eric";
 const MENU_GET_LATEST = "zip_get_latest";
 const ASK_ERIC_EMAIL = "minnick@adobe.com";
+const OUTLOOK_DEEPLINK_COMPOSE_URL = "https://outlook.office.com/mail/deeplink/compose";
 const GITHUB_OWNER = "HH5HH";
 const GITHUB_REPO = "ZIP";
 const ZIP_LATEST_MANIFEST_URL = "https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/main/zip-chrome-extension/manifest.json";
@@ -397,6 +400,44 @@ async function getZendeskTabInCurrentWindow() {
   }
 }
 
+function normalizePathname(pathname) {
+  const value = String(pathname || "");
+  return value.replace(/\/+$/, "") || "/";
+}
+
+function isAssignedFilterUrl(urlString) {
+  try {
+    const url = new URL(urlString);
+    if (url.origin !== ZENDESK_ORIGIN) return false;
+    return normalizePathname(url.pathname) === normalizePathname(ASSIGNED_FILTER_PATH);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function ensureAssignedFilterTabInCurrentWindow(urlOverride) {
+  const targetUrl = typeof urlOverride === "string" && urlOverride.trim() ? urlOverride.trim() : ASSIGNED_FILTER_URL;
+  const activeTab = await getActiveTab();
+  if (!activeTab || activeTab.id == null) {
+    return { ok: false, error: "No active tab available for assigned filter navigation" };
+  }
+
+  const alreadyOnAssignedFilter = isAssignedFilterUrl(activeTab.url || "");
+  if (alreadyOnAssignedFilter) {
+    try {
+      await chrome.tabs.update(activeTab.id, { active: true });
+    } catch (_) {}
+    return { ok: true, tabId: activeTab.id, reused: true, navigated: false, url: targetUrl };
+  }
+
+  try {
+    await chrome.tabs.update(activeTab.id, { active: true, url: targetUrl });
+    return { ok: true, tabId: activeTab.id, reused: true, navigated: true, url: targetUrl };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : "Unable to navigate active tab to assigned filter" };
+  }
+}
+
 async function openAskEricEmail(tab) {
   const lines = [
     "Hi Eric,",
@@ -404,17 +445,28 @@ async function openAskEricEmail(tab) {
     "Question / feedback:",
     ""
   ];
+  const currentVersion = getZipBuildVersion() || "?";
+  let latestVersion = "";
+  try {
+    const updateInfo = await refreshUpdateState({ force: false });
+    latestVersion = updateInfo && updateInfo.latestVersion ? String(updateInfo.latestVersion).trim() : "";
+  } catch (_) {}
+  const versionLine = latestVersion && latestVersion !== currentVersion
+    ? ("Running ZIP v" + currentVersion + ", Latest ZIP is v" + latestVersion)
+    : ("Running ZIP v" + currentVersion);
+  lines.push(versionLine);
   if (tab && tab.url) lines.push("Context URL: " + tab.url);
-  const params = new URLSearchParams({
-    subject: "ZIP Question / Feedback",
-    body: lines.join("\n")
-  });
-  const url = "mailto:" + ASK_ERIC_EMAIL + "?" + params.toString();
+  const subject = "ZIPv" + currentVersion + " Feedback";
+  const encode = (value) => encodeURIComponent(String(value == null ? "" : value));
+  const url = OUTLOOK_DEEPLINK_COMPOSE_URL
+    + "?to=" + encode(ASK_ERIC_EMAIL)
+    + "&subject=" + encode(subject)
+    + "&body=" + encode(lines.join("\n"));
   try {
     await chrome.tabs.create({ url });
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err && err.message ? err.message : "Unable to open mail client" };
+    return { ok: false, error: err && err.message ? err.message : "Unable to open Outlook Web compose window" };
   }
 }
 
@@ -682,15 +734,24 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === "ZIP_GET_ACTIVE_TAB") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      let tabId = tabs[0]?.id ?? null;
-      if (!tabId) {
-        chrome.tabs.query({ url: ZENDESK_ORIGIN + "/*" }, (zdTabs) => {
-          tabId = zdTabs[0]?.id ?? null;
-          sendResponse({ tabId });
-        });
-      } else {
-        sendResponse({ tabId });
+      const activeTab = tabs && tabs[0] ? tabs[0] : null;
+      const activeTabId = activeTab && activeTab.id != null ? activeTab.id : null;
+      const activeTabUrl = activeTab && activeTab.url ? String(activeTab.url) : "";
+      if (activeTabId && isZendeskUrl(activeTabUrl)) {
+        sendResponse({ tabId: activeTabId });
+        return;
       }
+      chrome.tabs.query({ currentWindow: true, url: ZENDESK_ORIGIN + "/*" }, (zdTabs) => {
+        const currentWindowZendeskTabId = zdTabs && zdTabs[0] && zdTabs[0].id != null ? zdTabs[0].id : null;
+        if (currentWindowZendeskTabId) {
+          sendResponse({ tabId: currentWindowZendeskTabId });
+          return;
+        }
+        chrome.tabs.query({ url: ZENDESK_ORIGIN + "/*" }, (allZdTabs) => {
+          const anyZendeskTabId = allZdTabs && allZdTabs[0] && allZdTabs[0].id != null ? allZdTabs[0].id : null;
+          sendResponse({ tabId: anyZendeskTabId || activeTabId || null });
+        });
+      });
     });
     return true;
   }
@@ -733,6 +794,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     chrome.tabs.create({ url }, (tab) => {
       sendResponse({ tabId: tab?.id ?? null, error: chrome.runtime.lastError?.message });
     });
+    return true;
+  }
+  if (msg.type === "ZIP_ENSURE_ASSIGNED_FILTER_TAB") {
+    ensureAssignedFilterTabInCurrentWindow(msg.url)
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : "Unable to open assigned filter tab" }));
     return true;
   }
 });

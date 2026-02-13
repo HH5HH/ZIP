@@ -31,6 +31,8 @@
         <option value="" disabled>────────</option>
         <option value="https://sp.auth-staging.adobe.com/apitest/api.html">apitest</option>
         <option value="https://tve.zendesk.com/hc/en-us">pt hub</option>
+        <option value="" disabled>────────</option>
+        <option id="zipDocsApiToggleOption" value="__toggle_zd_api__">GET zd api</option>
       </select>
       <button id="zipSignoutBtn" class="btn">Sign out</button>
     </div>
@@ -75,7 +77,7 @@
             </div>
           </div>
         </div>
-        <div class="table-wrap">
+        <div id="zipTicketTableWrap" class="table-wrap">
           <table>
             <thead><tr id="zipTicketHead"></tr></thead>
             <tbody id="zipTicketBody"></tbody>
@@ -84,10 +86,7 @@
         <div class="ticket-table-footer control-row">
           <input id="zipTicketSearch" type="text" placeholder="Search tickets" />
           <select id="zipStatusFilter">
-            <option value="all">All statuses</option>
-            <option value="open">open</option>
-            <option value="pending">pending</option>
-            <option value="hold">hold</option>
+            <option value="all">All Statuses</option>
           </select>
           <button id="zipReloadTicketsBtn" class="btn icon-btn icon-only" title="Refresh" aria-label="Refresh tickets">
             <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -102,7 +101,7 @@
           </button>
         </div>
       </section>
-      <section class="section">
+      <section id="zipApiGetSection" class="section hidden">
         <h3>ZD API – GET</h3>
         <div class="api-form">
           <div class="control-row">
@@ -114,7 +113,7 @@
           </div>
         </div>
       </section>
-      <section class="section">
+      <section id="zipApiResultsSection" class="section hidden">
         <h3 id="zipRawTitle">GET /api/v2/users/me</h3>
         <div class="raw-table-wrap" id="zipRawTableWrap">
           <table>
