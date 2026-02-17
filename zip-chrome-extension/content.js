@@ -13,6 +13,7 @@
   async function fetchJson(url) {
     const res = await fetch(url, {
       method: "GET",
+      cache: "no-store",
       credentials: "include",
       headers: { Accept: "application/json" }
     });
@@ -99,18 +100,23 @@
     };
   }
 
-  /** Exclude solved and closed in all ticket APIs. Search uses this in the query; list endpoints filter client-side. */
-  const NOT_SOLVED_STATUS_QUERY = " status:open status:pending status:hold";
-  const EXCLUDED_STATUSES = ["solved", "closed"];
+  /** Keep active + solved tickets, but never include closed tickets anywhere in ZIP. */
+  const NON_CLOSED_STATUS_QUERY = " status:new status:open status:pending status:hold status:solved";
+  const MAX_SEARCH_TICKET_PAGES = 10;
+  const MAX_VIEW_TICKET_PAGES = 10;
 
-  function isExcludedStatus(status) {
-    const s = String(status || "").toLowerCase().trim();
-    return EXCLUDED_STATUSES.includes(s);
+  function isClosedStatus(status) {
+    return String(status || "").trim().toLowerCase() === "closed";
   }
 
   function includeTicketByStatus(row) {
-    const status = (row && row.status != null) ? row.status : "";
-    return !isExcludedStatus(status);
+    const status = row && row.status != null ? row.status : "";
+    return !isClosedStatus(status);
+  }
+
+  function normalizeTicketId(value) {
+    if (value == null) return "";
+    return String(value).trim();
   }
 
   function isInactiveOrHiddenEntity(entity) {
@@ -123,51 +129,24 @@
     return false;
   }
 
-  function isTicketAssignedToUser(row, userId) {
-    if (!row || userId == null) return false;
-    const assigneeId = row.assignee_id;
-    if (assigneeId == null) return false;
-    return String(assigneeId) === String(userId);
-  }
-
   async function loadTickets(userId) {
     const assigneeId = String(userId || "").trim();
     if (!assigneeId) return { tickets: [] };
-    const all = [];
-    let nextUrl = BASE + "/api/v2/tickets.json";
-    let pages = 0;
-    const maxPages = 8;
-    while (nextUrl && pages < maxPages) {
-      pages += 1;
-      const res = await fetchJson(nextUrl);
-      if (res.status === 401 || res.status === 403) {
-        return { error: "Session expired", tickets: [] };
-      }
-      if (!res.ok || !res.payload) {
-        return { error: "Ticket list failed (HTTP " + res.status + ")", tickets: [] };
-      }
-      const rows = Array.isArray(res.payload.tickets) ? res.payload.tickets : [];
-      rows.forEach((raw) => {
-        if (!isTicketAssignedToUser(raw, assigneeId)) return;
-        if (!includeTicketByStatus(raw)) return;
-        all.push(normalizeTicket(raw || {}));
-      });
-      nextUrl = res.payload.next_page || null;
-    }
-    return { tickets: all };
+    return loadTicketsByAssigneeId(assigneeId);
   }
 
   async function loadTicketsByOrg(orgId) {
     if (!orgId) return { tickets: [] };
-    const query = "type:ticket organization_id:" + orgId + NOT_SOLVED_STATUS_QUERY;
+    const query = "type:ticket organization_id:" + orgId + NON_CLOSED_STATUS_QUERY;
     return searchTickets(query);
   }
 
   async function searchTickets(query) {
     let nextUrl = BASE + "/api/v2/search.json?query=" + encodeURIComponent(query);
     const all = [];
+    const seenTicketIds = new Set();
     let pages = 0;
-    const maxPages = 6;
+    const maxPages = MAX_SEARCH_TICKET_PAGES;
     while (nextUrl && pages < maxPages) {
       pages += 1;
       const res = await fetchJson(nextUrl);
@@ -180,7 +159,13 @@
       const rows = Array.isArray(res.payload.results) ? res.payload.results : [];
       rows.forEach((raw) => {
         const type = String((raw && raw.result_type) || "").toLowerCase();
-        if ((!type || type === "ticket") && includeTicketByStatus(raw)) all.push(normalizeTicket(raw || {}));
+        if (type && type !== "ticket") return;
+        if (!includeTicketByStatus(raw)) return;
+        const normalized = normalizeTicket(raw || {});
+        const ticketId = normalizeTicketId(normalized.id);
+        if (!ticketId || seenTicketIds.has(ticketId)) return;
+        seenTicketIds.add(ticketId);
+        all.push(normalized);
       });
       nextUrl = res.payload.next_page || null;
     }
@@ -355,49 +340,21 @@
     return { countsById: allCounts };
   }
 
-  function parseOrganizationTicketCount(payload) {
-    if (!payload || typeof payload !== "object") return null;
-    const candidates = [];
-    if (payload.organization_tickets && typeof payload.organization_tickets === "object") candidates.push(payload.organization_tickets);
-    if (payload.organization_ticket_count && typeof payload.organization_ticket_count === "object") candidates.push(payload.organization_ticket_count);
-    if (payload.count && typeof payload.count === "object") candidates.push(payload.count);
-    candidates.push(payload);
-    for (const item of candidates) {
-      if (!item || typeof item !== "object") continue;
-      const raw = item.value != null
-        ? item.value
-        : item.count != null
-          ? item.count
-          : item.total != null
-            ? item.total
-            : item.ticket_count;
-      if (raw == null) continue;
-      const num = Number(raw);
-      if (Number.isFinite(num)) return Math.max(0, Math.trunc(num));
-    }
-    return null;
-  }
-
   async function loadOrganizationCount(orgId) {
     if (!orgId) return { orgId: "", count: null };
     const id = String(orgId);
-    const url = BASE + "/api/v2/organizations/" + encodeURIComponent(id) + "/tickets/count.json";
-    const res = await fetchJson(url);
-    if (res.status === 401 || res.status === 403) {
-      return { orgId: id, error: "Session expired", count: null };
-    }
-    if (!res.ok || !res.payload) {
-      return { orgId: id, error: "Organization count failed (HTTP " + res.status + ")", count: null };
-    }
-    return { orgId: id, count: parseOrganizationTicketCount(res.payload) };
+    const query = "type:ticket organization_id:" + id + NON_CLOSED_STATUS_QUERY;
+    const result = await searchTicketsCount(query);
+    return { orgId: id, count: result.count || 0, error: result.error };
   }
 
   async function loadTicketsByView(viewId) {
     if (!viewId) return { tickets: [] };
     const all = [];
+    const seenTicketIds = new Set();
     let nextUrl = BASE + "/api/v2/views/" + encodeURIComponent(viewId) + "/tickets.json";
     let pages = 0;
-    const maxPages = 10;
+    const maxPages = MAX_VIEW_TICKET_PAGES;
     while (nextUrl && pages < maxPages) {
       pages += 1;
       const res = await fetchJson(nextUrl);
@@ -409,7 +366,12 @@
       }
       const rows = Array.isArray(res.payload.tickets) ? res.payload.tickets : [];
       rows.forEach((row) => {
-        if (includeTicketByStatus(row)) all.push(normalizeTicket(row || {}));
+        if (!includeTicketByStatus(row)) return;
+        const normalized = normalizeTicket(row || {});
+        const ticketId = normalizeTicketId(normalized.id);
+        if (!ticketId || seenTicketIds.has(ticketId)) return;
+        seenTicketIds.add(ticketId);
+        all.push(normalized);
       });
       nextUrl = res.payload.next_page || null;
     }
@@ -503,32 +465,32 @@
     return { groupsWithMembers };
   }
 
-  /** Search API: tickets in group (assignee group). Excludes solved/closed. */
+  /** Search API: tickets in group (assignee group), with closed excluded. */
   async function loadTicketsByGroupId(groupId) {
     if (!groupId) return { tickets: [] };
-    const query = "type:ticket group_id:" + String(groupId) + NOT_SOLVED_STATUS_QUERY;
+    const query = "type:ticket group_id:" + String(groupId) + NON_CLOSED_STATUS_QUERY;
     return searchTickets(query);
   }
 
   async function loadGroupTicketCount(groupId) {
     if (!groupId) return { groupId: "", count: 0 };
     const id = String(groupId);
-    const query = "type:ticket group_id:" + id + NOT_SOLVED_STATUS_QUERY;
+    const query = "type:ticket group_id:" + id + NON_CLOSED_STATUS_QUERY;
     const result = await searchTicketsCount(query);
     return { groupId: id, count: result.count || 0, error: result.error };
   }
 
-  /** Search API: tickets by assignee_id (accurate, status-filtered). Replaces /users/{id}/tickets/assigned. */
+  /** Search API: tickets by assignee_id (closed excluded). Replaces /users/{id}/tickets/assigned. */
   async function loadTicketsByAssigneeId(userId) {
     if (!userId) return { tickets: [] };
-    const query = "type:ticket assignee_id:" + String(userId) + NOT_SOLVED_STATUS_QUERY;
+    const query = "type:ticket assignee_id:" + String(userId) + NON_CLOSED_STATUS_QUERY;
     return searchTickets(query);
   }
 
   async function loadAssigneeTicketCount(userId) {
     if (!userId) return { userId: "", count: 0 };
     const id = String(userId);
-    const query = "type:ticket assignee_id:" + id + NOT_SOLVED_STATUS_QUERY;
+    const query = "type:ticket assignee_id:" + id + NON_CLOSED_STATUS_QUERY;
     const result = await searchTicketsCount(query);
     return { userId: id, count: result.count || 0, error: result.error };
   }
