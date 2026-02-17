@@ -2,9 +2,7 @@
   "use strict";
 
   const BASE = "https://adobeprimetime.zendesk.com";
-  const ASSIGNED_FILTER_PATH = "/agent/filters/36464467";
-  const ASSIGNED_FILTER_URL = BASE + ASSIGNED_FILTER_PATH;
-  const LOGIN_URL = BASE + "/auth/v3/signin?return_to=" + encodeURIComponent(ASSIGNED_FILTER_URL);
+  const LOGIN_URL = BASE + "/auth/v3/signin?return_to=" + encodeURIComponent(BASE + "/agent/filters/36464467");
   const TICKET_URL_PREFIX = BASE + "/agent/tickets/";
   const SHOW_TICKET_API_PATH = "/api/v2/tickets/{ticket_id}";
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
@@ -36,7 +34,6 @@
     lastApiPath: "/api/v2/users/me",
     lastApiPayload: null,
     lastApiPayloadString: "",
-    lastApiRequest: null,
     organizations: [],
     orgCountsById: Object.create(null),
     orgCountLoadSeq: 0,
@@ -58,115 +55,16 @@
     groupOptions: [],
     groupCountsByValue: Object.create(null),
     groupLabelPadLength: 0,
-    ticketTableLoading: false,
-    showZdApiContainers: false,
-    sidePanelLayout: "unknown",
-    zendeskTabId: null
+    sidePanelLayout: "unknown"
   };
 
   let authCheckIntervalId = null;
   let authCheckInFlight = false;
   const AUTH_CHECK_INTERVAL_MS = 5000;
+  const FILTER_COUNT_CACHE_TTL_MS = 2 * 60 * 1000;
   const VIEW_COUNT_CACHE_KEY = "zip.filter.viewCounts.v1";
   const ORG_COUNT_CACHE_KEY = "zip.filter.orgCounts.v1";
   const GROUP_COUNT_CACHE_KEY = "zip.filter.groupCounts.v1";
-  const ZENDESK_TAB_RETRY_MAX_ATTEMPTS = 6;
-  const ZENDESK_TAB_RETRY_BASE_DELAY_MS = 150;
-  const FILTER_CATALOG_RETRY_ATTEMPTS = 3;
-  const FILTER_CATALOG_RETRY_BASE_DELAY_MS = 500;
-  const STATUS_FILTER_ALL_VALUE = "all";
-  const STATUS_FILTER_ALL_LABEL = "All Statuses";
-  const PREFERRED_STATUS_ORDER = ["new", "open", "pending", "hold", "solved", "closed"];
-  const ZD_API_VISIBILITY_STORAGE_KEY = "zip.ui.showZdApiContainers.v1";
-  const DOCS_MENU_ZD_API_TOGGLE_VALUE = "__toggle_zd_api__";
-  const DOCS_MENU_ZD_API_SHOW_LABEL = "GET zd api";
-  const DOCS_MENU_ZD_API_HIDE_LABEL = "HIDE zd api";
-
-  function isAuthFailureStatus(status) {
-    return status === 401 || status === 403;
-  }
-
-  function wait(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  async function waitForZendeskSessionReady(timeoutMs) {
-    const timeout = Math.max(0, Number(timeoutMs) || 0);
-    const deadline = Date.now() + timeout;
-    let lastError = null;
-    while (Date.now() <= deadline) {
-      try {
-        const me = await sendToZendeskTab({ action: "getMe" });
-        if (hasZendeskSessionUser(me)) return;
-        if (shouldTreatMeResponseAsLoggedOut(me)) {
-          throw new Error("Session expired");
-        }
-      } catch (err) {
-        lastError = err || null;
-      }
-      await wait(250);
-    }
-    if (lastError) throw lastError;
-    throw new Error("Zendesk tab not ready");
-  }
-
-  function isTransientZendeskTabErrorMessage(message) {
-    const text = String(message || "").toLowerCase();
-    if (!text) return false;
-    return text.includes("receiving end does not exist")
-      || text.includes("could not establish connection")
-      || text.includes("message port closed before a response was received")
-      || text.includes("no active tab")
-      || text.includes("no response");
-  }
-
-  function normalizeStatusValue(value) {
-    return String(value || "").trim().toLowerCase();
-  }
-
-  function getAvailableStatusValuesFromTickets(tickets) {
-    const values = new Set();
-    (Array.isArray(tickets) ? tickets : []).forEach((row) => {
-      const normalized = normalizeStatusValue(row && row.status);
-      if (!normalized) return;
-      values.add(normalized);
-    });
-    const preferred = PREFERRED_STATUS_ORDER.filter((status) => values.has(status));
-    const extras = Array.from(values)
-      .filter((status) => !PREFERRED_STATUS_ORDER.includes(status))
-      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-    return preferred.concat(extras);
-  }
-
-  function syncStatusFilterOptions() {
-    if (!els.statusFilter) return;
-    const availableStatuses = getAvailableStatusValuesFromTickets(state.tickets);
-    const desired = [{ value: STATUS_FILTER_ALL_VALUE, label: STATUS_FILTER_ALL_LABEL }]
-      .concat(availableStatuses.map((status) => ({ value: status, label: status })));
-
-    const existing = Array.from(els.statusFilter.options || []).map((opt) => ({
-      value: normalizeStatusValue(opt.value),
-      label: String(opt.textContent || "")
-    }));
-    const optionsAreSame = existing.length === desired.length
-      && existing.every((opt, idx) => opt.value === desired[idx].value && opt.label === desired[idx].label);
-
-    if (!optionsAreSame) {
-      els.statusFilter.innerHTML = "";
-      desired.forEach((opt) => {
-        const option = document.createElement("option");
-        option.value = opt.value;
-        option.textContent = opt.label;
-        els.statusFilter.appendChild(option);
-      });
-    }
-
-    const current = normalizeStatusValue(state.statusFilter) || STATUS_FILTER_ALL_VALUE;
-    const valid = desired.some((opt) => opt.value === current);
-    const next = valid ? current : STATUS_FILTER_ALL_VALUE;
-    state.statusFilter = next;
-    els.statusFilter.value = next;
-  }
 
   function stopAuthCheckPolling() {
     if (authCheckIntervalId != null) {
@@ -181,32 +79,17 @@
     return text.includes("session expired") || text.includes("http 401") || text.includes("http 403");
   }
 
-  function hasZendeskSessionUser(me) {
-    return !!(me && me.user && me.user.id != null);
-  }
-
-  function shouldTreatMeResponseAsLoggedOut(me) {
-    if (hasZendeskSessionUser(me)) return false;
-    const status = Number(me && me.status);
-    if (isAuthFailureStatus(status)) return true;
-    return Number.isFinite(status) && status >= 200 && status < 300;
-  }
-
-  function handleZendeskLoggedOut() {
-    signout({ manual: false });
-    setStatus("User is logged out of Zendesk. Please sign in.", true);
-  }
-
   async function runAuthCheckTick() {
     if (authCheckInFlight) return;
     if (!state.user && state.manualZipSignout) return;
     authCheckInFlight = true;
     try {
       const me = await sendToZendeskTab({ action: "getMe" });
-      const hasUser = hasZendeskSessionUser(me);
+      const hasUser = !!(me && me.user);
       if (state.user) {
-        if (shouldTreatMeResponseAsLoggedOut(me)) {
-          handleZendeskLoggedOut();
+        if (!hasUser) {
+          state.manualZipSignout = false;
+          showLogin();
         }
         return;
       }
@@ -216,7 +99,8 @@
       }
     } catch (err) {
       if (state.user && isSessionErrorMessage(err && err.message)) {
-        handleZendeskLoggedOut();
+        state.manualZipSignout = false;
+        showLogin();
       }
     } finally {
       authCheckInFlight = false;
@@ -246,7 +130,6 @@
     appScreen: $("zipAppScreen"),
     loginBtn: $("zipLoginBtn"),
     docsMenu: $("zipDocsMenu"),
-    docsApiToggleOption: $("zipDocsApiToggleOption"),
     signoutBtn: $("zipSignoutBtn"),
     appVersionLink: $("zipAppVersionLink"),
     appVersion: $("zipAppVersion"),
@@ -267,16 +150,13 @@
     exportCsvBtn: $("zipExportCsvBtn"),
     ticketHead: $("zipTicketHead"),
     ticketBody: $("zipTicketBody"),
-    ticketTableWrap: $("zipTicketTableWrap"),
     assignedTicketsLink: $("zipAssignedTicketsLink"),
     orgSelect: $("zipOrgSelect"),
     viewSelect: $("zipViewSelect"),
     groupMemberSelect: $("zipGroupMemberSelect"),
     apiPathSelect: $("zipApiPathSelect"),
     apiParams: $("zipApiParams"),
-    apiRunBtn: $("zipApiRunBtn"),
-    apiGetSection: $("zipApiGetSection"),
-    apiResultsSection: $("zipApiResultsSection")
+    apiRunBtn: $("zipApiRunBtn")
   };
 
   function getActiveTabId() {
@@ -293,50 +173,6 @@
     } else {
       window.open(safeUrl, "_blank", "noopener");
     }
-  }
-
-  function readZdApiVisibilityPreference() {
-    try {
-      const raw = window.localStorage.getItem(ZD_API_VISIBILITY_STORAGE_KEY);
-      return raw === "1";
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function writeZdApiVisibilityPreference(show) {
-    try {
-      window.localStorage.setItem(ZD_API_VISIBILITY_STORAGE_KEY, show ? "1" : "0");
-    } catch (_) {}
-  }
-
-  function getDocsApiToggleLabel(show) {
-    return show ? DOCS_MENU_ZD_API_HIDE_LABEL : DOCS_MENU_ZD_API_SHOW_LABEL;
-  }
-
-  function syncDocsApiToggleOptionLabel() {
-    if (!els.docsApiToggleOption) return;
-    els.docsApiToggleOption.textContent = getDocsApiToggleLabel(state.showZdApiContainers);
-  }
-
-  function applyZdApiContainerVisibility(show, persist) {
-    const next = !!show;
-    state.showZdApiContainers = next;
-    [els.apiGetSection, els.apiResultsSection].forEach((sectionEl) => {
-      if (!sectionEl) return;
-      sectionEl.classList.toggle("hidden", !next);
-      sectionEl.setAttribute("aria-hidden", next ? "false" : "true");
-    });
-    syncDocsApiToggleOptionLabel();
-    if (persist) writeZdApiVisibilityPreference(next);
-  }
-
-  function initializeZdApiContainerVisibility() {
-    applyZdApiContainerVisibility(readZdApiVisibilityPreference(), false);
-  }
-
-  function toggleZdApiContainerVisibility() {
-    applyZdApiContainerVisibility(!state.showZdApiContainers, true);
   }
 
   function applySidePanelContext(context) {
@@ -489,88 +325,36 @@
   }
 
   function sendToZendeskTab(inner) {
-    const sendOnce = (tabId) => new Promise((resolve, reject) => {
-      if (!tabId) {
-        reject(new Error("No active tab"));
-        return;
-      }
-      const requestId = "r" + Date.now() + "_" + Math.random().toString(36).slice(2);
-      chrome.runtime.sendMessage(
-        { type: "ZIP_REQUEST", tabId, requestId, inner },
-        (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message || "Extension error"));
-            return;
-          }
-          if (response && response.error) {
-            reject(new Error(response.error));
-            return;
-          }
-          if (response && response.result !== undefined) resolve(response.result);
-          else if (response && response.type === "ZIP_RESPONSE" && response.result !== undefined) resolve(response.result);
-          else resolve(response);
-        }
-      );
-    });
-
-    return (async () => {
-      let lastError = null;
-      for (let attempt = 1; attempt <= ZENDESK_TAB_RETRY_MAX_ATTEMPTS; attempt += 1) {
-        const activeTabId = await getActiveTabId();
-        const candidateIds = [];
-        if (state.zendeskTabId != null) candidateIds.push(state.zendeskTabId);
-        if (activeTabId != null && !candidateIds.includes(activeTabId)) candidateIds.push(activeTabId);
-        if (!candidateIds.length) {
-          throw new Error("No active tab");
-        }
-
-        for (const candidateId of candidateIds) {
-          try {
-            const result = await sendOnce(candidateId);
-            state.zendeskTabId = candidateId;
-            return result;
-          } catch (err) {
-            lastError = err || null;
-            if (state.zendeskTabId === candidateId) state.zendeskTabId = null;
-          }
-        }
-
-        const message = lastError && lastError.message ? lastError.message : "";
-        const canRetry = attempt < ZENDESK_TAB_RETRY_MAX_ATTEMPTS && isTransientZendeskTabErrorMessage(message);
-        if (!canRetry) throw lastError || new Error("Unable to reach Zendesk tab");
-        await wait(ZENDESK_TAB_RETRY_BASE_DELAY_MS * attempt);
-      }
-      throw lastError || new Error("Unable to reach Zendesk tab");
-    })();
-  }
-
-  function ensureAssignedFilterTabOpen() {
     return new Promise((resolve, reject) => {
-      if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
-        reject(new Error("Runtime unavailable"));
-        return;
-      }
-      chrome.runtime.sendMessage(
-        { type: "ZIP_ENSURE_ASSIGNED_FILTER_TAB", url: ASSIGNED_FILTER_URL },
-        (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message || "Unable to open assigned filter"));
-            return;
-          }
-          if (response && response.ok === false) {
-            reject(new Error(response.error || "Unable to open assigned filter"));
-            return;
-          }
-          resolve(response || { ok: true });
+      getActiveTabId().then((tabId) => {
+        if (!tabId) {
+          reject(new Error("No active tab"));
+          return;
         }
-      );
+        const requestId = "r" + Date.now() + "_" + Math.random().toString(36).slice(2);
+        chrome.runtime.sendMessage(
+          { type: "ZIP_REQUEST", tabId, requestId, inner },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message || "Extension error"));
+              return;
+            }
+            if (response && response.error) {
+              reject(new Error(response.error));
+              return;
+            }
+            if (response && response.result !== undefined) resolve(response.result);
+            else if (response && response.type === "ZIP_RESPONSE" && response.result !== undefined) resolve(response.result);
+            else resolve(response);
+          }
+        );
+      });
     });
   }
 
   function updateTicketNetworkIndicator() {
     if (!els.ticketNetworkIndicator) return;
     const activeLoads = [];
-    if (state.ticketTableLoading) activeLoads.push("Tickets");
     if (state.groupSelectLoading) activeLoads.push("By Group");
     if (state.viewSelectLoading) activeLoads.push("By View");
     if (state.orgSelectLoading) activeLoads.push("By Org");
@@ -582,29 +366,11 @@
   }
 
   function applyGlobalBusyUi() {
-    const isLoading = !!(state.busy || state.ticketTableLoading || state.orgSelectLoading || state.viewSelectLoading || state.groupSelectLoading);
+    const isLoading = !!(state.busy || state.orgSelectLoading || state.viewSelectLoading || state.groupSelectLoading);
     if (els.topAvatarWrap) {
       els.topAvatarWrap.classList.toggle("loading", isLoading);
       els.topAvatarWrap.title = isLoading ? "Loading…" : (els.topAvatarWrap.dataset.idleTitle || "Not logged in");
     }
-  }
-
-  function applyTicketTableLoadingUi() {
-    const isLoading = !!state.ticketTableLoading;
-    if (els.ticketTableWrap) {
-      els.ticketTableWrap.classList.toggle("ticket-table-loading", isLoading);
-      els.ticketTableWrap.setAttribute("aria-busy", isLoading ? "true" : "false");
-    }
-  }
-
-  function setTicketTableLoading(on) {
-    const isLoading = !!on;
-    if (state.ticketTableLoading === isLoading) return;
-    state.ticketTableLoading = isLoading;
-    applyTicketTableLoadingUi();
-    updateTicketNetworkIndicator();
-    applyGlobalBusyUi();
-    if (!state.filteredTickets.length) renderTicketRows();
   }
 
   function setBusy(on) {
@@ -655,32 +421,12 @@
   function setRawTitle(path) {
     state.lastApiPath = path || state.lastApiPath;
     if (els.rawTitle) els.rawTitle.textContent = "GET " + (state.lastApiPath || "/api/v2/users/me");
-    updateRawDownloadLink();
   }
 
   function getDownloadFilename() {
-    const request = state.lastApiRequest && typeof state.lastApiRequest === "object" ? state.lastApiRequest : null;
-    const callPath = request && request.specPath
-      ? String(request.specPath)
-      : String(state.lastApiPath || "response");
-    const pathPart = sanitizeFilenamePart(callPath.replace(/^\//, "").replace(/\//g, "-").replace(/[{}]/g, ""), 80) || "response";
-    const parts = ["zdapi", pathPart];
-    if (request && Array.isArray(request.params) && request.params.length) {
-      const paramParts = request.params
-        .map((param) => {
-          const name = sanitizeFilenamePart(param && param.name ? param.name : "", 24);
-          if (!name) return "";
-          const rawValue = param && param.value != null ? String(param.value).trim() : "";
-          const value = sanitizeFilenamePart(rawValue || "blank", 60);
-          return name + "-" + value;
-        })
-        .filter(Boolean)
-        .slice(0, 8);
-      if (paramParts.length) parts.push(paramParts.join("_"));
-    }
-    const stem = parts.join("_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
-    const boundedStem = stem.length > 220 ? stem.slice(0, 220).replace(/[_-]+$/g, "") : stem;
-    return boundedStem + ".json";
+    const path = (state.lastApiPath || "response").replace(/^\//, "").replace(/\//g, "-");
+    const base = path || "response";
+    return (base.endsWith(".json") ? base : base + ".json").replace(/[^a-zA-Z0-9._-]/g, "_");
   }
 
   function updateRawDownloadLink() {
@@ -695,15 +441,13 @@
     if (els.exportCsvBtn) els.exportCsvBtn.disabled = !hasRows;
   }
 
-  function sanitizeFilenamePart(value, maxLength) {
-    const limit = Number(maxLength);
-    const maxLen = Number.isFinite(limit) && limit > 0 ? Math.trunc(limit) : 40;
+  function sanitizeFilenamePart(value) {
     return String(value || "")
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, maxLen);
+      .slice(0, 40);
   }
 
   function getSelectedText(selectEl) {
@@ -729,21 +473,22 @@
     return "assigned";
   }
 
-  function getTimestampForFilename(includeMs) {
+  function getTimestampForFilename() {
     const d = new Date();
     const p2 = (n) => String(n).padStart(2, "0");
-    const core = String(d.getFullYear()) + p2(d.getMonth() + 1) + p2(d.getDate()) + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
-    if (!includeMs) return core;
-    return core + String(d.getMilliseconds()).padStart(3, "0");
+    return String(d.getFullYear()) + p2(d.getMonth() + 1) + p2(d.getDate()) + "-" + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
   }
 
   function getTicketCsvFilename() {
     const parts = [
       "zip",
       "tickets",
-      getTicketSourceFilenamePart()
+      getTicketSourceFilenamePart(),
+      String(state.filteredTickets.length) + "rows",
+      "sort-" + sanitizeFilenamePart(state.sortKey) + "-" + sanitizeFilenamePart(state.sortDir)
     ];
     if (state.statusFilter && state.statusFilter !== "all") parts.push("status-" + sanitizeFilenamePart(state.statusFilter));
+    if (String(state.textFilter || "").trim()) parts.push("search");
     parts.push(getTimestampForFilename());
     return parts.join("_") + ".csv";
   }
@@ -1006,7 +751,14 @@
     }
   }
 
-  function resetTopFilterMenuCatalogState() {
+  function showLogin() {
+    state.user = null;
+    if (state.manualZipSignout) stopAuthCheckPolling();
+    else startAuthCheckPolling();
+    state.userProfile = null;
+    state.mePayload = null;
+    state.tickets = [];
+    state.filteredTickets = [];
     state.organizations = [];
     state.orgCountsById = Object.create(null);
     state.orgCountLoadSeq += 1;
@@ -1024,50 +776,20 @@
     state.groupCountsByValue = Object.create(null);
     state.groupLabelPadLength = 0;
     state.groupLoadSeq += 1;
-    if (els.orgSelect) els.orgSelect.value = "";
-    if (els.viewSelect) els.viewSelect.value = "";
-    if (els.groupMemberSelect) els.groupMemberSelect.value = "";
-    setOrgSelectLoading(false);
-    setViewSelectLoading(false);
-    setGroupSelectLoading(false);
-    renderOrgSelectLoadingPlaceholder();
-    renderViewSelectLoadingPlaceholder();
-    renderGroupSelectLoadingPlaceholder();
-    clearFilterCountCaches();
-  }
-
-  function showTopFilterMenusLoadingState() {
-    setOrgSelectLoading(true);
-    setViewSelectLoading(true);
-    setGroupSelectLoading(true);
-    renderOrgSelectLoadingPlaceholder();
-    renderViewSelectLoadingPlaceholder();
-    renderGroupSelectLoadingPlaceholder();
-  }
-
-  function showLogin() {
-    state.user = null;
-    state.zendeskTabId = null;
-    if (state.manualZipSignout) stopAuthCheckPolling();
-    else startAuthCheckPolling();
-    state.userProfile = null;
-    state.mePayload = null;
-    state.tickets = [];
-    state.filteredTickets = [];
-    state.statusFilter = STATUS_FILTER_ALL_VALUE;
-    resetTopFilterMenuCatalogState();
-    state.ticketTableLoading = false;
-    applyTicketTableLoadingUi();
     resetTopIdentity();
     state.lastApiPayload = null;
     state.lastApiPayloadString = "";
-    state.lastApiRequest = null;
     renderApiResultTable(null);
     if (els.rawTitle) els.rawTitle.textContent = "GET /api/v2/users/me";
     updateRawDownloadLink();
     if (els.ticketBody) els.ticketBody.innerHTML = "";
     updateTicketActionButtons();
-    syncStatusFilterOptions();
+    setOrgSelectLoading(false);
+    setViewSelectLoading(false);
+    setGroupSelectLoading(false);
+    populateOrgSelect();
+    populateViewSelect();
+    populateGroupMemberSelect();
     els.loginScreen.classList.remove("hidden");
     els.appScreen.classList.add("hidden");
     document.body.classList.add("zip-logged-out");
@@ -1108,22 +830,18 @@
   }
 
   /** Clear ticket data and selection, then re-render table (e.g. before loading a new source). */
-  function clearTicketTable(options) {
-    const showLoading = !!(options && options.loading);
-    setTicketTableLoading(showLoading);
+  function clearTicketTable() {
     state.tickets = [];
     state.filteredTickets = [];
     state.selectedTicketId = null;
-    applyFiltersAndRender();
+    renderTicketRows();
   }
 
   function applyFiltersAndRender() {
-    syncStatusFilterOptions();
     const text = String(state.textFilter || "").trim().toLowerCase();
-    const status = normalizeStatusValue(state.statusFilter) || STATUS_FILTER_ALL_VALUE;
+    const status = state.statusFilter || "all";
     const rows = state.tickets.filter((row) => {
-      const rowStatus = normalizeStatusValue(row && row.status);
-      if (status !== STATUS_FILTER_ALL_VALUE && rowStatus !== status) return false;
+      if (status !== "all" && row.status !== status) return false;
       if (!text) return true;
       const blob = [row.id, row.subject, row.status, row.priority, row.created_at, row.updated_at].join(" ").toLowerCase();
       return blob.includes(text);
@@ -1200,22 +918,7 @@
       const tr = document.createElement("tr");
       const td = document.createElement("td");
       td.colSpan = TICKET_COLUMNS.length;
-      td.className = "ticket-empty-state";
-      if (state.ticketTableLoading) {
-        td.classList.add("ticket-empty-state-loading");
-        const hint = document.createElement("span");
-        hint.className = "ticket-loading-hint";
-        const spinner = document.createElement("span");
-        spinner.className = "inline-spinner ticket-inline-spinner";
-        spinner.setAttribute("aria-hidden", "true");
-        const label = document.createElement("span");
-        label.textContent = "Loading tickets…";
-        hint.appendChild(spinner);
-        hint.appendChild(label);
-        td.appendChild(hint);
-      } else {
-        td.textContent = "No tickets found.";
-      }
+      td.textContent = "No tickets found.";
       tr.appendChild(td);
       els.ticketBody.appendChild(tr);
       updateTicketActionButtons();
@@ -1330,42 +1033,25 @@
   }
 
   function buildApiUrl() {
-    return buildApiRequestContext().url;
-  }
-
-  function buildApiRequestContext() {
     const spec = getSelectedPathSpec();
-    let resolvedPath = spec.path;
-    let encodedPath = spec.path;
-    const params = [];
-    (spec.params || []).forEach((param) => {
+    let url = spec.path;
+    spec.params.forEach((param) => {
       const input = document.getElementById("zipApiParam_" + param);
-      const typedValue = (input && input.value && input.value.trim()) || "";
-      const defaultValue = getDefaultParamValue(param);
-      const value = typedValue || defaultValue || "";
-      params.push({ name: param, value });
-      resolvedPath = resolvedPath.replace("{" + param + "}", value || "blank");
-      encodedPath = encodedPath.replace("{" + param + "}", encodeURIComponent(value));
+      let value = (input && input.value && input.value.trim()) || "";
+      if (!value) value = getDefaultParamValue(param);
+      url = url.replace("{" + param + "}", encodeURIComponent(value));
     });
-    const url = BASE + encodedPath + (encodedPath.indexOf("/api/") !== -1 && !encodedPath.endsWith(".json") ? ".json" : "");
-    return {
-      specPath: spec.path,
-      resolvedPath,
-      url,
-      params
-    };
+    return BASE + url + (url.indexOf("/api/") !== -1 && !url.endsWith(".json") ? ".json" : "");
   }
 
   async function runZdGet() {
-    const requestContext = buildApiRequestContext();
-    const url = requestContext.url;
-    state.lastApiRequest = requestContext;
+    const url = buildApiUrl();
     setBusy(true);
     setStatus("Calling " + url + "...", false);
     try {
       const result = await sendToZendeskTab({ action: "fetch", url });
       setRawFromPayload(result.payload != null ? result.payload : (result.text || ""));
-      setRawTitle(requestContext.specPath);
+      setRawTitle(getSelectedPathSpec().path);
       setStatus(result.ok ? "GET succeeded." : "GET returned " + result.status + ".", !result.ok);
     } catch (err) {
       setStatus("API call failed: " + (err && err.message ? err.message : "Unknown error"), true);
@@ -1376,7 +1062,6 @@
   }
 
   async function loadTickets(userId) {
-    setTicketTableLoading(true);
     try {
       const result = await sendToZendeskTab({ action: "loadTickets", userId: String(userId || "") });
       state.tickets = result.tickets || [];
@@ -1385,10 +1070,8 @@
     } catch (err) {
       state.tickets = [];
       state.filteredTickets = [];
-      applyFiltersAndRender();
+      renderTicketRows();
       throw err;
-    } finally {
-      setTicketTableLoading(false);
     }
   }
 
@@ -1402,7 +1085,6 @@
   }
 
   async function loadTicketsByOrg(orgId) {
-    setTicketTableLoading(true);
     try {
       const result = await sendToZendeskTab({ action: "loadTicketsByOrg", orgId: String(orgId || "") });
       state.tickets = result.tickets || [];
@@ -1411,15 +1093,12 @@
     } catch (err) {
       state.tickets = [];
       state.filteredTickets = [];
-      applyFiltersAndRender();
+      renderTicketRows();
       throw err;
-    } finally {
-      setTicketTableLoading(false);
     }
   }
 
   async function loadTicketsByView(viewId) {
-    setTicketTableLoading(true);
     try {
       const result = await sendToZendeskTab({ action: "loadTicketsByView", viewId: String(viewId || "") });
       state.tickets = result.tickets || [];
@@ -1428,15 +1107,12 @@
     } catch (err) {
       state.tickets = [];
       state.filteredTickets = [];
-      applyFiltersAndRender();
+      renderTicketRows();
       throw err;
-    } finally {
-      setTicketTableLoading(false);
     }
   }
 
   async function loadTicketsByAssigneeId(userId) {
-    setTicketTableLoading(true);
     try {
       const result = await sendToZendeskTab({ action: "loadTicketsByAssigneeId", userId: String(userId || "") });
       state.tickets = result.tickets || [];
@@ -1445,10 +1121,8 @@
     } catch (err) {
       state.tickets = [];
       state.filteredTickets = [];
-      applyFiltersAndRender();
+      renderTicketRows();
       throw err;
-    } finally {
-      setTicketTableLoading(false);
     }
   }
 
@@ -1458,10 +1132,48 @@
     return Math.max(0, Math.trunc(num));
   }
 
+  function readCountCache(cacheKey) {
+    try {
+      const raw = window.localStorage.getItem(cacheKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return null;
+      const ts = Number(parsed.ts);
+      if (!Number.isFinite(ts) || (Date.now() - ts) > FILTER_COUNT_CACHE_TTL_MS) return null;
+      const counts = parsed.counts;
+      if (!counts || typeof counts !== "object") return null;
+      return counts;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function writeCountCache(cacheKey, countsById) {
+    try {
+      window.localStorage.setItem(cacheKey, JSON.stringify({
+        ts: Date.now(),
+        counts: countsById || {}
+      }));
+    } catch (_) {}
+  }
+
   function clearFilterCountCaches() {
     try { window.localStorage.removeItem(VIEW_COUNT_CACHE_KEY); } catch (_) {}
     try { window.localStorage.removeItem(ORG_COUNT_CACHE_KEY); } catch (_) {}
     try { window.localStorage.removeItem(GROUP_COUNT_CACHE_KEY); } catch (_) {}
+  }
+
+  function countsFromCacheForIds(cacheKey, ids) {
+    const cache = readCountCache(cacheKey);
+    const map = Object.create(null);
+    if (!cache) return map;
+    (Array.isArray(ids) ? ids : []).forEach((id) => {
+      const sid = String(id || "");
+      if (!sid) return;
+      if (cache[sid] == null) return;
+      map[sid] = normalizeTicketCount(cache[sid]);
+    });
+    return map;
   }
 
   function splitAndSortByTicketCount(items, getBaseLabel, getCount) {
@@ -1498,7 +1210,6 @@
       selectEl.appendChild(opt);
     };
 
-    const disableInactiveRows = splitRows.active.length > 0;
     if (splitRows.active.length) {
       appendHeading("ACTIVE (>0 tickets)");
       appendRows(splitRows.active, false);
@@ -1512,18 +1223,8 @@
     }
     if (splitRows.inactive.length) {
       appendHeading("INACTIVE (0 tickets)");
-      appendRows(splitRows.inactive, disableInactiveRows);
+      appendRows(splitRows.inactive, true);
     }
-  }
-
-  function renderSelectLoadingPlaceholder(selectEl) {
-    if (!selectEl) return;
-    selectEl.innerHTML = "";
-    const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = "";
-    selectEl.appendChild(opt);
-    selectEl.value = "";
   }
 
   function getOrgBaseLabel(org) {
@@ -1531,7 +1232,13 @@
   }
 
   function renderOrgSelectLoadingPlaceholder() {
-    renderSelectLoadingPlaceholder(els.orgSelect);
+    if (!els.orgSelect) return;
+    els.orgSelect.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "...";
+    els.orgSelect.appendChild(opt);
+    els.orgSelect.value = "";
   }
 
   function getOrgLabel(org, countOverride) {
@@ -1587,17 +1294,23 @@
       state.organizations = result.organizations || [];
       if (result.error) throw new Error(result.error);
       state.orgLabelPadLength = (state.organizations || []).reduce((max, org) => Math.max(max, getOrgBaseLabel(org).length), 0);
+      const orgIds = (state.organizations || [])
+        .map((org) => (org && org.id != null ? String(org.id) : ""))
+        .filter(Boolean);
+      const cachedCounts = countsFromCacheForIds(ORG_COUNT_CACHE_KEY, orgIds);
+      if (Object.keys(cachedCounts).length) {
+        state.orgCountsById = cachedCounts;
+      }
       state.orgCountsById = await loadOrgCountsForSelect(loadSeq, state.organizations.slice());
       if (loadSeq !== state.orgCountLoadSeq) return;
       populateOrgSelect();
-      return { ok: true, count: (state.organizations || []).length };
+      writeCountCache(ORG_COUNT_CACHE_KEY, state.orgCountsById);
     } catch (_) {
       if (loadSeq !== state.orgCountLoadSeq) return;
       state.organizations = [];
       state.orgCountsById = Object.create(null);
       state.orgLabelPadLength = 0;
       populateOrgSelect();
-      return { ok: false, error: new Error("Unable to load organizations"), count: 0 };
     } finally {
       if (loadSeq === state.orgCountLoadSeq) setOrgSelectLoading(false);
     }
@@ -1638,17 +1351,23 @@
       state.views = result.views || [];
       if (result.error) throw new Error(result.error);
       state.viewLabelPadLength = (state.views || []).reduce((max, view) => Math.max(max, getViewBaseLabel(view).length), 0);
+      const viewIds = (state.views || [])
+        .map((view) => (view && view.id != null ? String(view.id) : ""))
+        .filter(Boolean);
+      const cachedCounts = countsFromCacheForIds(VIEW_COUNT_CACHE_KEY, viewIds);
+      if (Object.keys(cachedCounts).length) {
+        state.viewCountsById = cachedCounts;
+      }
       state.viewCountsById = await loadViewCountsForSelect(loadSeq, state.views.slice());
       if (loadSeq !== state.viewCountLoadSeq) return;
       populateViewSelect();
-      return { ok: true, count: (state.views || []).length };
+      writeCountCache(VIEW_COUNT_CACHE_KEY, state.viewCountsById);
     } catch (_) {
       if (loadSeq !== state.viewCountLoadSeq) return;
       state.views = [];
       state.viewCountsById = Object.create(null);
       state.viewLabelPadLength = 0;
       populateViewSelect();
-      return { ok: false, error: new Error("Unable to load views"), count: 0 };
     } finally {
       if (loadSeq === state.viewCountLoadSeq) setViewSelectLoading(false);
     }
@@ -1743,7 +1462,13 @@
   }
 
   function renderGroupSelectLoadingPlaceholder() {
-    renderSelectLoadingPlaceholder(els.groupMemberSelect);
+    if (!els.groupMemberSelect) return;
+    els.groupMemberSelect.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "...";
+    els.groupMemberSelect.appendChild(opt);
+    els.groupMemberSelect.value = "";
   }
 
   function getGroupLabel(option, countOverride, countPadLengthOverride) {
@@ -1820,10 +1545,15 @@
       if (result.error) state.groupsWithMembers = [];
       state.groupOptions = buildGroupFilterOptions(state.groupsWithMembers);
       state.groupLabelPadLength = (state.groupOptions || []).reduce((max, option) => Math.max(max, getGroupDisplayBaseLabel(option).length), 0);
+      const values = (state.groupOptions || []).map((option) => String(option.value || "")).filter(Boolean);
+      const cachedCounts = countsFromCacheForIds(GROUP_COUNT_CACHE_KEY, values);
+      if (Object.keys(cachedCounts).length) {
+        state.groupCountsByValue = cachedCounts;
+      }
       state.groupCountsByValue = await loadGroupCountsForSelect(loadSeq, state.groupOptions.slice());
       if (loadSeq !== state.groupLoadSeq) return;
       populateGroupMemberSelect();
-      return { ok: true, count: (state.groupOptions || []).length };
+      writeCountCache(GROUP_COUNT_CACHE_KEY, state.groupCountsByValue);
     } catch (_) {
       if (loadSeq !== state.groupLoadSeq) return;
       state.groupsWithMembers = [];
@@ -1831,7 +1561,6 @@
       state.groupCountsByValue = Object.create(null);
       state.groupLabelPadLength = 0;
       populateGroupMemberSelect();
-      return { ok: false, error: new Error("Unable to load groups/agents"), count: 0 };
     } finally {
       if (loadSeq === state.groupLoadSeq) setGroupSelectLoading(false);
     }
@@ -1884,10 +1613,10 @@
       return blocks;
     };
 
-    const buildRowsForSection = (groupBlocks, includeActive, disableRows) => {
+    const buildRowsForSection = (groupBlocks, includeActive) => {
       const rows = [];
       const matchesSection = (count) => includeActive ? count > 0 : count === 0;
-      const sectionDisabled = !!disableRows;
+      const sectionDisabled = !includeActive;
       groupBlocks.forEach((block) => {
         const groupValue = String(block.groupOption && block.groupOption.value ? block.groupOption.value : "");
         const groupCount = normalizeTicketCount(state.groupCountsByValue[groupValue]);
@@ -1935,8 +1664,8 @@
     };
 
     const groupBlocks = buildGroupOptionBlocks();
-    const activeRows = buildRowsForSection(groupBlocks, true, false);
-    const inactiveRows = buildRowsForSection(groupBlocks, false, activeRows.length > 0);
+    const activeRows = buildRowsForSection(groupBlocks, true);
+    const inactiveRows = buildRowsForSection(groupBlocks, false);
 
     if (activeRows.length) {
       const heading = document.createElement("option");
@@ -1966,7 +1695,6 @@
   }
 
   async function loadTicketsByGroupId(groupId) {
-    setTicketTableLoading(true);
     try {
       const result = await sendToZendeskTab({ action: "loadTicketsByGroupId", groupId: String(groupId || "") });
       state.tickets = result.tickets || [];
@@ -1975,10 +1703,8 @@
     } catch (err) {
       state.tickets = [];
       state.filteredTickets = [];
-      applyFiltersAndRender();
+      renderTicketRows();
       throw err;
-    } finally {
-      setTicketTableLoading(false);
     }
   }
 
@@ -1994,7 +1720,13 @@
   }
 
   function renderViewSelectLoadingPlaceholder() {
-    renderSelectLoadingPlaceholder(els.viewSelect);
+    if (!els.viewSelect) return;
+    els.viewSelect.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "...";
+    els.viewSelect.appendChild(opt);
+    els.viewSelect.value = "";
   }
 
   function getViewLabel(view, countOverride) {
@@ -2019,7 +1751,18 @@
     });
     if (!ids.length) return countsById;
 
-    const maxConcurrent = 12;
+    try {
+      const bulk = await sendToZendeskTab({ action: "loadViewCountsMany", viewIds: ids });
+      if (loadSeq !== state.viewCountLoadSeq) return countsById;
+      if (bulk && !bulk.error && bulk.countsById && typeof bulk.countsById === "object") {
+        ids.forEach((id) => {
+          countsById[id] = normalizeTicketCount(bulk.countsById[id]);
+        });
+        return countsById;
+      }
+    } catch (_) {}
+
+    const maxConcurrent = 8;
     let nextIndex = 0;
     const worker = async () => {
       while (nextIndex < ids.length) {
@@ -2078,102 +1821,6 @@
     return loadAssignedTickets();
   }
 
-  function formatErrorMessage(err, fallback) {
-    return err && err.message ? err.message : fallback;
-  }
-
-  async function loadFilterCatalogWithRetry(label, loadFn) {
-    let lastError = null;
-    for (let attempt = 1; attempt <= FILTER_CATALOG_RETRY_ATTEMPTS; attempt += 1) {
-      if (!state.user) {
-        return { ok: false, label, error: new Error("Session ended"), attempts: attempt - 1 };
-      }
-      try {
-        const result = await loadFn();
-        if (result && result.ok) {
-          return { ok: true, label, attempts: attempt };
-        }
-        lastError = result && result.error ? result.error : new Error("Unknown error");
-      } catch (err) {
-        lastError = err || new Error("Unknown error");
-      }
-      if (attempt < FILTER_CATALOG_RETRY_ATTEMPTS) {
-        await wait(FILTER_CATALOG_RETRY_BASE_DELAY_MS * attempt);
-      }
-    }
-    return {
-      ok: false,
-      label,
-      error: lastError || new Error("Unknown error"),
-      attempts: FILTER_CATALOG_RETRY_ATTEMPTS
-    };
-  }
-
-  function setAssignedTicketsLoadStatus(navError) {
-    if (navError) {
-      setStatus(
-        "Assigned tickets loaded. " + state.filteredTickets.length + " rows shown. Could not open main filter tab: " + formatErrorMessage(navError, "Unknown error"),
-        true
-      );
-      return;
-    }
-    setStatus("Assigned tickets loaded. " + state.filteredTickets.length + " rows shown.", false);
-  }
-
-  function retryCatalogLoadOnSelectFocus() {
-    if (els.viewSelect) {
-      els.viewSelect.addEventListener("focus", () => {
-        if (!state.user || state.viewSelectLoading || (state.views || []).length > 0) return;
-        loadFilterCatalogWithRetry("By View", loadViews)
-          .then((result) => {
-            if (!result || !result.ok) {
-              setStatus("By View filter failed to load. Please retry.", true);
-            }
-          })
-          .catch(() => {});
-      });
-    }
-    if (els.orgSelect) {
-      els.orgSelect.addEventListener("focus", () => {
-        if (!state.user || state.orgSelectLoading || (state.organizations || []).length > 0) return;
-        loadFilterCatalogWithRetry("By Organization", loadOrganizations)
-          .then((result) => {
-            if (!result || !result.ok) {
-              setStatus("By Organization filter failed to load. Please retry.", true);
-            }
-          })
-          .catch(() => {});
-      });
-    }
-    if (els.groupMemberSelect) {
-      els.groupMemberSelect.addEventListener("focus", () => {
-        if (!state.user || state.groupSelectLoading || (state.groupOptions || []).length > 0) return;
-        loadFilterCatalogWithRetry("By Group / Agent", loadAllGroupsWithMembers)
-          .then((result) => {
-            if (!result || !result.ok) {
-              setStatus("By Group / Agent filter failed to load. Please retry.", true);
-            }
-          })
-          .catch(() => {});
-      });
-    }
-  }
-
-  function runAssignedTicketsQueryWithMainFilter() {
-    return runAssignedTicketsQuery().then(async () => {
-      try {
-        const navResult = await ensureAssignedFilterTabOpen();
-        if (navResult && navResult.tabId != null) state.zendeskTabId = navResult.tabId;
-        if (navResult && navResult.navigated) {
-          await waitForZendeskSessionReady(12000);
-        }
-        return { navError: null };
-      } catch (err) {
-        return { navError: err || new Error("Unknown error") };
-      }
-    });
-  }
-
   async function startLogin() {
     state.manualZipSignout = false;
     try {
@@ -2212,66 +1859,25 @@
   }
 
   async function applySession(me) {
-    const isFirstLogin = !state.user;
-    let assignedFilterNavError = null;
-    let assignedFilterNavResult = null;
     state.manualZipSignout = false;
     state.user = me.user;
     state.mePayload = me.payload;
     state.userProfile = parseUserProfile(me.payload);
-    resetTopFilterMenuCatalogState();
-    showTopFilterMenusLoadingState();
     setTopIdentityFromUser(me.user);
     showApp();
-    state.lastApiRequest = {
-      specPath: "/api/v2/users/me",
-      resolvedPath: "/api/v2/users/me",
-      url: BASE + "/api/v2/users/me.json",
-      params: []
-    };
     setRawFromPayload(me.payload);
     setRawTitle("/api/v2/users/me");
     renderApiParams();
-    setStatus("Hello " + (me.user.name || me.user.email || "agent") + ". Loading assigned tickets...", false);
+    setStatus("Hello " + (me.user.name || me.user.email || "agent") + ". Loading tickets...", false);
+    const catalogLoads = [
+      loadOrganizations().catch(() => {}),
+      loadViews().catch(() => {}),
+      loadAllGroupsWithMembers().catch(() => {})
+    ];
     await loadTickets(me.user && me.user.id != null ? String(me.user.id) : "");
     setStatus("Ready. " + state.filteredTickets.length + " tickets shown.", false);
-    if (isFirstLogin) {
-      try {
-        assignedFilterNavResult = await ensureAssignedFilterTabOpen();
-        if (assignedFilterNavResult && assignedFilterNavResult.tabId != null) {
-          state.zendeskTabId = assignedFilterNavResult.tabId;
-        }
-        if (assignedFilterNavResult && assignedFilterNavResult.navigated) {
-          await waitForZendeskSessionReady(12000);
-        }
-      } catch (err) {
-        assignedFilterNavError = err || new Error("Unknown error");
-      }
-    }
-    (async () => {
-      const orgResult = await loadFilterCatalogWithRetry("By Organization", loadOrganizations);
-      const viewResult = await loadFilterCatalogWithRetry("By View", loadViews);
-      const groupResult = await loadFilterCatalogWithRetry("By Group / Agent", loadAllGroupsWithMembers);
-      return [orgResult, viewResult, groupResult];
-    })().then((catalogResults) => {
+    Promise.allSettled(catalogLoads).then(() => {
       if (!state.user) return;
-      const failedCatalogs = (Array.isArray(catalogResults) ? catalogResults : [])
-        .filter((result) => !result || !result.ok)
-        .map((result) => String(result && result.label ? result.label : "Filter"));
-      if (assignedFilterNavError) {
-        setStatus(
-          "Ready. " + state.filteredTickets.length + " tickets shown. Could not open main filter tab: " + formatErrorMessage(assignedFilterNavError, "Unknown error"),
-          true
-        );
-        return;
-      }
-      if (failedCatalogs.length) {
-        setStatus(
-          "Ready. " + state.filteredTickets.length + " tickets shown. Some filters failed to load: " + failedCatalogs.join(", "),
-          true
-        );
-        return;
-      }
       setStatus("Ready. " + state.filteredTickets.length + " tickets shown.", false);
     });
   }
@@ -2280,42 +1886,25 @@
     setBusy(true);
     try {
       const me = await sendToZendeskTab({ action: "getMe" });
-      if (!hasZendeskSessionUser(me)) {
-        const status = Number(me && me.status);
-        if (shouldTreatMeResponseAsLoggedOut(me)) {
-          handleZendeskLoggedOut();
-          return;
-        }
-        if (!state.user) {
-          showLogin();
-          return;
-        }
-        setStatus("Session check temporarily unavailable" + (Number.isFinite(status) ? " (HTTP " + status + ")" : "") + ".", true);
+      if (!me || !me.user) {
+        showLogin();
         return;
       }
       await applySession(me);
     } catch (err) {
-      if (isSessionErrorMessage(err && err.message)) {
-        handleZendeskLoggedOut();
-      } else if (state.user) {
-        setStatus("Refresh failed: " + (err && err.message ? err.message : "Unknown error"), true);
-      } else {
-        showLogin();
-      }
+      showLogin();
     } finally {
       setBusy(false);
     }
   }
 
-  function signout(options) {
-    const manual = !(options && options.manual === false);
-    state.manualZipSignout = manual;
+  function signout() {
+    state.manualZipSignout = true;
     clearFilterCountCaches();
     showLogin();
   }
 
   function wireEvents() {
-    retryCatalogLoadOnSelectFocus();
     if (typeof window !== "undefined") {
       window.addEventListener("focus", () => {
         loadSidePanelContext();
@@ -2359,14 +1948,8 @@
     if (els.docsMenu) {
       els.docsMenu.addEventListener("change", (e) => {
         const target = e && e.target;
-        const value = target && typeof target.value === "string" ? target.value.trim() : "";
-        if (!value) return;
-        if (value === DOCS_MENU_ZD_API_TOGGLE_VALUE) {
-          toggleZdApiContainerVisibility();
-          target.value = "";
-          return;
-        }
-        const url = value;
+        const url = target && typeof target.value === "string" ? target.value.trim() : "";
+        if (!url) return;
         openExternalUrl(url);
         target.value = "";
       });
@@ -2448,9 +2031,9 @@
         e.preventDefault();
         if (!state.user || state.user.id == null) return;
         setBusy(true);
-        runAssignedTicketsQueryWithMainFilter()
-          .then((result) => setAssignedTicketsLoadStatus(result.navError))
-          .catch((err) => setStatus("Tickets failed: " + formatErrorMessage(err, "Unknown error"), true))
+        runAssignedTicketsQuery()
+          .then(() => setStatus("Assigned tickets loaded. " + state.filteredTickets.length + " rows shown.", false))
+          .catch((err) => setStatus("Tickets failed: " + (err && err.message ? err.message : "Unknown error"), true))
           .finally(() => setBusy(false));
       });
     }
@@ -2462,14 +2045,14 @@
         state.selectedByGroupValue = "";
         if (els.viewSelect) els.viewSelect.value = "";
         if (els.groupMemberSelect) els.groupMemberSelect.value = "";
-        clearTicketTable({ loading: true });
+        clearTicketTable();
         setBusy(true);
         if (!val) {
           state.ticketSource = "assigned";
           state.selectedOrgId = "";
-          runAssignedTicketsQuery()
-            .then(() => setAssignedTicketsLoadStatus(null))
-            .catch((err) => setStatus("Tickets failed: " + formatErrorMessage(err, "Unknown error"), true))
+          loadAssignedTickets()
+            .then(() => setStatus("Assigned tickets loaded. " + state.filteredTickets.length + " rows shown.", false))
+            .catch((err) => setStatus("Tickets failed: " + (err && err.message ? err.message : "Unknown error"), true))
             .finally(() => setBusy(false));
           return;
         }
@@ -2489,14 +2072,14 @@
         state.selectedByGroupValue = "";
         if (els.orgSelect) els.orgSelect.value = "";
         if (els.groupMemberSelect) els.groupMemberSelect.value = "";
-        clearTicketTable({ loading: true });
+        clearTicketTable();
         setBusy(true);
         if (!val) {
           state.ticketSource = "assigned";
           state.selectedViewId = "";
-          runAssignedTicketsQuery()
-            .then(() => setAssignedTicketsLoadStatus(null))
-            .catch((err) => setStatus("Tickets failed: " + formatErrorMessage(err, "Unknown error"), true))
+          loadAssignedTickets()
+            .then(() => setStatus("Assigned tickets loaded. " + state.filteredTickets.length + " rows shown.", false))
+            .catch((err) => setStatus("Tickets failed: " + (err && err.message ? err.message : "Unknown error"), true))
             .finally(() => setBusy(false));
           return;
         }
@@ -2519,17 +2102,17 @@
         if (!val) {
           state.ticketSource = "assigned";
           state.selectedByGroupValue = "";
-          clearTicketTable({ loading: true });
+          clearTicketTable();
           setBusy(true);
-          runAssignedTicketsQuery()
-            .then(() => setAssignedTicketsLoadStatus(null))
-            .catch((err) => setStatus("Tickets failed: " + formatErrorMessage(err, "Unknown error"), true))
+          loadAssignedTickets()
+            .then(() => setStatus("Assigned tickets loaded. " + state.filteredTickets.length + " rows shown.", false))
+            .catch((err) => setStatus("Tickets failed: " + (err && err.message ? err.message : "Unknown error"), true))
             .finally(() => setBusy(false));
           return;
         }
         state.ticketSource = "groupMember";
         state.selectedByGroupValue = val;
-        clearTicketTable({ loading: true });
+        clearTicketTable();
         setStatus("Loading tickets…", false);
         setBusy(true);
         const loadPromise = loadTicketsByGroupSelectionValue(val);
@@ -2544,7 +2127,7 @@
       applyFiltersAndRender();
     });
     els.statusFilter.addEventListener("change", () => {
-      state.statusFilter = normalizeStatusValue(els.statusFilter.value) || STATUS_FILTER_ALL_VALUE;
+      state.statusFilter = els.statusFilter.value || "all";
       applyFiltersAndRender();
     });
     els.topAvatar.addEventListener("error", () => {
@@ -2569,7 +2152,6 @@
     document.body.classList.add("zip-logged-out");
     if (els.status) els.status.title = FOOTER_HINT_TOOLTIP;
     await loadSidePanelContext();
-    initializeZdApiContainerVisibility();
     wireEvents();
     populateAppDescription();
     populateApiPathSelect();

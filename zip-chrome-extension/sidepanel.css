@@ -814,12 +814,6 @@ body.zip-workspace #zipAppScreen .section:first-child {
   background: rgba(0, 0, 0, 0.2);
 }
 
-.table-wrap.ticket-table-loading {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%),
-    rgba(0, 0, 0, 0.24);
-}
-
 table { width: 100%; border-collapse: collapse; min-width: 400px; }
 
 th, td {
@@ -828,29 +822,6 @@ th, td {
   text-align: left;
   white-space: nowrap;
   font-size: var(--spectrum-font-size-100);
-}
-
-.ticket-empty-state {
-  color: var(--fg-subtle);
-}
-
-.ticket-empty-state-loading {
-  color: var(--fg-default);
-}
-
-.ticket-loading-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: var(--spectrum-font-weight-medium);
-}
-
-.ticket-inline-spinner {
-  width: 8px;
-  height: 8px;
-  border-width: 1px;
-  border-top-color: var(--fg-subtle);
-  opacity: 0.8;
 }
 
 thead th {
