@@ -139,12 +139,9 @@
     const options = [];
     THEME_COLOR_STOPS.forEach((stop) => {
       THEME_ACCENT_FAMILIES.forEach((accent) => {
-        const isDefaultBlue = accent.id === "blue";
         options.push({
           id: "s2-" + stop.id + "-" + accent.id,
-          label: isDefaultBlue
-            ? ("Spectrum 2 " + stop.label)
-            : ("Spectrum 2 " + stop.label + " " + accent.label),
+          label: stop.label + " X " + accent.label,
           spectrumColorStop: stop.spectrumColorStop,
           themeColorStop: stop.id,
           paletteSet: stop.paletteSet,

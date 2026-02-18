@@ -1704,7 +1704,7 @@ input::placeholder {
 #zipExportCsvBtn {
   inline-size: var(--zip-density-control-height);
   min-inline-size: var(--zip-density-control-height);
-  font: var(--spectrum-font-weight-medium) 9px/1 var(--font-mono);
+  font: var(--spectrum-font-weight-bold) 5px/1 var(--font-system);
   letter-spacing: 0;
   display: inline-flex;
   align-items: center;
@@ -1722,9 +1722,10 @@ input::placeholder {
   padding-block-end: 0;
   margin: 0;
   line-height: 1;
-  font-size: inherit;
+  font-size: 5px;
   font-family: inherit;
-  font-weight: var(--spectrum-font-weight-medium);
+  font-weight: var(--spectrum-font-weight-bold);
+  letter-spacing: 0;
   white-space: nowrap;
 }
 

@@ -79,12 +79,9 @@ function buildThemeOptions() {
   const options = [];
   THEME_COLOR_STOPS.forEach((stop) => {
     THEME_ACCENT_FAMILIES.forEach((accent) => {
-      const isDefaultBlue = accent.id === "blue";
       options.push({
         id: "s2-" + stop.id + "-" + accent.id,
-        label: isDefaultBlue
-          ? ("Spectrum 2 " + stop.label)
-          : ("Spectrum 2 " + stop.label + " " + accent.label),
+        label: stop.label + " X " + accent.label,
         spectrumColorStop: stop.spectrumColorStop,
         themeColorStop: stop.id,
         paletteSet: stop.paletteSet,
@@ -101,6 +98,9 @@ const DEFAULT_THEME_ID = "s2-dark-blue";
 const MENU_CONTEXTS = ["action"];
 const contextMenuState = {
   grouped: true
+};
+const contextMenuBuildState = {
+  inFlight: null
 };
 const updateState = {
   currentVersion: "",
@@ -523,14 +523,14 @@ async function createThemeContextMenuItems(parentId) {
     await createContextMenuItem({
       id: MENU_THEME_PARENT,
       parentId,
-      title: "Spectrum 2 Theme",
+      title: "Appearance",
       contexts: MENU_CONTEXTS
     });
   }
   for (const theme of ZIP_THEME_OPTIONS) {
     const createProps = {
       id: getThemeMenuItemId(theme.id),
-      title: grouped ? theme.label : ("Theme: " + theme.label),
+      title: theme.label,
       type: "radio",
       checked: theme.id === selectedThemeId,
       contexts: MENU_CONTEXTS
@@ -540,62 +540,90 @@ async function createThemeContextMenuItems(parentId) {
   }
 }
 
+async function createGroupedContextMenus(currentSide, shouldShowGetLatest) {
+  await createContextMenuItem({
+    id: MENU_ROOT,
+    title: getZipRootMenuTitle(),
+    contexts: MENU_CONTEXTS
+  });
+  await createContextMenuItem({
+    id: MENU_TOGGLE_SIDE,
+    parentId: MENU_ROOT,
+    title: getToggleMenuItemTitle(currentSide),
+    contexts: MENU_CONTEXTS
+  });
+  await createContextMenuItem({
+    id: MENU_ASK_ERIC,
+    parentId: MENU_ROOT,
+    title: getAskEricMenuTitle(),
+    contexts: MENU_CONTEXTS
+  });
+  if (shouldShowGetLatest) {
+    await createContextMenuItem({
+      id: MENU_GET_LATEST,
+      parentId: MENU_ROOT,
+      title: "Get Latest",
+      contexts: MENU_CONTEXTS
+    });
+  }
+  await createThemeContextMenuItems(MENU_ROOT);
+}
+
+async function createFlatContextMenus(currentSide, shouldShowGetLatest) {
+  await createContextMenuItem({
+    id: MENU_TOGGLE_SIDE,
+    title: getToggleMenuItemTitle(currentSide),
+    contexts: MENU_CONTEXTS
+  });
+  await createContextMenuItem({
+    id: MENU_ASK_ERIC,
+    title: getAskEricMenuTitle(),
+    contexts: MENU_CONTEXTS
+  });
+  if (shouldShowGetLatest) {
+    await createContextMenuItem({
+      id: MENU_GET_LATEST,
+      title: "Get Latest",
+      contexts: MENU_CONTEXTS
+    });
+  }
+  await createThemeContextMenuItems(null);
+}
+
 async function createContextMenus() {
   if (!chrome.contextMenus) return;
-  await new Promise((resolve) => chrome.contextMenus.removeAll(() => resolve()));
-  const currentSide = normalizeSide(sidePanelState.layout) || "unknown";
-  const shouldShowGetLatest = !!updateState.updateAvailable;
-  themeState.selectedId = normalizeThemeId(themeState.selectedId);
-  contextMenuState.grouped = true;
-  try {
-    await createContextMenuItem({
-      id: MENU_ROOT,
-      title: getZipRootMenuTitle(),
-      contexts: MENU_CONTEXTS
-    });
-    await createContextMenuItem({
-      id: MENU_TOGGLE_SIDE,
-      parentId: MENU_ROOT,
-      title: getToggleMenuItemTitle(currentSide),
-      contexts: MENU_CONTEXTS
-    });
-    await createContextMenuItem({
-      id: MENU_ASK_ERIC,
-      parentId: MENU_ROOT,
-      title: getAskEricMenuTitle(),
-      contexts: MENU_CONTEXTS
-    });
-    if (shouldShowGetLatest) {
-      await createContextMenuItem({
-        id: MENU_GET_LATEST,
-        parentId: MENU_ROOT,
-        title: "Get Latest",
-        contexts: MENU_CONTEXTS
-      });
-    }
-    await createThemeContextMenuItems(MENU_ROOT);
-  } catch (err) {
-    // Fallback: if grouped action menus are unsupported, create flat action items.
-    contextMenuState.grouped = false;
+  if (contextMenuBuildState.inFlight) return contextMenuBuildState.inFlight;
+
+  contextMenuBuildState.inFlight = (async () => {
+    const currentSide = normalizeSide(sidePanelState.layout) || "unknown";
+    const shouldShowGetLatest = !!updateState.updateAvailable;
+    themeState.selectedId = normalizeThemeId(themeState.selectedId);
+
     await new Promise((resolve) => chrome.contextMenus.removeAll(() => resolve()));
-    await createContextMenuItem({
-      id: MENU_TOGGLE_SIDE,
-      title: getToggleMenuItemTitle(currentSide),
-      contexts: MENU_CONTEXTS
-    });
-    await createContextMenuItem({
-      id: MENU_ASK_ERIC,
-      title: getAskEricMenuTitle(),
-      contexts: MENU_CONTEXTS
-    });
-    if (shouldShowGetLatest) {
-      await createContextMenuItem({
-        id: MENU_GET_LATEST,
-        title: "Get Latest",
-        contexts: MENU_CONTEXTS
-      });
+    contextMenuState.grouped = true;
+    try {
+      await createGroupedContextMenus(currentSide, shouldShowGetLatest);
+      return;
+    } catch (_) {
+      // Retry grouped once after a clean reset to avoid transient rebuild races.
+      try {
+        await new Promise((resolve) => chrome.contextMenus.removeAll(() => resolve()));
+        contextMenuState.grouped = true;
+        await createGroupedContextMenus(currentSide, shouldShowGetLatest);
+        return;
+      } catch (retryErr) {
+        // Fallback: if grouped action menus are unsupported, create flat action items.
+        contextMenuState.grouped = false;
+        await new Promise((resolve) => chrome.contextMenus.removeAll(() => resolve()));
+        await createFlatContextMenus(currentSide, shouldShowGetLatest);
+      }
     }
-    await createThemeContextMenuItems(null);
+  })();
+
+  try {
+    await contextMenuBuildState.inFlight;
+  } finally {
+    contextMenuBuildState.inFlight = null;
   }
 }
 
