@@ -96,6 +96,7 @@ Uses active logged-in Zendesk browser session to call:
 - Context menu:
   - `⚙ > Side panel position`
   - `Ask Eric`
+  - `Spectrum 2 Theme` (Light, Dark, Darkest, Indigo, Blue)
 - Keyboard shortcut command:
   - `Open or close ZIP side panel` (default `Ctrl+Shift+Y` / `Command+Shift+Y`)
 

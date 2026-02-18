@@ -9,6 +9,8 @@ const MENU_ROOT = "zip_root";
 const MENU_TOGGLE_SIDE = "zip_toggle_side";
 const MENU_ASK_ERIC = "zip_ask_eric";
 const MENU_GET_LATEST = "zip_get_latest";
+const MENU_THEME_PARENT = "zip_theme_parent";
+const MENU_THEME_PREFIX = "zip_theme_";
 const ASK_ERIC_EMAIL = "minnick@adobe.com";
 const OUTLOOK_DEEPLINK_COMPOSE_URL = "https://outlook.office.com/mail/deeplink/compose";
 const GITHUB_OWNER = "HH5HH";
@@ -20,6 +22,82 @@ const CHROME_EXTENSIONS_URL = "chrome://extensions";
 const UPDATE_CHECK_TTL_MS = 10 * 60 * 1000;
 const CHROME_SIDEPANEL_SETTINGS_URL = "chrome://settings/?search=side%20panel";
 const MENU_SIDEPANEL_POSITION_LABEL = "⚙ > Side panel position";
+const THEME_STORAGE_KEY = "zip.ui.theme.v1";
+const THEME_COLOR_STOPS = [
+  { id: "dark", label: "Dark", spectrumColorStop: "dark", paletteSet: "dark" },
+  { id: "light", label: "Light", spectrumColorStop: "light", paletteSet: "light" }
+];
+const THEME_ACCENT_FAMILIES = [
+  { id: "blue", label: "Blue" },
+  { id: "indigo", label: "Indigo" },
+  { id: "purple", label: "Purple" },
+  { id: "fuchsia", label: "Fuchsia" },
+  { id: "magenta", label: "Magenta" },
+  { id: "pink", label: "Pink" },
+  { id: "red", label: "Red" },
+  { id: "orange", label: "Orange" },
+  { id: "yellow", label: "Yellow" },
+  { id: "chartreuse", label: "Chartreuse" },
+  { id: "celery", label: "Celery" },
+  { id: "green", label: "Green" },
+  { id: "seafoam", label: "Seafoam" },
+  { id: "cyan", label: "Cyan" },
+  { id: "turquoise", label: "Turquoise" },
+  { id: "cinnamon", label: "Cinnamon" },
+  { id: "brown", label: "Brown" },
+  { id: "silver", label: "Silver" },
+  { id: "gray", label: "Gray" }
+];
+// Legacy IDs are migrated to supported Spectrum 2 light/dark themes.
+const LEGACY_THEME_ALIASES = {
+  "s2-darkest": "s2-dark-blue",
+  "s2-dark": "s2-dark-blue",
+  "s2-light": "s2-light-blue",
+  "s2-wireframe": "s2-light-blue",
+  "s2-blue": "s2-dark-blue",
+  "s2-indigo": "s2-dark-indigo",
+  "s2-purple": "s2-dark-purple",
+  "s2-fuchsia": "s2-dark-fuchsia",
+  "s2-magenta": "s2-dark-magenta",
+  "s2-pink": "s2-dark-pink",
+  "s2-red": "s2-dark-red",
+  "s2-orange": "s2-dark-orange",
+  "s2-yellow": "s2-dark-yellow",
+  "s2-chartreuse": "s2-dark-chartreuse",
+  "s2-celery": "s2-dark-celery",
+  "s2-green": "s2-dark-green",
+  "s2-seafoam": "s2-dark-seafoam",
+  "s2-cyan": "s2-dark-cyan",
+  "s2-turquoise": "s2-dark-turquoise",
+  "s2-cinnamon": "s2-dark-cinnamon",
+  "s2-brown": "s2-dark-brown",
+  "s2-silver": "s2-dark-silver",
+  "s2-gray": "s2-dark-gray"
+};
+
+function buildThemeOptions() {
+  const options = [];
+  THEME_COLOR_STOPS.forEach((stop) => {
+    THEME_ACCENT_FAMILIES.forEach((accent) => {
+      const isDefaultBlue = accent.id === "blue";
+      options.push({
+        id: "s2-" + stop.id + "-" + accent.id,
+        label: isDefaultBlue
+          ? ("Spectrum 2 " + stop.label)
+          : ("Spectrum 2 " + stop.label + " " + accent.label),
+        spectrumColorStop: stop.spectrumColorStop,
+        themeColorStop: stop.id,
+        paletteSet: stop.paletteSet,
+        accentFamily: accent.id
+      });
+    });
+  });
+  return options;
+}
+
+const ZIP_THEME_OPTIONS = buildThemeOptions();
+const ZIP_THEME_OPTION_BY_ID = Object.fromEntries(ZIP_THEME_OPTIONS.map((option) => [option.id, option]));
+const DEFAULT_THEME_ID = "s2-dark-blue";
 const MENU_CONTEXTS = ["action"];
 const contextMenuState = {
   grouped: true
@@ -32,6 +110,118 @@ const updateState = {
   checkError: "",
   inFlight: null
 };
+const themeState = {
+  selectedId: DEFAULT_THEME_ID,
+  loaded: false,
+  inFlight: null
+};
+
+function getThemeOption(themeId) {
+  const normalized = String(themeId || "").trim().toLowerCase();
+  return ZIP_THEME_OPTION_BY_ID[normalized] || null;
+}
+
+function normalizeThemeId(themeId) {
+  const raw = String(themeId || "").trim().toLowerCase();
+  let mapped = LEGACY_THEME_ALIASES[raw] || raw;
+  if (mapped.startsWith("s2-darkest-")) {
+    mapped = "s2-dark-" + mapped.slice("s2-darkest-".length);
+  }
+  if (mapped.startsWith("s2-wireframe-")) {
+    mapped = "s2-light-" + mapped.slice("s2-wireframe-".length);
+  }
+  return getThemeOption(mapped) ? mapped : DEFAULT_THEME_ID;
+}
+
+function getThemeMenuItemId(themeId) {
+  return MENU_THEME_PREFIX + String(themeId || "").trim().toLowerCase();
+}
+
+function getThemeIdFromMenuItemId(menuItemId) {
+  const raw = String(menuItemId || "").trim().toLowerCase();
+  if (!raw || !raw.startsWith(MENU_THEME_PREFIX)) return "";
+  const candidateId = raw.slice(MENU_THEME_PREFIX.length);
+  if (
+    !getThemeOption(candidateId)
+    && !LEGACY_THEME_ALIASES[candidateId]
+    && !candidateId.startsWith("s2-wireframe-")
+    && !candidateId.startsWith("s2-darkest-")
+  ) return "";
+  return normalizeThemeId(candidateId);
+}
+
+function getThemeStatePayload() {
+  const selectedId = normalizeThemeId(themeState.selectedId);
+  const selectedTheme = getThemeOption(selectedId) || getThemeOption(DEFAULT_THEME_ID);
+  return {
+    themeId: selectedTheme ? selectedTheme.id : DEFAULT_THEME_ID,
+    theme: selectedTheme || ZIP_THEME_OPTIONS[0],
+    options: ZIP_THEME_OPTIONS.map((option) => ({ ...option }))
+  };
+}
+
+async function readThemeIdFromStorage() {
+  if (!chrome.storage || !chrome.storage.local) {
+    return DEFAULT_THEME_ID;
+  }
+  try {
+    const stored = await chrome.storage.local.get(THEME_STORAGE_KEY);
+    return normalizeThemeId(stored && stored[THEME_STORAGE_KEY]);
+  } catch (_) {
+    return DEFAULT_THEME_ID;
+  }
+}
+
+async function persistThemeId(themeId) {
+  if (!chrome.storage || !chrome.storage.local) return;
+  try {
+    await chrome.storage.local.set({ [THEME_STORAGE_KEY]: normalizeThemeId(themeId) });
+  } catch (_) {}
+}
+
+async function ensureThemeStateLoaded() {
+  if (themeState.loaded) return themeState.selectedId;
+  if (themeState.inFlight) return themeState.inFlight;
+  themeState.inFlight = (async () => {
+    const storedId = await readThemeIdFromStorage();
+    themeState.selectedId = normalizeThemeId(storedId);
+    themeState.loaded = true;
+    themeState.inFlight = null;
+    return themeState.selectedId;
+  })().catch((err) => {
+    themeState.inFlight = null;
+    throw err;
+  });
+  return themeState.inFlight;
+}
+
+function notifyThemeChanged() {
+  const payload = getThemeStatePayload();
+  try {
+    chrome.runtime.sendMessage({ type: "ZIP_THEME_CHANGED", ...payload }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch (_) {}
+}
+
+async function setTheme(themeId, options = {}) {
+  const nextThemeId = normalizeThemeId(themeId);
+  const prevThemeId = normalizeThemeId(themeState.selectedId);
+  const changed = nextThemeId !== prevThemeId;
+  themeState.selectedId = nextThemeId;
+  themeState.loaded = true;
+  if (options.persist !== false) {
+    await persistThemeId(nextThemeId);
+  }
+  if (options.refreshMenus !== false) {
+    await createContextMenus();
+    await updateToggleMenuTitle(sidePanelState.layout);
+  }
+  if (changed && options.broadcast !== false) {
+    notifyThemeChanged();
+  }
+  return { ...getThemeStatePayload(), changed };
+}
 
 function getZipBuildVersion() {
   try {
@@ -326,11 +516,36 @@ function wireLifecycleEvents() {
   }
 }
 
+async function createThemeContextMenuItems(parentId) {
+  const selectedThemeId = normalizeThemeId(themeState.selectedId);
+  const grouped = !!parentId;
+  if (grouped) {
+    await createContextMenuItem({
+      id: MENU_THEME_PARENT,
+      parentId,
+      title: "Spectrum 2 Theme",
+      contexts: MENU_CONTEXTS
+    });
+  }
+  for (const theme of ZIP_THEME_OPTIONS) {
+    const createProps = {
+      id: getThemeMenuItemId(theme.id),
+      title: grouped ? theme.label : ("Theme: " + theme.label),
+      type: "radio",
+      checked: theme.id === selectedThemeId,
+      contexts: MENU_CONTEXTS
+    };
+    if (grouped) createProps.parentId = MENU_THEME_PARENT;
+    await createContextMenuItem(createProps);
+  }
+}
+
 async function createContextMenus() {
   if (!chrome.contextMenus) return;
   await new Promise((resolve) => chrome.contextMenus.removeAll(() => resolve()));
   const currentSide = normalizeSide(sidePanelState.layout) || "unknown";
   const shouldShowGetLatest = !!updateState.updateAvailable;
+  themeState.selectedId = normalizeThemeId(themeState.selectedId);
   contextMenuState.grouped = true;
   try {
     await createContextMenuItem({
@@ -358,6 +573,7 @@ async function createContextMenus() {
         contexts: MENU_CONTEXTS
       });
     }
+    await createThemeContextMenuItems(MENU_ROOT);
   } catch (err) {
     // Fallback: if grouped action menus are unsupported, create flat action items.
     contextMenuState.grouped = false;
@@ -379,6 +595,7 @@ async function createContextMenus() {
         contexts: MENU_CONTEXTS
       });
     }
+    await createThemeContextMenuItems(null);
   }
 }
 
@@ -659,6 +876,10 @@ async function bootstrap() {
   await configureSidePanelDefaults();
   await refreshLayoutState();
   await syncAllTabOptions();
+  await ensureThemeStateLoaded().catch(() => {
+    themeState.selectedId = DEFAULT_THEME_ID;
+    themeState.loaded = true;
+  });
   await refreshUpdateState({ force: true }).catch(() => {});
   await createContextMenus();
   await updateToggleMenuTitle(sidePanelState.layout);
@@ -696,6 +917,11 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
+  const selectedThemeId = getThemeIdFromMenuItemId(info.menuItemId);
+  if (selectedThemeId) {
+    setTheme(selectedThemeId, { persist: true, refreshMenus: true, broadcast: true }).catch(() => {});
+    return;
+  }
   if (info.menuItemId === MENU_TOGGLE_SIDE) {
     toggleZipSidePanelSide(tab).catch(() => {});
     return;
@@ -755,9 +981,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.type === "ZIP_GET_THEME") {
+    ensureThemeStateLoaded()
+      .then(() => sendResponse(getThemeStatePayload()))
+      .catch(() => sendResponse(getThemeStatePayload()));
+    return true;
+  }
+  if (msg.type === "ZIP_SET_THEME") {
+    setTheme(msg.themeId, { persist: true, refreshMenus: true, broadcast: true })
+      .then((payload) => sendResponse({ ok: true, ...payload }))
+      .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : "Unable to set theme" }));
+    return true;
+  }
   if (msg.type === "ZIP_CONTEXT_MENU_ACTION") {
     const action = (msg.action || "").trim();
     (async () => {
+      if (action.startsWith("theme:")) {
+        const requestedTheme = action.slice("theme:".length);
+        return setTheme(requestedTheme, { persist: true, refreshMenus: true, broadcast: true });
+      }
       if (action === "toggleSide") return toggleZipSidePanelSide(undefined);
       if (action === "askEric") {
         const tab = await getActiveTab();

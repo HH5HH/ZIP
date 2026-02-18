@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ZIP</title>
   <link rel="stylesheet" href="sidepanel.css" />
 </head>
-  <body class="spectrum spectrum--medium spectrum--darkest">
+  <body class="spectrum spectrum--medium spectrum--dark">
   <header class="topbar">
     <div class="brand">
       <div class="top-avatar-wrap" id="zipTopAvatarWrap" title="Not logged in">
@@ -14,37 +14,52 @@
         <span id="zipTopAvatarFallback" class="top-avatar-fallback">?</span>
       </div>
       <div id="zipTopIdentity" class="top-identity-wrap">
-        <div id="zipTopIdentityName" class="top-identity-name">Not logged in</div>
+        <a id="zipTopIdentityName" class="top-identity-name" href="#">Not logged in</a>
         <div id="zipTopIdentityTz" class="top-identity-tz"></div>
-        <a id="zipTopIdentityEmail" class="top-identity-email" href="#"> </a>
+        <div id="zipTopIdentityMeta" class="top-identity-meta"></div>
       </div>
     </div>
     <div class="actions">
-      <select id="zipDocsMenu" class="docs-menu" title="Open Adobe Pass resources" aria-label="Open Adobe Pass resources">
+      <select id="zipDocsMenu" class="docs-menu zip-select-control spectrum-Textfield-input" title="Open Adobe Pass resources" aria-label="Open Adobe Pass resources">
         <option value=""></option>
         <option value="https://status.adobe.com/products/503478">status.adobe</option>
         <option value="https://experienceleague.adobe.com/en/docs/pass">pass docs</option>
         <option value="https://developer.adobe.com/adobe-pass/api/dcr_api/interactive/">DCR v2</option>
-        <option value="https://developer.adobe.com/adobe-pass/api/rest_api_v2/interactive/">REST v2</option>
-        <option value="https://experienceleague.adobe.com/en/docs/pass/authentication/integration-guide-programmers/features-premium/esm/entitlement-service-monitoring-api">ESM v3</option>
         <option value="https://tve.zendesk.com/hc/en-us/articles/33912526308372-Adobe-Pass-Authentication-Degradation-API-v3">Degradation v3</option>
+        <option value="https://experienceleague.adobe.com/en/docs/pass/authentication/integration-guide-programmers/features-premium/esm/entitlement-service-monitoring-api">ESM v3</option>
+        <option value="https://developer.adobe.com/adobe-pass/api/rest_api_v2/interactive/">REST v2</option>
         <option value="" disabled>────────</option>
         <option value="https://sp.auth-staging.adobe.com/apitest/api.html">apitest</option>
         <option value="https://tve.zendesk.com/hc/en-us">pt hub</option>
-        <option value="" disabled>────────</option>
-        <option id="zipDocsApiToggleOption" value="__toggle_zd_api__">GET zd api</option>
       </select>
-      <button id="zipSignoutBtn" class="btn">Sign out</button>
+      <button id="zipSignoutBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS">
+        <span class="spectrum-Button-label">Sign out</span>
+      </button>
     </div>
   </header>
   <div class="body">
     <div id="zipLoginScreen" class="login-wrap">
       <div class="login-card">
         <div class="login-card-right">
-          <img class="login-hero-image" src="assets/brand/splash/zeek-info-peek-master-splash-1920x1080.png" alt="ZIP splash art" />
+          <div class="login-hero-build" role="img" aria-label="ZIP build version">
+            <svg class="zip-logo-svg login-hero-build-icon" viewBox="0 0 128 128" role="img" aria-label="ZIP logo">
+              <circle class="zip-logo-aura" cx="64" cy="64" r="62"></circle>
+              <circle class="zip-logo-circle" cx="64" cy="64" r="56"></circle>
+              <circle class="zip-logo-gloss" cx="64" cy="64" r="56"></circle>
+              <circle class="zip-logo-ring" cx="64" cy="64" r="56"></circle>
+              <path class="zip-logo-z" d="M39 36H90L40 92H91"></path>
+            </svg>
+            <div class="login-hero-build-pill">
+              <span class="login-hero-build-label">ZIP</span>
+              <span class="login-hero-build-sep" aria-hidden="true">|</span>
+              <span class="login-hero-build-version">v<span id="zipLoginAppVersion" class="app-version-num">—</span></span>
+            </div>
+          </div>
         </div>
         <div class="login-card-left">
-          <button id="zipLoginBtn" class="btn primary">Login with Zendesk</button>
+          <button id="zipLoginBtn" class="btn primary spectrum-Button spectrum-Button--fill spectrum-Button--accent spectrum-Button--sizeM">
+            <span class="spectrum-Button-label">Login with Zendesk</span>
+          </button>
         </div>
         <blockquote id="zipAppDescription" class="login-card-description" cite="">
           <!-- Filled from manifest description by sidepanel.js -->
@@ -61,43 +76,43 @@
           </div>
           <div class="ticket-section-filters">
             <div class="ticket-section-by-group">
-              <select id="zipGroupMemberSelect" class="org-select group-member-select" aria-label="By Group or Agent">
+              <select id="zipGroupMemberSelect" class="org-select group-member-select zip-select-control spectrum-Textfield-input" aria-label="By Group or Agent">
                 <option value="">By Group / Agent</option>
               </select>
             </div>
             <div class="ticket-section-by-view">
-              <select id="zipViewSelect" class="org-select view-select" aria-label="By View">
+              <select id="zipViewSelect" class="org-select view-select zip-select-control spectrum-Textfield-input" aria-label="By View">
                 <option value="">By View</option>
               </select>
             </div>
             <div class="ticket-section-by-org">
-              <select id="zipOrgSelect" class="org-select org-count-select" aria-label="By Organization">
+              <select id="zipOrgSelect" class="org-select org-count-select zip-select-control spectrum-Textfield-input" aria-label="By Organization">
                 <option value="">By Organization</option>
               </select>
             </div>
           </div>
         </div>
         <div id="zipTicketTableWrap" class="table-wrap">
-          <table>
-            <thead><tr id="zipTicketHead"></tr></thead>
-            <tbody id="zipTicketBody"></tbody>
+          <table class="spectrum-Table spectrum-Table--sizeS">
+            <thead class="spectrum-Table-head"><tr id="zipTicketHead" class="spectrum-Table-row"></tr></thead>
+            <tbody id="zipTicketBody" class="spectrum-Table-body"></tbody>
           </table>
         </div>
         <div class="ticket-table-footer control-row">
-          <input id="zipTicketSearch" type="text" placeholder="Search tickets" />
-          <select id="zipStatusFilter">
+          <input id="zipTicketSearch" class="zip-text-input spectrum-Textfield-input" type="text" placeholder="Search tickets" />
+          <select id="zipStatusFilter" class="zip-select-control spectrum-Textfield-input">
             <option value="all">All Statuses</option>
           </select>
-          <button id="zipReloadTicketsBtn" class="btn icon-btn icon-only" title="Refresh" aria-label="Refresh tickets">
+          <button id="zipReloadTicketsBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Refresh" aria-label="Refresh tickets">
             <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 5a7 7 0 1 1-6.93 8h2.03a5 5 0 1 0 1.24-4.1L11 11H4V4l2.81 2.81A8.96 8.96 0 0 1 12 5z" fill="currentColor"></path>
             </svg>
           </button>
-          <button id="zipExportCsvBtn" class="btn icon-btn" title="Export current table as CSV" aria-label="Export current ticket table as CSV" disabled>
+          <button id="zipExportCsvBtn" class="btn icon-btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Export current table as CSV" aria-label="Export current ticket table as CSV" disabled>
             <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 3v10.17l3.59-3.58L17 11l-5 5-5-5 1.41-1.41L11 13.17V3h1zm-7 14h14v2H5v-2z" fill="currentColor"></path>
             </svg>
-            <span class="icon-btn-label">CSV</span>
+            <span class="icon-btn-label spectrum-Button-label">CSV</span>
           </button>
         </div>
       </section>
@@ -105,20 +120,22 @@
         <h3>ZD API – GET</h3>
         <div class="api-form">
           <div class="control-row">
-            <select id="zipApiPathSelect"></select>
+            <select id="zipApiPathSelect" class="zip-select-control spectrum-Textfield-input"></select>
           </div>
           <div id="zipApiParams" class="api-form"></div>
           <div class="control-row api-run-row">
-            <button id="zipApiRunBtn" class="btn primary">Run GET</button>
+            <button id="zipApiRunBtn" class="btn primary spectrum-Button spectrum-Button--fill spectrum-Button--accent spectrum-Button--sizeS">
+              <span class="spectrum-Button-label">Run GET</span>
+            </button>
           </div>
         </div>
       </section>
       <section id="zipApiResultsSection" class="section hidden">
         <h3 id="zipRawTitle">GET /api/v2/users/me</h3>
         <div class="raw-table-wrap" id="zipRawTableWrap">
-          <table>
-            <thead><tr id="zipRawThead"></tr></thead>
-            <tbody id="zipRawBody"></tbody>
+          <table class="spectrum-Table spectrum-Table--sizeS">
+            <thead class="spectrum-Table-head"><tr id="zipRawThead" class="spectrum-Table-row"></tr></thead>
+            <tbody id="zipRawBody" class="spectrum-Table-body"></tbody>
           </table>
         </div>
         <div class="raw-footer">
@@ -130,7 +147,13 @@
   <footer class="zip-footer" id="zipFooter">
     <span id="zipStatus" class="zip-footer-status">Initializing...</span>
     <a href="#" id="zipAppVersionLink" class="zip-footer-version zip-footer-brand-refresh" title="Refresh ZIP">
-      <img class="zip-footer-brand-mark" src="assets/brand/source/zeek-info-peek-master-icon.svg" alt="" aria-hidden="true" />
+      <svg class="zip-logo-svg zip-footer-brand-mark" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
+        <circle class="zip-logo-aura" cx="64" cy="64" r="62"></circle>
+        <circle class="zip-logo-circle" cx="64" cy="64" r="56"></circle>
+        <circle class="zip-logo-gloss" cx="64" cy="64" r="56"></circle>
+        <circle class="zip-logo-ring" cx="64" cy="64" r="56"></circle>
+        <path class="zip-logo-z" d="M39 36H90L40 92H91"></path>
+      </svg>
       <span class="zip-footer-brand-sep" aria-hidden="true">|</span>
       <span class="zip-footer-brand-subtitle">ZEEK INFO PEEK</span>
       <span class="zip-footer-brand-sep" aria-hidden="true">|</span>
@@ -139,13 +162,24 @@
   </footer>
   <div id="zipContextMenu" class="zip-context-menu hidden" role="menu" aria-label="ZIP context menu">
     <div class="zip-context-menu-root" role="presentation">
-      <img class="zip-context-menu-logo" src="assets/brand/source/zeek-info-peek-master-icon.svg" alt="" aria-hidden="true" />
+      <svg class="zip-logo-svg zip-context-menu-logo" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
+        <circle class="zip-logo-aura" cx="64" cy="64" r="62"></circle>
+        <circle class="zip-logo-circle" cx="64" cy="64" r="56"></circle>
+        <circle class="zip-logo-gloss" cx="64" cy="64" r="56"></circle>
+        <circle class="zip-logo-ring" cx="64" cy="64" r="56"></circle>
+        <path class="zip-logo-z" d="M39 36H90L40 92H91"></path>
+      </svg>
       <span id="zipContextMenuBuild" class="zip-context-menu-build">ZIP</span>
     </div>
-    <button id="zipContextMenuToggleSide" class="zip-context-menu-item" type="button" role="menuitem">⚙ > Side panel position</button>
+    <div class="zip-context-menu-divider" role="separator"></div>
+    <div id="zipContextMenuThemeLabel" class="zip-context-menu-section-title">Appearance : Dark x Blue</div>
+    <div id="zipContextMenuThemePicker" class="zip-context-menu-theme-picker" role="group" aria-labelledby="zipContextMenuThemeLabel"></div>
+    <div class="zip-context-menu-divider" role="separator"></div>
     <button id="zipContextMenuAskEric" class="zip-context-menu-item" type="button" role="menuitem">Ask Eric</button>
-    <button id="zipContextMenuGetLatest" class="zip-context-menu-item hidden" type="button" role="menuitem">Get Latest</button>
+    <button id="zipContextMenuToggleSide" class="zip-context-menu-item" type="button" role="menuitem">⚙ > Side panel position</button>
+    <button id="zipContextMenuToggleZdApi" class="zip-context-menu-item" type="button" role="menuitem">Show ZD API</button>
   </div>
+  <div id="zipContextMenuThemeFlyout" class="zip-context-menu-theme-flyout hidden" role="menu" aria-label="Spectrum 2 accent colors"></div>
   <script src="paths.js"></script>
   <script src="sidepanel.js"></script>
 </body>

@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "ZIP",
-  "version": "1.1.1",
+  "version": "1.1.64",
   "description": "ZIP = Zeek Info Peek — ZIP into INFO from the Zendesk API. Mission: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. Don't get stuck wasting cycles on blockers. If ZIP can make your job faster, better, or more enjoyable, please share feedback.",
   "permissions": [
     "sidePanel",
     "tabs",
-    "contextMenus"
+    "contextMenus",
+    "storage"
   ],
   "host_permissions": [
     "https://adobeprimetime.zendesk.com/*"

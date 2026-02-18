@@ -7,9 +7,10 @@
   const LOGIN_URL = BASE + "/auth/v3/signin?return_to=" + encodeURIComponent(ASSIGNED_FILTER_URL);
   const TICKET_URL_PREFIX = BASE + "/agent/tickets/";
   const SHOW_TICKET_API_PATH = "/api/v2/tickets/{ticket_id}";
+  const OUTLOOK_DEEPLINK_COMPOSE_URL = "https://outlook.office.com/mail/deeplink/compose";
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
-  const DEFAULT_FOOTER_HINT = "Tip: Right-click ZIP panel for ZIP menu actions";
-  const FOOTER_HINT_TOOLTIP = "Right-click anywhere in ZIP to open the ZIP context menu.";
+  const DEFAULT_FOOTER_HINT = "Tip: Click your avatar for ZIP menu actions";
+  const FOOTER_HINT_TOOLTIP = "Click your avatar to open the ZIP context menu.";
 
   const TICKET_COLUMNS = [
     { key: "id", label: "Ticket", type: "number" },
@@ -61,7 +62,10 @@
     ticketTableLoading: false,
     showZdApiContainers: false,
     sidePanelLayout: "unknown",
-    zendeskTabId: null
+    zendeskTabId: null,
+    themeId: "s2-dark-blue",
+    themeOptions: [],
+    themeFlyoutStop: ""
   };
 
   let authCheckIntervalId = null;
@@ -78,9 +82,170 @@
   const STATUS_FILTER_ALL_LABEL = "All Statuses";
   const PREFERRED_STATUS_ORDER = ["new", "open", "pending", "hold", "solved", "closed"];
   const ZD_API_VISIBILITY_STORAGE_KEY = "zip.ui.showZdApiContainers.v1";
-  const DOCS_MENU_ZD_API_TOGGLE_VALUE = "__toggle_zd_api__";
-  const DOCS_MENU_ZD_API_SHOW_LABEL = "GET zd api";
-  const DOCS_MENU_ZD_API_HIDE_LABEL = "HIDE zd api";
+  const CONTEXT_MENU_ZD_API_SHOW_LABEL = "Show ZD API";
+  const CONTEXT_MENU_ZD_API_HIDE_LABEL = "Hide ZD API";
+  const THEME_COLOR_STOPS = [
+    { id: "dark", label: "Dark", spectrumColorStop: "dark", paletteSet: "dark" },
+    { id: "light", label: "Light", spectrumColorStop: "light", paletteSet: "light" }
+  ];
+  const THEME_ACCENT_FAMILIES = [
+    { id: "blue", label: "Blue" },
+    { id: "indigo", label: "Indigo" },
+    { id: "purple", label: "Purple" },
+    { id: "fuchsia", label: "Fuchsia" },
+    { id: "magenta", label: "Magenta" },
+    { id: "pink", label: "Pink" },
+    { id: "red", label: "Red" },
+    { id: "orange", label: "Orange" },
+    { id: "yellow", label: "Yellow" },
+    { id: "chartreuse", label: "Chartreuse" },
+    { id: "celery", label: "Celery" },
+    { id: "green", label: "Green" },
+    { id: "seafoam", label: "Seafoam" },
+    { id: "cyan", label: "Cyan" },
+    { id: "turquoise", label: "Turquoise" },
+    { id: "cinnamon", label: "Cinnamon" },
+    { id: "brown", label: "Brown" },
+    { id: "silver", label: "Silver" },
+    { id: "gray", label: "Gray" }
+  ];
+  // Legacy IDs are migrated to supported Spectrum 2 light/dark themes.
+  const LEGACY_THEME_ALIASES = {
+    "s2-darkest": "s2-dark-blue",
+    "s2-dark": "s2-dark-blue",
+    "s2-light": "s2-light-blue",
+    "s2-wireframe": "s2-light-blue",
+    "s2-blue": "s2-dark-blue",
+    "s2-indigo": "s2-dark-indigo",
+    "s2-purple": "s2-dark-purple",
+    "s2-fuchsia": "s2-dark-fuchsia",
+    "s2-magenta": "s2-dark-magenta",
+    "s2-pink": "s2-dark-pink",
+    "s2-red": "s2-dark-red",
+    "s2-orange": "s2-dark-orange",
+    "s2-yellow": "s2-dark-yellow",
+    "s2-chartreuse": "s2-dark-chartreuse",
+    "s2-celery": "s2-dark-celery",
+    "s2-green": "s2-dark-green",
+    "s2-seafoam": "s2-dark-seafoam",
+    "s2-cyan": "s2-dark-cyan",
+    "s2-turquoise": "s2-dark-turquoise",
+    "s2-cinnamon": "s2-dark-cinnamon",
+    "s2-brown": "s2-dark-brown",
+    "s2-silver": "s2-dark-silver",
+    "s2-gray": "s2-dark-gray"
+  };
+
+  function buildThemeOptions() {
+    const options = [];
+    THEME_COLOR_STOPS.forEach((stop) => {
+      THEME_ACCENT_FAMILIES.forEach((accent) => {
+        const isDefaultBlue = accent.id === "blue";
+        options.push({
+          id: "s2-" + stop.id + "-" + accent.id,
+          label: isDefaultBlue
+            ? ("Spectrum 2 " + stop.label)
+            : ("Spectrum 2 " + stop.label + " " + accent.label),
+          spectrumColorStop: stop.spectrumColorStop,
+          themeColorStop: stop.id,
+          paletteSet: stop.paletteSet,
+          accentFamily: accent.id
+        });
+      });
+    });
+    return options;
+  }
+
+  const FALLBACK_THEME_OPTIONS = buildThemeOptions();
+  const FALLBACK_THEME_OPTION_BY_ID = Object.fromEntries(FALLBACK_THEME_OPTIONS.map((option) => [option.id, option]));
+  const DEFAULT_THEME_ID = "s2-dark-blue";
+  const SPECTRUM_COLORSTOP_CLASS_BY_NAME = {
+    light: "spectrum--light",
+    dark: "spectrum--dark"
+  };
+  const THEME_TONE_BY_COLOR_STOP = {
+    dark: { primary: "800", hover: "700", down: "600", link: "900", focus: "800" },
+    light: { primary: "900", hover: "1000", down: "1000", link: "900", focus: "800" }
+  };
+  const ACCENT_PALETTE_RGB = {
+    blue: {
+      light: { "500": "142, 185, 252", "600": "114, 158, 253", "700": "93, 137, 255", "800": "75, 117, 255", "900": "59, 99, 251", "1000": "39, 77, 234", "1100": "29, 62, 207" },
+      dark: { "500": "26, 58, 195", "600": "37, 73, 229", "700": "52, 91, 248", "800": "64, 105, 253", "900": "86, 129, 255", "1000": "105, 149, 254", "1100": "124, 169, 252" }
+    },
+    indigo: {
+      light: { "500": "167, 178, 255", "600": "145, 151, 254", "700": "132, 128, 254", "800": "122, 106, 253", "900": "113, 85, 250", "1000": "99, 56, 238", "1100": "84, 36, 219" },
+      dark: { "500": "79, 30, 209", "600": "95, 52, 235", "700": "109, 75, 248", "800": "116, 91, 252", "900": "128, 119, 254", "1000": "139, 141, 254", "1100": "153, 161, 255" }
+    },
+    purple: {
+      light: { "500": "208, 167, 243", "600": "191, 138, 238", "700": "178, 114, 235", "800": "166, 92, 231", "900": "154, 71, 226", "1000": "134, 40, 217", "1100": "115, 13, 204" },
+      dark: { "500": "107, 6, 195", "600": "130, 34, 215", "700": "148, 62, 224", "800": "157, 78, 228", "900": "173, 105, 233", "1000": "186, 127, 237", "1100": "197, 149, 240" }
+    },
+    fuchsia: {
+      light: { "500": "243, 147, 255", "600": "236, 105, 255", "700": "223, 77, 245", "800": "200, 68, 220", "900": "181, 57, 200", "1000": "156, 40, 175", "1100": "135, 27, 154" },
+      dark: { "500": "127, 23, 146", "600": "151, 38, 170", "700": "173, 51, 192", "800": "186, 60, 206", "900": "213, 73, 235", "1000": "232, 91, 253", "1100": "240, 122, 255" }
+    },
+    magenta: {
+      light: { "500": "255, 152, 187", "600": "255, 112, 159", "700": "255, 72, 133", "800": "240, 45, 110", "900": "217, 35, 97", "1000": "186, 22, 80", "1100": "163, 5, 62" },
+      dark: { "500": "152, 7, 60", "600": "181, 19, 76", "700": "207, 31, 92", "800": "224, 38, 101", "900": "255, 51, 119", "1000": "255, 96, 149", "1100": "255, 128, 171" }
+    },
+    pink: {
+      light: { "500": "255, 148, 219", "600": "255, 103, 204", "700": "242, 76, 184", "800": "228, 52, 163", "900": "206, 42, 146", "1000": "176, 31, 123", "1100": "152, 22, 104" },
+      dark: { "500": "143, 18, 97", "600": "171, 29, 119", "700": "196, 39, 138", "800": "213, 45, 151", "900": "236, 67, 175", "1000": "251, 90, 196", "1100": "255, 122, 210" }
+    },
+    red: {
+      light: { "500": "255, 157, 145", "600": "255, 118, 101", "700": "255, 81, 61", "800": "240, 56, 35", "900": "215, 50, 32", "1000": "183, 40, 24", "1100": "156, 33, 19" },
+      dark: { "500": "147, 31, 17", "600": "177, 38, 23", "700": "205, 46, 29", "800": "223, 52, 34", "900": "252, 67, 46", "1000": "255, 103, 86", "1100": "255, 134, 120" }
+    },
+    orange: {
+      light: { "500": "255, 162, 19", "600": "252, 125, 0", "700": "232, 106, 0", "800": "212, 91, 0", "900": "194, 78, 0", "1000": "167, 62, 0", "1100": "144, 51, 0" },
+      dark: { "500": "135, 47, 0", "600": "162, 59, 0", "700": "185, 73, 0", "800": "199, 82, 0", "900": "224, 100, 0", "1000": "243, 117, 0", "1100": "255, 137, 0" }
+    },
+    yellow: {
+      light: { "500": "230, 175, 0", "600": "210, 149, 0", "700": "193, 131, 0", "800": "175, 116, 0", "900": "158, 102, 0", "1000": "134, 85, 0", "1100": "114, 72, 0" },
+      dark: { "500": "107, 67, 0", "600": "130, 82, 0", "700": "151, 97, 0", "800": "164, 106, 0", "900": "186, 124, 0", "1000": "203, 141, 0", "1100": "218, 159, 0" }
+    },
+    chartreuse: {
+      light: { "500": "163, 196, 0", "600": "143, 172, 0", "700": "128, 153, 0", "800": "114, 137, 0", "900": "102, 122, 0", "1000": "86, 103, 0", "1100": "73, 87, 0" },
+      dark: { "500": "68, 82, 0", "600": "83, 100, 0", "700": "97, 116, 0", "800": "106, 127, 0", "900": "122, 147, 0", "1000": "136, 164, 0", "1100": "151, 181, 0" }
+    },
+    celery: {
+      light: { "500": "110, 206, 42", "600": "93, 180, 31", "700": "82, 161, 25", "800": "72, 144, 20", "900": "64, 129, 17", "1000": "52, 109, 12", "1100": "44, 92, 9" },
+      dark: { "500": "41, 86, 8", "600": "50, 105, 11", "700": "60, 122, 15", "800": "66, 134, 18", "900": "78, 154, 23", "1000": "88, 172, 28", "1100": "100, 190, 35" }
+    },
+    green: {
+      light: { "500": "43, 209, 125", "600": "18, 184, 103", "700": "11, 164, 93", "800": "7, 147, 85", "900": "5, 131, 78", "1000": "3, 110, 69", "1100": "2, 93, 60" },
+      dark: { "500": "2, 87, 58", "600": "3, 106, 67", "700": "4, 124, 75", "800": "6, 136, 80", "900": "9, 157, 89", "1000": "14, 175, 98", "1100": "24, 193, 110" }
+    },
+    seafoam: {
+      light: { "500": "16, 207, 169", "600": "13, 181, 149", "700": "11, 162, 134", "800": "9, 144, 120", "900": "7, 129, 109", "1000": "5, 108, 92", "1100": "3, 92, 80" },
+      dark: { "500": "2, 86, 75", "600": "4, 105, 89", "700": "6, 122, 103", "800": "8, 134, 112", "900": "10, 154, 128", "1000": "12, 173, 142", "1100": "14, 190, 156" }
+    },
+    cyan: {
+      light: { "500": "92, 192, 255", "600": "48, 167, 254", "700": "29, 149, 231", "800": "18, 134, 205", "900": "11, 120, 179", "1000": "4, 102, 145", "1100": "0, 87, 121" },
+      dark: { "500": "0, 82, 113", "600": "3, 99, 140", "700": "8, 115, 168", "800": "13, 125, 186", "900": "24, 142, 220", "1000": "38, 159, 244", "1100": "63, 177, 255" }
+    },
+    turquoise: {
+      light: { "500": "39, 202, 216", "600": "15, 177, 192", "700": "12, 158, 171", "800": "10, 141, 153", "900": "8, 126, 137", "1000": "5, 107, 116", "1100": "3, 90, 98" },
+      dark: { "500": "3, 84, 92", "600": "5, 103, 112", "700": "7, 120, 131", "800": "9, 131, 142", "900": "11, 151, 164", "1000": "13, 168, 182", "1100": "16, 186, 202" }
+    },
+    cinnamon: {
+      light: { "500": "229, 170, 136", "600": "212, 145, 108", "700": "198, 126, 88", "800": "184, 109, 70", "900": "170, 94, 56", "1000": "147, 77, 43", "1100": "128, 62, 32" },
+      dark: { "500": "122, 57, 28", "600": "143, 74, 40", "700": "163, 88, 52", "800": "176, 98, 59", "900": "192, 119, 80", "1000": "206, 136, 99", "1100": "220, 154, 118" }
+    },
+    brown: {
+      light: { "500": "214, 177, 123", "600": "190, 155, 104", "700": "171, 138, 90", "800": "154, 123, 77", "900": "139, 109, 66", "1000": "119, 91, 50", "1100": "103, 76, 35" },
+      dark: { "500": "98, 71, 30", "600": "115, 88, 47", "700": "132, 104, 61", "800": "143, 114, 69", "900": "163, 132, 84", "1000": "181, 147, 98", "1100": "199, 163, 112" }
+    },
+    silver: {
+      light: { "500": "183, 183, 183", "600": "160, 160, 160", "700": "143, 143, 143", "800": "128, 128, 128", "900": "114, 114, 114", "1000": "96, 96, 96", "1100": "81, 81, 81" },
+      dark: { "500": "76, 76, 76", "600": "92, 92, 92", "700": "108, 108, 108", "800": "118, 118, 118", "900": "137, 137, 137", "1000": "152, 152, 152", "1100": "169, 169, 169" }
+    },
+    gray: {
+      light: { "500": "143, 143, 143", "600": "113, 113, 113", "700": "80, 80, 80", "800": "41, 41, 41", "900": "19, 19, 19", "1000": "0, 0, 0" },
+      dark: { "500": "109, 109, 109", "600": "138, 138, 138", "700": "175, 175, 175", "800": "219, 219, 219", "900": "242, 242, 242", "1000": "255, 255, 255" }
+    }
+  };
+  const ALL_SPECTRUM_COLORSTOP_CLASSES = ["spectrum--light", "spectrum--dark"];
 
   function isAuthFailureStatus(status) {
     return status === 401 || status === 403;
@@ -240,23 +405,27 @@
     topIdentity: $("zipTopIdentity"),
     topIdentityName: $("zipTopIdentityName"),
     topIdentityTz: $("zipTopIdentityTz"),
-    topIdentityEmail: $("zipTopIdentityEmail"),
+    topIdentityMeta: $("zipTopIdentityMeta"),
     loginScreen: $("zipLoginScreen"),
     appDescription: $("zipAppDescription"),
     appScreen: $("zipAppScreen"),
     loginBtn: $("zipLoginBtn"),
     docsMenu: $("zipDocsMenu"),
-    docsApiToggleOption: $("zipDocsApiToggleOption"),
     signoutBtn: $("zipSignoutBtn"),
     appVersionLink: $("zipAppVersionLink"),
     appVersion: $("zipAppVersion"),
+    loginAppVersion: $("zipLoginAppVersion"),
     ticketNetworkIndicator: $("zipTicketNetworkIndicator"),
     ticketNetworkLabel: $("zipTicketNetworkLabel"),
     contextMenu: $("zipContextMenu"),
     contextMenuBuild: $("zipContextMenuBuild"),
+    contextMenuToggleZdApi: $("zipContextMenuToggleZdApi"),
     contextMenuToggleSide: $("zipContextMenuToggleSide"),
     contextMenuAskEric: $("zipContextMenuAskEric"),
     contextMenuGetLatest: $("zipContextMenuGetLatest"),
+    contextMenuThemeLabel: $("zipContextMenuThemeLabel"),
+    contextMenuThemePicker: $("zipContextMenuThemePicker"),
+    contextMenuThemeFlyout: $("zipContextMenuThemeFlyout"),
     rawTitle: $("zipRawTitle"),
     rawThead: $("zipRawThead"),
     rawBody: $("zipRawBody"),
@@ -295,6 +464,13 @@
     }
   }
 
+  function openOutlookComposeForEmail(email) {
+    const to = String(email || "").trim();
+    if (!to) return;
+    const url = OUTLOOK_DEEPLINK_COMPOSE_URL + "?to=" + encodeURIComponent(to);
+    openExternalUrl(url);
+  }
+
   function readZdApiVisibilityPreference() {
     try {
       const raw = window.localStorage.getItem(ZD_API_VISIBILITY_STORAGE_KEY);
@@ -310,13 +486,21 @@
     } catch (_) {}
   }
 
-  function getDocsApiToggleLabel(show) {
-    return show ? DOCS_MENU_ZD_API_HIDE_LABEL : DOCS_MENU_ZD_API_SHOW_LABEL;
+  function getZdApiToggleLabel(show) {
+    return show ? CONTEXT_MENU_ZD_API_HIDE_LABEL : CONTEXT_MENU_ZD_API_SHOW_LABEL;
   }
 
-  function syncDocsApiToggleOptionLabel() {
-    if (!els.docsApiToggleOption) return;
-    els.docsApiToggleOption.textContent = getDocsApiToggleLabel(state.showZdApiContainers);
+  function syncContextMenuZdApiToggleLabel() {
+    if (!els.contextMenuToggleZdApi) return;
+    els.contextMenuToggleZdApi.textContent = getZdApiToggleLabel(state.showZdApiContainers);
+  }
+
+  function syncContextMenuAuthVisibility() {
+    const loggedIn = !!state.user;
+    if (!els.contextMenuToggleZdApi) return;
+    els.contextMenuToggleZdApi.classList.toggle("hidden", !loggedIn);
+    els.contextMenuToggleZdApi.disabled = !loggedIn;
+    els.contextMenuToggleZdApi.setAttribute("aria-hidden", loggedIn ? "false" : "true");
   }
 
   function applyZdApiContainerVisibility(show, persist) {
@@ -327,7 +511,7 @@
       sectionEl.classList.toggle("hidden", !next);
       sectionEl.setAttribute("aria-hidden", next ? "false" : "true");
     });
-    syncDocsApiToggleOptionLabel();
+    syncContextMenuZdApiToggleLabel();
     if (persist) writeZdApiVisibilityPreference(next);
   }
 
@@ -374,7 +558,539 @@
     }
   }
 
+  function getFallbackThemeOptionById(themeId) {
+    const normalized = String(themeId || "").trim().toLowerCase();
+    return FALLBACK_THEME_OPTION_BY_ID[normalized] || null;
+  }
+
+  function normalizeThemeColorStop(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "dark" || normalized === "light") {
+      return normalized;
+    }
+    if (normalized === "darkest") return "dark";
+    if (normalized === "wireframe") return "light";
+    return "dark";
+  }
+
+  function normalizeSpectrumColorStop(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "darkest") return "dark";
+    return SPECTRUM_COLORSTOP_CLASS_BY_NAME[normalized] ? normalized : "dark";
+  }
+
+  function normalizePaletteSet(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "light" || normalized === "dark") {
+      return normalized;
+    }
+    if (normalized === "wireframe") return "light";
+    return "dark";
+  }
+
+  function normalizeAccentFamily(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    return ACCENT_PALETTE_RGB[normalized] ? normalized : "blue";
+  }
+
+  function getAccentFamilyLabel(accentFamily) {
+    const key = normalizeAccentFamily(accentFamily);
+    const match = THEME_ACCENT_FAMILIES.find((accent) => accent.id === key);
+    return match ? match.label : "Blue";
+  }
+
+  function normalizeThemeId(themeId) {
+    const raw = String(themeId || "").trim().toLowerCase();
+    let mapped = LEGACY_THEME_ALIASES[raw] || raw;
+    if (mapped.startsWith("s2-darkest-")) {
+      mapped = "s2-dark-" + mapped.slice("s2-darkest-".length);
+    }
+    if (mapped.startsWith("s2-wireframe-")) {
+      mapped = "s2-light-" + mapped.slice("s2-wireframe-".length);
+    }
+    return getFallbackThemeOptionById(mapped) ? mapped : DEFAULT_THEME_ID;
+  }
+
+  function normalizeThemeOption(option) {
+    const normalizedId = normalizeThemeId(option && option.id);
+    const fallback = getFallbackThemeOptionById(normalizedId) || getFallbackThemeOptionById(DEFAULT_THEME_ID) || {};
+    return {
+      id: normalizedId,
+      label: String((option && option.label) || fallback.label || "Spectrum 2 Theme"),
+      spectrumColorStop: normalizeSpectrumColorStop((option && option.spectrumColorStop) || fallback.spectrumColorStop),
+      themeColorStop: normalizeThemeColorStop((option && option.themeColorStop) || fallback.themeColorStop),
+      paletteSet: normalizePaletteSet((option && option.paletteSet) || fallback.paletteSet),
+      accentFamily: normalizeAccentFamily((option && option.accentFamily) || fallback.accentFamily)
+    };
+  }
+
+  function getFallbackThemeOptions() {
+    return FALLBACK_THEME_OPTIONS.map((option) => normalizeThemeOption(option));
+  }
+
+  function getThemeOptions() {
+    if (Array.isArray(state.themeOptions) && state.themeOptions.length) {
+      return state.themeOptions.map((option) => normalizeThemeOption(option));
+    }
+    return getFallbackThemeOptions();
+  }
+
+  function getThemeOptionById(themeId, options) {
+    const normalizedId = normalizeThemeId(themeId);
+    const pool = Array.isArray(options) && options.length ? options : getThemeOptions();
+    const match = pool.find((option) => normalizeThemeId(option && option.id) === normalizedId);
+    if (match) return normalizeThemeOption(match);
+    const fallback = getFallbackThemeOptionById(normalizedId) || getFallbackThemeOptionById(DEFAULT_THEME_ID);
+    return normalizeThemeOption(fallback || { id: DEFAULT_THEME_ID });
+  }
+
+  function getThemeOptionByStopAndAccent(themeColorStop, accentFamily, options) {
+    const stop = normalizeThemeColorStop(themeColorStop);
+    const accent = normalizeAccentFamily(accentFamily);
+    const pool = Array.isArray(options) && options.length ? options.map((option) => normalizeThemeOption(option)) : getThemeOptions();
+    const direct = pool.find((option) => option.themeColorStop === stop && option.accentFamily === accent);
+    if (direct) return normalizeThemeOption(direct);
+    const fallbackId = "s2-" + stop + "-" + accent;
+    const fallback = getFallbackThemeOptionById(fallbackId);
+    if (fallback) return normalizeThemeOption(fallback);
+    return getThemeOptionById(DEFAULT_THEME_ID, pool);
+  }
+
+  function getAccentPaletteValue(accentFamily, paletteSet, toneKey) {
+    const familyKey = normalizeAccentFamily(accentFamily);
+    const setKey = normalizePaletteSet(paletteSet);
+    const paletteByFamily = ACCENT_PALETTE_RGB[familyKey] || ACCENT_PALETTE_RGB.blue;
+    const paletteBySet = (paletteByFamily && paletteByFamily[setKey]) || (paletteByFamily && paletteByFamily.dark) || {};
+    const requested = String(toneKey || "").trim();
+    if (requested && paletteBySet[requested]) return paletteBySet[requested];
+    if (paletteBySet["900"]) return paletteBySet["900"];
+    const blueDark = ACCENT_PALETTE_RGB.blue && ACCENT_PALETTE_RGB.blue.dark;
+    return (blueDark && (blueDark["900"] || blueDark["800"])) || "64, 105, 253";
+  }
+
+  function parseRgbTriplet(value) {
+    const parts = String(value || "").split(",").map((part) => Number.parseInt(String(part || "").trim(), 10));
+    if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
+      return [64, 105, 253];
+    }
+    return parts.map((part) => Math.max(0, Math.min(255, part)));
+  }
+
+  function relativeChannel(value) {
+    const normalized = Math.max(0, Math.min(255, Number(value) || 0)) / 255;
+    if (normalized <= 0.03928) return normalized / 12.92;
+    return Math.pow((normalized + 0.055) / 1.055, 2.4);
+  }
+
+  function getAccessibleOnPrimaryRgb(primaryRgb) {
+    const [r, g, b] = parseRgbTriplet(primaryRgb);
+    const luminance = 0.2126 * relativeChannel(r) + 0.7152 * relativeChannel(g) + 0.0722 * relativeChannel(b);
+    const contrastWithWhite = 1.05 / (luminance + 0.05);
+    const contrastWithBlack = (luminance + 0.05) / 0.05;
+    return contrastWithBlack > contrastWithWhite ? "0, 0, 0" : "255, 255, 255";
+  }
+
+  function getThemeToneDefinition(themeColorStop) {
+    const stop = normalizeThemeColorStop(themeColorStop);
+    return THEME_TONE_BY_COLOR_STOP[stop] || THEME_TONE_BY_COLOR_STOP.dark;
+  }
+
+  function applyThemeAccentVariables(themeOption) {
+    const option = normalizeThemeOption(themeOption || getThemeOptionById(state.themeId));
+    const tone = getThemeToneDefinition(option.themeColorStop);
+    const tone500 = getAccentPaletteValue(option.accentFamily, option.paletteSet, "500");
+    const downRgb = getAccentPaletteValue(option.accentFamily, option.paletteSet, tone.down);
+    const hoverRgb = getAccentPaletteValue(option.accentFamily, option.paletteSet, tone.hover);
+    const primaryRgb = getAccentPaletteValue(option.accentFamily, option.paletteSet, tone.primary);
+    const linkRgb = getAccentPaletteValue(option.accentFamily, option.paletteSet, tone.link);
+    const tone1000 = getAccentPaletteValue(option.accentFamily, option.paletteSet, "1000");
+    const tone1100 = getAccentPaletteValue(option.accentFamily, option.paletteSet, "1100");
+    const focusRgb = getAccentPaletteValue(option.accentFamily, option.paletteSet, tone.focus);
+    const onPrimaryRgb = getAccessibleOnPrimaryRgb(primaryRgb);
+    if (!document.body || !document.body.style) return;
+    document.body.style.setProperty("--zip-accent-500", tone500);
+    document.body.style.setProperty("--zip-accent-600", downRgb);
+    document.body.style.setProperty("--zip-accent-700", hoverRgb);
+    document.body.style.setProperty("--zip-accent-800", primaryRgb);
+    document.body.style.setProperty("--zip-accent-900", linkRgb);
+    document.body.style.setProperty("--zip-accent-1000", tone1000);
+    document.body.style.setProperty("--zip-accent-1100", tone1100);
+    document.body.style.setProperty("--zip-accent-focus", focusRgb);
+    document.body.style.setProperty("--zip-accent-on-primary", onPrimaryRgb);
+
+    /* Feed official Spectrum accent and focus tokens from the ZIP accent picker. */
+    document.body.style.setProperty("--spectrum-accent-color-500", "rgb(" + tone500 + ")");
+    document.body.style.setProperty("--spectrum-accent-color-600", "rgb(" + downRgb + ")");
+    document.body.style.setProperty("--spectrum-accent-color-700", "rgb(" + hoverRgb + ")");
+    document.body.style.setProperty("--spectrum-accent-color-800", "rgb(" + primaryRgb + ")");
+    document.body.style.setProperty("--spectrum-accent-color-900", "rgb(" + linkRgb + ")");
+    document.body.style.setProperty("--spectrum-accent-color-1000", "rgb(" + tone1000 + ")");
+    document.body.style.setProperty("--spectrum-accent-color-1100", "rgb(" + tone1100 + ")");
+    document.body.style.setProperty("--spectrum-focus-indicator-color", "rgb(" + focusRgb + ")");
+  }
+
+  function getThemeSwatchRgb(themeOption) {
+    const option = normalizeThemeOption(themeOption);
+    const paletteSet = normalizePaletteSet(option.paletteSet);
+    const tone = getThemeToneDefinition(option.themeColorStop);
+    return getAccentPaletteValue(option.accentFamily, paletteSet, tone.primary);
+  }
+
+  function applySpectrumColorStopClass(themeColorStop) {
+    const nextStop = normalizeThemeColorStop(themeColorStop);
+    const nextColorStopClass = SPECTRUM_COLORSTOP_CLASS_BY_NAME[nextStop] || SPECTRUM_COLORSTOP_CLASS_BY_NAME.dark;
+    const themeRoots = [document.documentElement, document.body].filter(Boolean);
+    themeRoots.forEach((rootEl) => {
+      ALL_SPECTRUM_COLORSTOP_CLASSES.forEach((cls) => rootEl.classList.remove(cls));
+      if (nextColorStopClass) rootEl.classList.add(nextColorStopClass);
+      rootEl.dataset.zipThemeColorstop = nextStop;
+      rootEl.style.colorScheme = nextStop;
+    });
+    if (document.body) {
+      document.body.classList.remove("zip-theme-dark", "zip-theme-light");
+      document.body.classList.add("zip-theme-" + nextStop);
+    }
+  }
+
+  function getThemeColorStopMeta(themeColorStop) {
+    const stopId = normalizeThemeColorStop(themeColorStop);
+    const match = THEME_COLOR_STOPS.find((stop) => normalizeThemeColorStop(stop.id) === stopId);
+    return match || { id: stopId, label: stopId };
+  }
+
+  function applyThemeSwatchStyles(targetEl, themeOption) {
+    if (!targetEl) return;
+    const option = normalizeThemeOption(themeOption);
+    const swatchRgb = getThemeSwatchRgb(option);
+    const paletteSet = normalizePaletteSet(option.paletteSet);
+    targetEl.style.setProperty("--zip-theme-swatch", "rgb(" + swatchRgb + ")");
+    if (paletteSet !== "dark" || option.accentFamily === "silver" || option.accentFamily === "gray") {
+      targetEl.style.setProperty("--zip-theme-swatch-border", "var(--border-default)");
+      targetEl.style.setProperty("--zip-theme-swatch-ring", "var(--zip-theme-swatch-ring-muted)");
+      return;
+    }
+    targetEl.style.removeProperty("--zip-theme-swatch-border");
+    targetEl.style.removeProperty("--zip-theme-swatch-ring");
+  }
+
+  function updateThemeFlyoutParentState() {
+    if (!els.contextMenuThemePicker) return;
+    const flyoutVisible = !!(els.contextMenuThemeFlyout && !els.contextMenuThemeFlyout.classList.contains("hidden"));
+    const openStop = flyoutVisible ? normalizeThemeColorStop(state.themeFlyoutStop) : "";
+    const parentButtons = els.contextMenuThemePicker.querySelectorAll(".zip-context-menu-theme-parent[data-theme-stop]");
+    parentButtons.forEach((parentBtn) => {
+      const stopId = normalizeThemeColorStop(parentBtn.getAttribute("data-theme-stop"));
+      const isOpen = !!openStop && stopId === openStop;
+      parentBtn.classList.toggle("is-open", isOpen);
+      parentBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      parentBtn.title = (isOpen ? "Hide" : "Show") + " Spectrum 2 " + getThemeColorStopMeta(stopId).label + " colors";
+    });
+  }
+
+  function hideThemeFlyout(options) {
+    const keepStop = !!(options && options.keepStop);
+    if (!keepStop) state.themeFlyoutStop = "";
+    if (els.contextMenuThemeFlyout) {
+      els.contextMenuThemeFlyout.classList.add("hidden");
+      els.contextMenuThemeFlyout.innerHTML = "";
+      els.contextMenuThemeFlyout.removeAttribute("data-theme-stop");
+    }
+    updateThemeFlyoutParentState();
+  }
+
+  function positionThemeFlyout(anchorEl) {
+    if (!anchorEl || !els.contextMenuThemeFlyout || els.contextMenuThemeFlyout.classList.contains("hidden")) return;
+    const flyout = els.contextMenuThemeFlyout;
+    const pad = 6;
+    const gap = 8;
+    const maxWidth = Math.max(160, window.innerWidth - (pad * 2));
+    const maxHeight = Math.max(160, window.innerHeight - (pad * 2));
+    flyout.style.maxWidth = Math.min(320, maxWidth) + "px";
+    flyout.style.maxHeight = Math.min(520, maxHeight) + "px";
+    flyout.style.left = pad + "px";
+    flyout.style.top = pad + "px";
+
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const flyoutRect = flyout.getBoundingClientRect();
+    const spaceRight = window.innerWidth - anchorRect.right - gap - pad;
+    const spaceLeft = anchorRect.left - gap - pad;
+
+    let left = (spaceRight >= flyoutRect.width || spaceRight >= spaceLeft)
+      ? (anchorRect.right + gap)
+      : (anchorRect.left - gap - flyoutRect.width);
+    let top = anchorRect.top;
+
+    if (top + flyoutRect.height + pad > window.innerHeight) {
+      top = window.innerHeight - flyoutRect.height - pad;
+    }
+    if (top < pad) top = pad;
+    if (left + flyoutRect.width + pad > window.innerWidth) {
+      left = window.innerWidth - flyoutRect.width - pad;
+    }
+    if (left < pad) left = pad;
+
+    flyout.style.left = Math.round(left) + "px";
+    flyout.style.top = Math.round(top) + "px";
+  }
+
+  function renderThemeFlyout(themeColorStop, anchorEl) {
+    if (!els.contextMenuThemeFlyout || !anchorEl) {
+      hideThemeFlyout();
+      return;
+    }
+
+    const stopId = normalizeThemeColorStop(themeColorStop);
+    const stopMeta = getThemeColorStopMeta(stopId);
+    const options = getThemeOptions();
+    const activeTheme = getThemeOptionById(state.themeId, options);
+    const activeThemeId = normalizeThemeId(activeTheme.id);
+    const flyout = els.contextMenuThemeFlyout;
+    flyout.innerHTML = "";
+
+    const header = document.createElement("div");
+    header.className = "zip-context-menu-theme-flyout-header";
+    const title = document.createElement("div");
+    title.className = "zip-context-menu-theme-flyout-title";
+    title.textContent = "Spectrum 2 " + stopMeta.label + " Colors";
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "zip-context-menu-theme-flyout-close";
+    closeBtn.setAttribute("aria-label", "Close color picker");
+    closeBtn.textContent = "x";
+    closeBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      hideThemeFlyout();
+    });
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    flyout.appendChild(header);
+
+    const list = document.createElement("div");
+    list.className = "zip-context-menu-theme-flyout-list";
+    list.setAttribute("role", "group");
+    list.setAttribute("aria-label", "Spectrum 2 " + stopMeta.label + " accent colors");
+
+    THEME_ACCENT_FAMILIES.forEach((accent) => {
+      const accentTheme = getThemeOptionByStopAndAccent(stopId, accent.id, options);
+      const accentThemeId = normalizeThemeId(accentTheme.id);
+      const swatchTheme = {
+        id: accentThemeId,
+        label: accentTheme.label,
+        spectrumColorStop: stopMeta.spectrumColorStop,
+        themeColorStop: stopId,
+        paletteSet: stopMeta.paletteSet,
+        accentFamily: accent.id
+      };
+      const colorBtn = document.createElement("button");
+      colorBtn.type = "button";
+      colorBtn.className = "zip-context-menu-theme-color";
+      colorBtn.setAttribute("role", "menuitemradio");
+      colorBtn.setAttribute("data-theme-id", accentThemeId);
+      const isSelected = accentThemeId === activeThemeId;
+      colorBtn.classList.toggle("is-selected", isSelected);
+      colorBtn.setAttribute("aria-checked", isSelected ? "true" : "false");
+      applyThemeSwatchStyles(colorBtn, swatchTheme);
+      colorBtn.innerHTML = ""
+        + "<span class=\"zip-context-menu-theme-dot\" aria-hidden=\"true\"></span>"
+        + "<span class=\"zip-context-menu-theme-color-name\">" + escapeHtml(accent.label) + "</span>"
+        + "<span class=\"zip-context-menu-theme-color-state\" aria-hidden=\"true\">Active</span>";
+      colorBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const requestedThemeId = normalizeThemeId(accentThemeId);
+        hideContextMenu();
+        setThemeViaBackground(requestedThemeId).catch((err) => {
+          setStatus("Theme update failed: " + (err && err.message ? err.message : "Unknown error"), true);
+        });
+      });
+      list.appendChild(colorBtn);
+    });
+
+    flyout.appendChild(list);
+    flyout.classList.remove("hidden");
+    flyout.setAttribute("data-theme-stop", stopId);
+    state.themeFlyoutStop = stopId;
+    updateThemeFlyoutParentState();
+    requestAnimationFrame(() => {
+      positionThemeFlyout(anchorEl);
+    });
+  }
+
+  function toggleThemeFlyout(themeColorStop, anchorEl) {
+    const stopId = normalizeThemeColorStop(themeColorStop);
+    const isOpen = !!(els.contextMenuThemeFlyout
+      && !els.contextMenuThemeFlyout.classList.contains("hidden")
+      && normalizeThemeColorStop(state.themeFlyoutStop) === stopId);
+    if (isOpen) {
+      hideThemeFlyout();
+      return;
+    }
+    renderThemeFlyout(stopId, anchorEl);
+  }
+
+  function refreshThemeFlyoutPosition() {
+    if (!els.contextMenuThemeFlyout || els.contextMenuThemeFlyout.classList.contains("hidden")) return;
+    const stopId = normalizeThemeColorStop(state.themeFlyoutStop);
+    if (!stopId || !els.contextMenuThemePicker) {
+      hideThemeFlyout();
+      return;
+    }
+    const anchor = els.contextMenuThemePicker.querySelector(".zip-context-menu-theme-parent[data-theme-stop=\"" + stopId + "\"]");
+    if (!anchor) {
+      hideThemeFlyout();
+      return;
+    }
+    positionThemeFlyout(anchor);
+  }
+
+  function renderContextMenuThemePicker() {
+    if (!els.contextMenuThemePicker) return;
+    const options = getThemeOptions();
+    const activeTheme = getThemeOptionById(state.themeId, options);
+    const activeStop = normalizeThemeColorStop(activeTheme.themeColorStop);
+    const activeAccent = normalizeAccentFamily(activeTheme.accentFamily);
+    const openStopRaw = String(state.themeFlyoutStop || "").trim().toLowerCase();
+    const openStop = openStopRaw ? normalizeThemeColorStop(openStopRaw) : "";
+    let anchorForOpenStop = null;
+
+    els.contextMenuThemePicker.innerHTML = "";
+    THEME_COLOR_STOPS.forEach((stop) => {
+      const stopId = normalizeThemeColorStop(stop.id);
+      const group = document.createElement("div");
+      group.className = "zip-context-menu-theme-group";
+      group.setAttribute("data-theme-stop", stopId);
+
+      const row = document.createElement("div");
+      row.className = "zip-context-menu-theme-row";
+
+      const parentTheme = getThemeOptionByStopAndAccent(stopId, activeAccent, options);
+      const parentBtn = document.createElement("button");
+      parentBtn.type = "button";
+      parentBtn.className = "zip-context-menu-theme-parent";
+      parentBtn.setAttribute("role", "menuitem");
+      parentBtn.setAttribute("data-theme-stop", stopId);
+      parentBtn.setAttribute("aria-haspopup", "true");
+      parentBtn.setAttribute("aria-expanded", openStop === stopId ? "true" : "false");
+      const parentSelected = activeStop === stopId;
+      const parentAccentLabel = getAccentFamilyLabel(parentTheme.accentFamily);
+      if (parentSelected) parentBtn.classList.add("is-selected");
+      parentBtn.setAttribute("aria-current", parentSelected ? "true" : "false");
+      if (openStop === stopId) parentBtn.classList.add("is-open");
+      applyThemeSwatchStyles(parentBtn, parentTheme);
+      parentBtn.innerHTML = ""
+        + "<span class=\"zip-context-menu-theme-dot\" aria-hidden=\"true\"></span>"
+        + "<span class=\"zip-context-menu-theme-parent-content\">"
+        + "<span class=\"zip-context-menu-theme-parent-title\">Spectrum 2 " + escapeHtml(stop.label) + "</span>"
+        + "<span class=\"zip-context-menu-theme-parent-meta\">"
+        + (parentSelected ? "Active | " : "Accent | ")
+        + escapeHtml(parentAccentLabel)
+        + "</span>"
+        + "</span>"
+        + "<span class=\"zip-context-menu-theme-parent-state\" aria-hidden=\"true\">"
+        + (parentSelected ? "Active" : "")
+        + "</span>";
+      const openThemeStopFlyout = (event) => {
+        if (event && event.type === "pointerdown" && event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        toggleThemeFlyout(stopId, parentBtn);
+      };
+      parentBtn.addEventListener("pointerdown", openThemeStopFlyout);
+      parentBtn.addEventListener("keydown", (event) => {
+        if (!event) return;
+        if (event.key !== "Enter" && event.key !== " ") return;
+        openThemeStopFlyout(event);
+      });
+
+      if (openStop === stopId) anchorForOpenStop = parentBtn;
+
+      row.appendChild(parentBtn);
+      group.appendChild(row);
+      els.contextMenuThemePicker.appendChild(group);
+    });
+
+    if (openStop && anchorForOpenStop) {
+      renderThemeFlyout(openStop, anchorForOpenStop);
+      return;
+    }
+    hideThemeFlyout();
+  }
+
+  function applyThemeState(themePayload) {
+    const payload = themePayload && typeof themePayload === "object" ? themePayload : {};
+    state.themeId = normalizeThemeId(payload.themeId || state.themeId);
+    if (Array.isArray(payload.options) && payload.options.length) {
+      state.themeOptions = payload.options.map((option) => normalizeThemeOption(option));
+    }
+    const activeTheme = getThemeOptionById(state.themeId);
+    document.body.dataset.zipTheme = state.themeId;
+    document.body.dataset.zipThemeAccent = activeTheme.accentFamily;
+    if (document.documentElement) {
+      document.documentElement.dataset.zipTheme = state.themeId;
+      document.documentElement.dataset.zipThemeAccent = activeTheme.accentFamily;
+    }
+    applySpectrumColorStopClass(activeTheme.themeColorStop);
+    if (els.contextMenuThemeLabel) {
+      const activeThemeLabel = getThemeColorStopMeta(activeTheme.themeColorStop).label || "Dark";
+      const activeColorLabel = getAccentFamilyLabel(activeTheme.accentFamily);
+      els.contextMenuThemeLabel.textContent = "Appearance : " + activeThemeLabel + " x " + activeColorLabel;
+    }
+    applyThemeAccentVariables(activeTheme);
+    renderContextMenuThemePicker();
+  }
+
+  function loadThemeState() {
+    return new Promise((resolve) => {
+      if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.sendMessage) {
+        applyThemeState({ themeId: DEFAULT_THEME_ID, options: getFallbackThemeOptions() });
+        resolve({ themeId: DEFAULT_THEME_ID, options: getFallbackThemeOptions() });
+        return;
+      }
+      chrome.runtime.sendMessage({ type: "ZIP_GET_THEME" }, (response) => {
+        if (chrome.runtime.lastError) {
+          applyThemeState({ themeId: DEFAULT_THEME_ID, options: getFallbackThemeOptions() });
+          resolve({ themeId: DEFAULT_THEME_ID, options: getFallbackThemeOptions() });
+          return;
+        }
+        const payload = response && typeof response === "object" ? response : {};
+        applyThemeState(payload);
+        resolve(payload);
+      });
+    });
+  }
+
+  function setThemeViaBackground(themeId) {
+    return new Promise((resolve, reject) => {
+      if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.sendMessage) {
+        reject(new Error("Runtime unavailable"));
+        return;
+      }
+      chrome.runtime.sendMessage({ type: "ZIP_SET_THEME", themeId: normalizeThemeId(themeId) }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message || "Theme update failed"));
+          return;
+        }
+        if (response && response.ok === false) {
+          reject(new Error(response.error || "Theme update failed"));
+          return;
+        }
+        applyThemeState(response || { themeId: normalizeThemeId(themeId) });
+        setStatus("Theme updated to " + getThemeLabelById(normalizeThemeId(themeId)) + ".", false);
+        resolve(response || {});
+      });
+    });
+  }
+
+  function getThemeLabelById(themeId) {
+    const normalized = normalizeThemeId(themeId);
+    const options = getThemeOptions();
+    const match = options.find((option) => option.id === normalized);
+    return match ? match.label : "Spectrum 2 Theme";
+  }
+
   function hideContextMenu() {
+    hideThemeFlyout();
     if (!els.contextMenu) return;
     els.contextMenu.classList.add("hidden");
   }
@@ -407,7 +1123,12 @@
 
   function showContextMenuAt(clientX, clientY) {
     if (!els.contextMenu) return;
+    if (!state.user) return;
     const menu = els.contextMenu;
+    hideThemeFlyout();
+    renderContextMenuThemePicker();
+    syncContextMenuAuthVisibility();
+    syncContextMenuZdApiToggleLabel();
     menu.classList.remove("hidden");
     function placeMenu() {
       menu.style.left = "0px";
@@ -424,9 +1145,7 @@
     placeMenu();
     loadContextMenuUpdateState(false)
       .then(() => {
-        if (els.contextMenu && !els.contextMenu.classList.contains("hidden")) {
-          placeMenu();
-        }
+        if (els.contextMenu && !els.contextMenu.classList.contains("hidden")) placeMenu();
       })
       .catch(() => {});
   }
@@ -482,6 +1201,7 @@
           return;
         }
         setStatus("Opening latest ZIP package and chrome://extensions…", false);
+        return;
       }
     } catch (err) {
       setStatus("Context menu action failed: " + (err && err.message ? err.message : "Unknown error"), true);
@@ -587,6 +1307,11 @@
       els.topAvatarWrap.classList.toggle("loading", isLoading);
       els.topAvatarWrap.title = isLoading ? "Loading…" : (els.topAvatarWrap.dataset.idleTitle || "Not logged in");
     }
+    if (els.status) {
+      const shouldShowLoading = isLoading && !els.status.classList.contains("error");
+      els.status.classList.toggle("loading", shouldShowLoading);
+      if (shouldShowLoading) els.status.classList.remove("notice");
+    }
   }
 
   function applyTicketTableLoadingUi() {
@@ -650,6 +1375,19 @@
     if (!els.status) return;
     els.status.textContent = msg || DEFAULT_FOOTER_HINT;
     els.status.classList.toggle("error", !!isError);
+    if (isError) {
+      els.status.classList.remove("loading");
+      els.status.classList.remove("notice");
+      return;
+    }
+    const text = String(msg || "").trim().toLowerCase();
+    const isNotice = text.includes("temporarily unavailable")
+      || text.includes("switch side")
+      || text.includes("opening login")
+      || text.includes("opening latest");
+    els.status.classList.toggle("notice", isNotice);
+    const stillLoading = !!(state.busy || state.ticketTableLoading || state.orgSelectLoading || state.viewSelectLoading || state.groupSelectLoading);
+    if (!stillLoading) els.status.classList.remove("loading");
   }
 
   function setRawTitle(path) {
@@ -787,82 +1525,324 @@
     setStatus("CSV exported. " + rows.length + " rows downloaded.", false);
   }
 
+  const MAX_API_VALUE_RENDER_DEPTH = 10;
+  const MAX_INLINE_OBJECT_KEYS = 8;
+
   function cellDisplayValue(val) {
-    if (val == null) return "";
+    if (val === null) return "null";
+    if (val === undefined) return "";
     if (Array.isArray(val)) return "[Array of " + val.length + " items]";
     if (typeof val === "object") return "[Object]";
     return String(val);
   }
 
-  function fillCellWithValue(td, val) {
-    if (val == null) { td.textContent = ""; return; }
+  function createSpectrumTableRow(extraClass) {
+    const tr = document.createElement("tr");
+    tr.className = extraClass ? ("spectrum-Table-row " + extraClass) : "spectrum-Table-row";
+    return tr;
+  }
+
+  function createSpectrumHeadCell(label) {
+    const th = document.createElement("th");
+    th.className = "spectrum-Table-headCell";
+    if (label != null) th.textContent = String(label);
+    return th;
+  }
+
+  function createSpectrumTableCell(extraClass) {
+    const td = document.createElement("td");
+    td.className = extraClass ? ("spectrum-Table-cell " + extraClass) : "spectrum-Table-cell";
+    return td;
+  }
+
+  function getRawResultTableEl() {
+    if (!els.rawTableWrap) return null;
+    return els.rawTableWrap.querySelector("table");
+  }
+
+  function removeRawResultTableColgroups() {
+    const table = getRawResultTableEl();
+    if (!table) return;
+    table.querySelectorAll("colgroup.raw-kv-colgroup").forEach((node) => node.remove());
+  }
+
+  function ensureRawResultKvColgroup() {
+    const table = getRawResultTableEl();
+    if (!table) return;
+    removeRawResultTableColgroups();
+    const colgroup = document.createElement("colgroup");
+    colgroup.className = "raw-kv-colgroup";
+    const keyCol = document.createElement("col");
+    keyCol.className = "raw-kv-col-key";
+    const valueCol = document.createElement("col");
+    valueCol.className = "raw-kv-col-value";
+    colgroup.appendChild(keyCol);
+    colgroup.appendChild(valueCol);
+    const head = table.querySelector("thead");
+    if (head) table.insertBefore(colgroup, head);
+    else table.appendChild(colgroup);
+  }
+
+  function setRawResultTableMode(mode) {
+    const table = getRawResultTableEl();
+    if (!table) return;
+    table.classList.remove("raw-table-mode-kv", "raw-table-mode-grid", "raw-table-mode-single");
+    removeRawResultTableColgroups();
+    table.style.removeProperty("min-width");
+    table.style.removeProperty("width");
+    if (mode === "kv") {
+      table.classList.add("raw-table-mode-kv");
+      ensureRawResultKvColgroup();
+      return;
+    }
+    if (mode === "single") {
+      table.classList.add("raw-table-mode-single");
+      return;
+    }
+    table.classList.add("raw-table-mode-grid");
+  }
+
+  function getReadableGridMinWidth(columnCount, base, perColumn, maxWidth) {
+    const safeCount = Math.max(1, Number(columnCount) || 1);
+    const calculated = Math.max(base, safeCount * perColumn);
+    return Math.min(maxWidth, calculated);
+  }
+
+  function applyRawResultGridSizing(columnCount) {
+    const table = getRawResultTableEl();
+    if (!table) return;
+    const minWidth = getReadableGridMinWidth(columnCount, 960, 180, 7200);
+    table.style.minWidth = minWidth + "px";
+    table.style.width = "max(100%, " + minWidth + "px)";
+  }
+
+  function createNestedScrollFrame(kind) {
+    const frame = document.createElement("div");
+    frame.className = kind
+      ? ("raw-nested-scroll raw-nested-scroll-" + kind)
+      : "raw-nested-scroll";
+    return frame;
+  }
+
+  function isScalarValue(val) {
+    return val == null || typeof val === "string" || typeof val === "number" || typeof val === "boolean";
+  }
+
+  function createScalarValueNode(val) {
+    const span = document.createElement("span");
+    span.className = "raw-scalar-value";
+    if (val === null) {
+      span.classList.add("is-null");
+      span.textContent = "null";
+      return span;
+    }
+    if (val === undefined) {
+      span.classList.add("is-empty");
+      span.textContent = "";
+      return span;
+    }
+    if (typeof val === "boolean") {
+      span.classList.add("is-boolean");
+      span.textContent = val ? "true" : "false";
+      return span;
+    }
+    if (typeof val === "number") {
+      span.classList.add("is-number");
+      span.textContent = String(val);
+      return span;
+    }
+    if (typeof val === "string" && val.length === 0) {
+      span.classList.add("is-empty");
+      span.textContent = "\"\"";
+      return span;
+    }
+    span.textContent = String(val);
+    return span;
+  }
+
+  function isInlineObjectCandidate(val) {
+    if (!val || typeof val !== "object" || Array.isArray(val)) return false;
+    const keys = Object.keys(val);
+    if (!keys.length || keys.length > MAX_INLINE_OBJECT_KEYS) return false;
+    return keys.every((key) => isScalarValue(val[key]));
+  }
+
+  function createInlineObjectNode(obj) {
+    const wrap = document.createElement("div");
+    wrap.className = "raw-inline-object";
+    const keys = Object.keys(obj || {});
+    if (!keys.length) {
+      wrap.appendChild(createScalarValueNode("{}"));
+      return wrap;
+    }
+    keys.forEach((key) => {
+      const pair = document.createElement("span");
+      pair.className = "raw-inline-pair";
+      const keyEl = document.createElement("span");
+      keyEl.className = "raw-inline-key";
+      keyEl.textContent = key;
+      const sep = document.createElement("span");
+      sep.className = "raw-inline-sep";
+      sep.textContent = ":";
+      const valueEl = createScalarValueNode(obj[key]);
+      valueEl.classList.add("raw-inline-value");
+      pair.appendChild(keyEl);
+      pair.appendChild(sep);
+      pair.appendChild(valueEl);
+      wrap.appendChild(pair);
+    });
+    return wrap;
+  }
+
+  function fillCellWithValue(td, val, depth) {
+    const currentDepth = Number(depth) || 0;
+    td.textContent = "";
+    if (currentDepth > MAX_API_VALUE_RENDER_DEPTH) {
+      td.appendChild(createScalarValueNode("[Depth limit reached]"));
+      return;
+    }
+    if (isScalarValue(val)) {
+      td.appendChild(createScalarValueNode(val));
+      return;
+    }
     if (Array.isArray(val)) {
-      if (val.length === 0) { td.textContent = "Empty array"; return; }
+      if (val.length === 0) {
+        td.appendChild(createScalarValueNode("[]"));
+        return;
+      }
+      const allPlainObjects = val.every((item) => item != null && typeof item === "object" && !Array.isArray(item));
       const nest = document.createElement("table");
-      nest.className = "raw-nested-table";
-      const first = val[0];
-      if (first != null && typeof first === "object" && !Array.isArray(first)) {
+      nest.className = "raw-nested-table " + (allPlainObjects ? "raw-nested-table-grid" : "raw-nested-table-list") + " spectrum-Table spectrum-Table--sizeS";
+      if (allPlainObjects) {
         const keySet = new Set();
         val.forEach((item) => {
-          if (item && typeof item === "object") Object.keys(item).forEach((k) => keySet.add(k));
+          Object.keys(item || {}).forEach((k) => keySet.add(k));
         });
         const cols = [...keySet];
+        if (!cols.length) {
+          td.appendChild(createScalarValueNode("[Array of empty objects]"));
+          return;
+        }
+        const minWidth = getReadableGridMinWidth(cols.length, 760, 170, 6400);
+        nest.style.minWidth = minWidth + "px";
+        nest.style.width = "max-content";
         const thead = document.createElement("thead");
-        const headerTr = document.createElement("tr");
-        cols.forEach((k) => { const th = document.createElement("th"); th.textContent = k; headerTr.appendChild(th); });
+        thead.className = "spectrum-Table-head";
+        const headerTr = createSpectrumTableRow();
+        cols.forEach((k) => headerTr.appendChild(createSpectrumHeadCell(k)));
         thead.appendChild(headerTr);
         nest.appendChild(thead);
         const tbody = document.createElement("tbody");
+        tbody.className = "spectrum-Table-body";
         val.forEach((row) => {
-          const tr = document.createElement("tr");
+          const tr = createSpectrumTableRow();
           cols.forEach((col) => {
-            const cell = document.createElement("td");
-            fillCellWithValue(cell, row && row[col]);
+            const cell = createSpectrumTableCell("raw-nested-grid-cell");
+            const cellValue = row && Object.prototype.hasOwnProperty.call(row, col) ? row[col] : null;
+            if (isInlineObjectCandidate(cellValue)) {
+              cell.appendChild(createInlineObjectNode(cellValue));
+            } else {
+              fillCellWithValue(cell, cellValue, currentDepth + 1);
+            }
             tr.appendChild(cell);
           });
           tbody.appendChild(tr);
         });
         nest.appendChild(tbody);
-      } else {
-        const headerRow = document.createElement("tr");
-        const th0 = document.createElement("th"); th0.textContent = "#";
-        const th1 = document.createElement("th"); th1.textContent = "Value";
-        headerRow.appendChild(th0); headerRow.appendChild(th1);
-        nest.appendChild(headerRow);
-        val.forEach((item, i) => {
-          const tr = document.createElement("tr");
-          const td0 = document.createElement("td"); td0.textContent = String(i);
-          const td1 = document.createElement("td"); td1.textContent = item == null ? "" : String(item);
-          tr.appendChild(td0); tr.appendChild(td1);
-          nest.appendChild(tr);
-        });
+        const frame = createNestedScrollFrame("grid");
+        frame.appendChild(nest);
+        td.appendChild(frame);
+        return;
       }
-      td.appendChild(nest);
+      nest.style.minWidth = "480px";
+      nest.style.width = "max-content";
+      const thead = document.createElement("thead");
+      thead.className = "spectrum-Table-head";
+      const headerRow = createSpectrumTableRow();
+      const th0 = createSpectrumHeadCell("#");
+      const th1 = createSpectrumHeadCell("Value");
+      headerRow.appendChild(th0);
+      headerRow.appendChild(th1);
+      thead.appendChild(headerRow);
+      nest.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      tbody.className = "spectrum-Table-body";
+      val.forEach((item, i) => {
+        const tr = createSpectrumTableRow();
+        const td0 = createSpectrumTableCell();
+        td0.textContent = String(i);
+        const td1 = createSpectrumTableCell();
+        if (isInlineObjectCandidate(item)) {
+          td1.appendChild(createInlineObjectNode(item));
+        } else {
+          fillCellWithValue(td1, item, currentDepth + 1);
+        }
+        tr.appendChild(td0);
+        tr.appendChild(td1);
+        tbody.appendChild(tr);
+      });
+      nest.appendChild(tbody);
+      const frame = createNestedScrollFrame("list");
+      frame.appendChild(nest);
+      td.appendChild(frame);
       return;
     }
     if (typeof val === "object") {
+      if (isInlineObjectCandidate(val)) {
+        td.appendChild(createInlineObjectNode(val));
+        return;
+      }
+      const keys = Object.keys(val);
+      if (!keys.length) {
+        td.appendChild(createScalarValueNode("{}"));
+        return;
+      }
       const nest = document.createElement("table");
-      nest.className = "raw-nested-table";
-      Object.keys(val).forEach((k) => {
-        const tr = document.createElement("tr");
-        const tdK = document.createElement("td"); tdK.textContent = k;
-        const tdV = document.createElement("td");
-        fillCellWithValue(tdV, val[k]);
-        tr.appendChild(tdK); tr.appendChild(tdV);
-        nest.appendChild(tr);
+      nest.className = "raw-nested-table raw-nested-table-kv spectrum-Table spectrum-Table--sizeS";
+      const minWidth = getReadableGridMinWidth(2, 560, 220, 1800);
+      nest.style.minWidth = minWidth + "px";
+      nest.style.width = "max-content";
+      const colgroup = document.createElement("colgroup");
+      colgroup.className = "raw-nested-kv-colgroup";
+      const keyCol = document.createElement("col");
+      keyCol.className = "raw-nested-kv-col-key";
+      const valueCol = document.createElement("col");
+      valueCol.className = "raw-nested-kv-col-value";
+      colgroup.appendChild(keyCol);
+      colgroup.appendChild(valueCol);
+      nest.appendChild(colgroup);
+      const tbody = document.createElement("tbody");
+      tbody.className = "spectrum-Table-body";
+      keys.forEach((k) => {
+        const tr = createSpectrumTableRow();
+        const tdK = createSpectrumTableCell("raw-nested-kv-key-cell");
+        const keyLabel = document.createElement("span");
+        keyLabel.className = "raw-kv-key-label";
+        keyLabel.textContent = k;
+        tdK.appendChild(keyLabel);
+        const tdV = createSpectrumTableCell("raw-nested-kv-value-cell");
+        fillCellWithValue(tdV, val[k], currentDepth + 1);
+        tr.appendChild(tdK);
+        tr.appendChild(tdV);
+        tbody.appendChild(tr);
       });
-      td.appendChild(nest);
+      nest.appendChild(tbody);
+      const frame = createNestedScrollFrame("kv");
+      frame.appendChild(nest);
+      td.appendChild(frame);
       return;
     }
-    td.textContent = String(val);
+    td.appendChild(createScalarValueNode(cellDisplayValue(val)));
   }
 
   function renderApiResultTable(payload) {
     els.rawThead.innerHTML = "";
     els.rawBody.innerHTML = "";
+    setRawResultTableMode("grid");
     if (payload == null || payload === "") {
-      const tr = document.createElement("tr");
-      const td = document.createElement("td");
+      setRawResultTableMode("single");
+      const tr = createSpectrumTableRow();
+      const td = createSpectrumTableCell();
       td.colSpan = 2;
       td.textContent = "No data. Run a GET request above.";
       tr.appendChild(td);
@@ -870,18 +1850,20 @@
       return;
     }
     if (typeof payload === "string") {
-      const th = document.createElement("th"); th.textContent = "Response";
+      setRawResultTableMode("single");
+      const th = createSpectrumHeadCell("Response");
       els.rawThead.appendChild(th);
-      const tr = document.createElement("tr");
-      const td = document.createElement("td"); td.textContent = payload;
+      const tr = createSpectrumTableRow();
+      const td = createSpectrumTableCell(); td.textContent = payload;
       tr.appendChild(td);
       els.rawBody.appendChild(tr);
       return;
     }
     if (Array.isArray(payload)) {
       if (payload.length === 0) {
-        const tr = document.createElement("tr");
-        const td = document.createElement("td"); td.textContent = "Empty array";
+        setRawResultTableMode("single");
+        const tr = createSpectrumTableRow();
+        const td = createSpectrumTableCell(); td.textContent = "Empty array";
         tr.appendChild(td);
         els.rawBody.appendChild(tr);
         return;
@@ -893,24 +1875,34 @@
           if (item && typeof item === "object") Object.keys(item).forEach((k) => keySet.add(k));
         });
         const cols = [...keySet];
-        cols.forEach((k) => { const th = document.createElement("th"); th.textContent = k; els.rawThead.appendChild(th); });
+        if (!cols.length) {
+          setRawResultTableMode("single");
+          const tr = createSpectrumTableRow();
+          const td = createSpectrumTableCell();
+          td.textContent = "Array of empty objects";
+          tr.appendChild(td);
+          els.rawBody.appendChild(tr);
+          return;
+        }
+        applyRawResultGridSizing(cols.length);
+        cols.forEach((k) => els.rawThead.appendChild(createSpectrumHeadCell(k)));
         payload.forEach((row) => {
-          const tr = document.createElement("tr");
+          const tr = createSpectrumTableRow();
           cols.forEach((col) => {
-            const td = document.createElement("td");
-            fillCellWithValue(td, row && row[col]);
+            const td = createSpectrumTableCell();
+            fillCellWithValue(td, row && row[col], 0);
             tr.appendChild(td);
           });
           els.rawBody.appendChild(tr);
         });
         return;
       }
-      const th = document.createElement("th"); th.textContent = "Value";
+      const th = createSpectrumHeadCell("Value");
       els.rawThead.appendChild(th);
       payload.forEach((item) => {
-        const tr = document.createElement("tr");
-        const td = document.createElement("td");
-        td.textContent = cellDisplayValue(item);
+        const tr = createSpectrumTableRow();
+        const td = createSpectrumTableCell();
+        fillCellWithValue(td, item, 0);
         tr.appendChild(td);
         els.rawBody.appendChild(tr);
       });
@@ -925,14 +1917,21 @@
           return;
         }
       }
-      const thKey = document.createElement("th"); thKey.textContent = "Key";
-      const thVal = document.createElement("th"); thVal.textContent = "Value";
+      setRawResultTableMode("kv");
+      const thKey = createSpectrumHeadCell("Key");
+      thKey.classList.add("raw-kv-key-head");
+      const thVal = createSpectrumHeadCell("Value");
+      thVal.classList.add("raw-kv-value-head");
       els.rawThead.appendChild(thKey); els.rawThead.appendChild(thVal);
       Object.keys(payload).forEach((key) => {
-        const tr = document.createElement("tr");
-        const tdKey = document.createElement("td"); tdKey.textContent = key;
-        const tdVal = document.createElement("td");
-        fillCellWithValue(tdVal, payload[key]);
+        const tr = createSpectrumTableRow();
+        const tdKey = createSpectrumTableCell("raw-kv-key-cell");
+        const keyLabel = document.createElement("span");
+        keyLabel.className = "raw-kv-key-label";
+        keyLabel.textContent = key;
+        tdKey.appendChild(keyLabel);
+        const tdVal = createSpectrumTableCell("raw-kv-value-cell");
+        fillCellWithValue(tdVal, payload[key], 0);
         tr.appendChild(tdKey); tr.appendChild(tdVal);
         els.rawBody.appendChild(tr);
       });
@@ -962,19 +1961,43 @@
       .replaceAll('"', "&quot;");
   }
 
+  function syncTopAvatarSizeToIdentityRows() {
+    if (!els.topAvatarWrap || !els.topIdentity) return;
+    const identityRect = els.topIdentity.getBoundingClientRect();
+    const size = Math.max(0, Math.round(identityRect.height));
+    if (size > 0) {
+      els.topAvatarWrap.style.setProperty("--zip-avatar-width", size + "px");
+      els.topAvatarWrap.style.setProperty("--zip-avatar-height", size + "px");
+      return;
+    }
+    els.topAvatarWrap.style.removeProperty("--zip-avatar-width");
+    els.topAvatarWrap.style.removeProperty("--zip-avatar-height");
+  }
+
+  function formatRoleAndId(user) {
+    const role = user && user.role != null ? String(user.role).trim().toLowerCase() : "";
+    const id = user && user.id != null ? String(user.id).trim() : "";
+    return [role, id].filter(Boolean).join(" ");
+  }
+
   function setTopIdentityFromUser(user) {
     if (!user) return;
     const name = user.name || user.email || "Agent";
     const timeZone = user.time_zone || "";
     const email = user.email || "";
-    if (els.topIdentityName) els.topIdentityName.textContent = name;
-    if (els.topIdentityTz) els.topIdentityTz.textContent = timeZone;
-    if (els.topIdentityEmail) {
-      els.topIdentityEmail.textContent = email || " ";
-      els.topIdentityEmail.href = email ? "mailto:" + email : "#";
-      els.topIdentityEmail.style.display = email ? "" : "none";
+    const roleAndId = formatRoleAndId(user);
+    if (els.topIdentityName) {
+      els.topIdentityName.textContent = name;
+      els.topIdentityName.href = email ? "mailto:" + email : "#";
+      els.topIdentityName.classList.toggle("is-disabled", !email);
     }
-    const avatarUrl = user.photo && (user.photo.content_url || user.photo.url);
+    if (els.topIdentityTz) els.topIdentityTz.textContent = timeZone;
+    if (els.topIdentityMeta) els.topIdentityMeta.textContent = roleAndId;
+    const avatarUrl = user.photo && (user.photo.content_url || user.photo.url || user.photo.mapped_content_url);
+    if (els.topAvatarFallback) {
+      const fallbackInitial = (String(name).trim().charAt(0) || "?").toUpperCase();
+      els.topAvatarFallback.textContent = fallbackInitial;
+    }
     if (avatarUrl && els.topAvatar) {
       els.topAvatar.src = avatarUrl;
       els.topAvatar.classList.remove("hidden");
@@ -988,22 +2011,26 @@
       els.topAvatarWrap.title = state.busy ? "Loading…" : idleTitle;
       els.topAvatarWrap.dataset.idleTitle = idleTitle;
     }
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncTopAvatarSizeToIdentityRows);
+    else syncTopAvatarSizeToIdentityRows();
   }
 
   function resetTopIdentity() {
     if (els.topAvatar) els.topAvatar.classList.add("hidden");
     if (els.topAvatarFallback) { els.topAvatarFallback.textContent = "?"; els.topAvatarFallback.classList.remove("hidden"); }
     if (els.topAvatarWrap) {
+      els.topAvatarWrap.style.removeProperty("--zip-avatar-width");
+      els.topAvatarWrap.style.removeProperty("--zip-avatar-height");
       els.topAvatarWrap.title = "Not logged in";
       els.topAvatarWrap.dataset.idleTitle = "Not logged in";
     }
-    if (els.topIdentityName) els.topIdentityName.textContent = "Not logged in";
-    if (els.topIdentityTz) els.topIdentityTz.textContent = "";
-    if (els.topIdentityEmail) {
-      els.topIdentityEmail.textContent = " ";
-      els.topIdentityEmail.href = "#";
-      els.topIdentityEmail.style.display = "none";
+    if (els.topIdentityName) {
+      els.topIdentityName.textContent = "Not logged in";
+      els.topIdentityName.href = "#";
+      els.topIdentityName.classList.add("is-disabled");
     }
+    if (els.topIdentityTz) els.topIdentityTz.textContent = "";
+    if (els.topIdentityMeta) els.topIdentityMeta.textContent = "";
   }
 
   function resetTopFilterMenuCatalogState() {
@@ -1071,6 +2098,7 @@
     els.loginScreen.classList.remove("hidden");
     els.appScreen.classList.add("hidden");
     document.body.classList.add("zip-logged-out");
+    syncContextMenuAuthVisibility();
     setStatus("", false);
   }
 
@@ -1079,6 +2107,7 @@
     document.body.classList.remove("zip-logged-out");
     els.loginScreen.classList.add("hidden");
     els.appScreen.classList.remove("hidden");
+    syncContextMenuAuthVisibility();
   }
 
   function formatDateTime(v) {
@@ -1107,6 +2136,12 @@
     return 0;
   }
 
+  function normalizeTicketIdValue(value) {
+    if (value == null) return null;
+    const normalized = String(value).trim();
+    return normalized ? normalized : null;
+  }
+
   /** Clear ticket data and selection, then re-render table (e.g. before loading a new source). */
   function clearTicketTable(options) {
     const showLoading = !!(options && options.loading);
@@ -1131,8 +2166,8 @@
     const col = TICKET_COLUMNS.find((c) => c.key === state.sortKey) || TICKET_COLUMNS[0];
     rows.sort((a, b) => compareByColumn(a, b, col));
     state.filteredTickets = rows;
-    const sid = state.selectedTicketId;
-    if (sid != null && !rows.some((r) => r.id === sid || r.id === Number(sid))) state.selectedTicketId = null;
+    const sid = normalizeTicketIdValue(state.selectedTicketId);
+    if (sid != null && !rows.some((r) => normalizeTicketIdValue(r && r.id) === sid)) state.selectedTicketId = null;
     renderTicketRows();
   }
 
@@ -1140,13 +2175,39 @@
     els.ticketHead.innerHTML = "";
     TICKET_COLUMNS.forEach((col) => {
       const th = document.createElement("th");
-      const arrow = state.sortKey === col.key ? (state.sortDir === "asc" ? " ^" : " v") : "";
-      th.textContent = col.label + arrow;
-      th.addEventListener("click", () => {
+      th.className = "spectrum-Table-headCell ticket-col-header";
+      const isActiveSort = state.sortKey === col.key;
+      const sortDirection = isActiveSort ? state.sortDir : "none";
+      th.classList.toggle("is-active", isActiveSort);
+      th.setAttribute("role", "button");
+      th.tabIndex = 0;
+      th.setAttribute("aria-sort", sortDirection === "asc" ? "ascending" : (sortDirection === "desc" ? "descending" : "none"));
+      th.title = "Sort by " + col.label + (isActiveSort ? (" (" + (sortDirection === "asc" ? "ascending" : "descending") + ")") : "");
+
+      const label = document.createElement("span");
+      label.className = "ticket-col-header-label";
+      label.textContent = col.label;
+      th.appendChild(label);
+
+      const indicator = document.createElement("span");
+      indicator.className = "ticket-col-header-indicator";
+      indicator.setAttribute("aria-hidden", "true");
+      indicator.textContent = sortDirection === "asc" ? "\u25B2" : (sortDirection === "desc" ? "\u25BC" : "\u2195");
+      th.appendChild(indicator);
+
+      const triggerSort = () => {
         if (state.sortKey === col.key) state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
         else { state.sortKey = col.key; state.sortDir = col.type === "string" ? "asc" : "desc"; }
         renderTicketHeaders();
         applyFiltersAndRender();
+      };
+
+      th.addEventListener("click", triggerSort);
+      th.addEventListener("keydown", (event) => {
+        if (!event) return;
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        triggerSort();
       });
       els.ticketHead.appendChild(th);
     });
@@ -1154,7 +2215,7 @@
 
   /** Navigate main ZD tab to ticket URL, update selected state, and sync row highlight. Single source of truth for "open ticket". */
   function openTicketInMainTab(url, ticketId) {
-    const id = ticketId != null ? ticketId : null;
+    const id = normalizeTicketIdValue(ticketId);
     const ticketUrl = (url && String(url).trim()) || (id != null ? TICKET_URL_PREFIX + id : "");
     if (ticketUrl) {
       getActiveTabId().then((tabId) => {
@@ -1198,9 +2259,11 @@
     els.ticketBody.innerHTML = "";
     if (!state.filteredTickets.length) {
       const tr = document.createElement("tr");
+      tr.className = "spectrum-Table-row";
       const td = document.createElement("td");
+      td.className = "spectrum-Table-cell";
       td.colSpan = TICKET_COLUMNS.length;
-      td.className = "ticket-empty-state";
+      td.classList.add("ticket-empty-state");
       if (state.ticketTableLoading) {
         td.classList.add("ticket-empty-state-loading");
         const hint = document.createElement("span");
@@ -1223,12 +2286,12 @@
     }
     state.filteredTickets.forEach((row) => {
       const tr = document.createElement("tr");
-      tr.className = "ticket-row";
-      const rowId = row.id;
+      tr.className = "spectrum-Table-row ticket-row";
+      const rowId = normalizeTicketIdValue(row && row.id);
       const rowUrl = (row.url && String(row.url).trim()) || (rowId != null ? TICKET_URL_PREFIX + rowId : "");
-      tr.dataset.ticketId = String(rowId);
+      tr.dataset.ticketId = rowId || "";
       tr.dataset.ticketUrl = rowUrl;
-      if (state.selectedTicketId != null && state.selectedTicketId === rowId) tr.classList.add("ticket-row-selected");
+      if (normalizeTicketIdValue(state.selectedTicketId) != null && normalizeTicketIdValue(state.selectedTicketId) === rowId) tr.classList.add("ticket-row-selected");
       tr.addEventListener("click", (e) => {
         const tid = tr.dataset.ticketId;
         const turl = tr.dataset.ticketUrl;
@@ -1239,6 +2302,7 @@
       });
       TICKET_COLUMNS.forEach((col) => {
         const td = document.createElement("td");
+        td.className = "spectrum-Table-cell";
         if (col.key === "id" && rowId != null) {
           const a = document.createElement("a");
           a.href = rowUrl || "#";
@@ -1324,7 +2388,7 @@
       const row = document.createElement("div");
       row.className = "param-row";
       const defaultValue = getDefaultParamValue(param);
-      row.innerHTML = `<label for="zipApiParam_${param}">${param}</label><input type="text" id="zipApiParam_${param}" value="${escapeHtml(defaultValue)}" placeholder="${escapeHtml(param)}" />`;
+      row.innerHTML = `<label for="zipApiParam_${param}">${param}</label><input class="zip-text-input spectrum-Textfield-input" type="text" id="zipApiParam_${param}" value="${escapeHtml(defaultValue)}" placeholder="${escapeHtml(param)}" />`;
       els.apiParams.appendChild(row);
     });
   }
@@ -2316,26 +3380,42 @@
 
   function wireEvents() {
     retryCatalogLoadOnSelectFocus();
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage && chrome.runtime.onMessage.addListener) {
+      chrome.runtime.onMessage.addListener((msg) => {
+        if (!msg || msg.type !== "ZIP_THEME_CHANGED") return;
+        applyThemeState(msg);
+      });
+    }
     if (typeof window !== "undefined") {
       window.addEventListener("focus", () => {
         loadSidePanelContext();
         loadContextMenuUpdateState(false).catch(() => {});
+        loadThemeState().catch(() => {});
+      });
+      window.addEventListener("resize", () => {
+        refreshThemeFlyoutPosition();
+        if (state.user) syncTopAvatarSizeToIdentityRows();
       });
       window.addEventListener("blur", () => { hideContextMenu(); });
       document.addEventListener("visibilitychange", () => {
         if (!document.hidden) {
           loadSidePanelContext();
           loadContextMenuUpdateState(false).catch(() => {});
+          loadThemeState().catch(() => {});
         }
       });
     }
     document.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      showContextMenuAt(e.clientX, e.clientY);
+      hideContextMenu();
     });
     document.addEventListener("click", (e) => {
       if (!els.contextMenu || els.contextMenu.classList.contains("hidden")) return;
-      if (!els.contextMenu.contains(e.target)) hideContextMenu();
+      const clickedMenu = els.contextMenu.contains(e.target);
+      const clickedFlyout = !!(els.contextMenuThemeFlyout
+        && !els.contextMenuThemeFlyout.classList.contains("hidden")
+        && els.contextMenuThemeFlyout.contains(e.target));
+      if (!clickedMenu && !clickedFlyout) hideContextMenu();
     });
     document.addEventListener("scroll", () => { hideContextMenu(); }, true);
     document.addEventListener("keydown", (e) => {
@@ -2344,6 +3424,13 @@
     if (els.contextMenuToggleSide) {
       els.contextMenuToggleSide.addEventListener("click", () => {
         runContextMenuAction("toggleSide");
+      });
+    }
+    if (els.contextMenuToggleZdApi) {
+      els.contextMenuToggleZdApi.addEventListener("click", () => {
+        hideContextMenu();
+        toggleZdApiContainerVisibility();
+        setStatus(state.showZdApiContainers ? "ZD API panels shown." : "ZD API panels hidden.", false);
       });
     }
     if (els.contextMenuAskEric) {
@@ -2361,11 +3448,6 @@
         const target = e && e.target;
         const value = target && typeof target.value === "string" ? target.value.trim() : "";
         if (!value) return;
-        if (value === DOCS_MENU_ZD_API_TOGGLE_VALUE) {
-          toggleZdApiContainerVisibility();
-          target.value = "";
-          return;
-        }
         const url = value;
         openExternalUrl(url);
         target.value = "";
@@ -2378,26 +3460,39 @@
         refreshAll();
       });
     }
-    if (els.appVersion && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getManifest) {
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getManifest) {
       try {
         const manifest = chrome.runtime.getManifest();
-        els.appVersion.textContent = (manifest && manifest.version) || "?";
+        const version = (manifest && manifest.version) || "?";
+        if (els.appVersion) els.appVersion.textContent = version;
+        if (els.loginAppVersion) els.loginAppVersion.textContent = version;
       } catch (_) {}
     }
     setContextMenuBuildLabel();
     loadContextMenuUpdateState(false).catch(() => {});
     if (els.signoutBtn) els.signoutBtn.addEventListener("click", signout);
-    if (els.topIdentityEmail) {
-      els.topIdentityEmail.addEventListener("click", (e) => {
-        const href = (els.topIdentityEmail.getAttribute("href") || "").trim();
+    if (els.topIdentityName) {
+      els.topIdentityName.addEventListener("click", (e) => {
+        const href = (els.topIdentityName.getAttribute("href") || "").trim();
         if (href && href.toLowerCase().startsWith("mailto:")) {
           e.preventDefault();
-          if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.create) {
-            chrome.tabs.create({ url: href }, () => {});
-          } else {
-            window.open(href, "_blank", "noopener");
-          }
+          openOutlookComposeForEmail(href.slice("mailto:".length));
         }
+      });
+    }
+    if (els.topAvatarWrap) {
+      els.topAvatarWrap.addEventListener("click", (e) => {
+        if (!state.user) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (els.contextMenu && !els.contextMenu.classList.contains("hidden")) {
+          hideContextMenu();
+          return;
+        }
+        const rect = els.topAvatarWrap.getBoundingClientRect();
+        const menuX = Math.round(rect.left);
+        const menuY = Math.round(rect.bottom + 6);
+        showContextMenuAt(menuX, menuY);
       });
     }
     els.apiPathSelect.addEventListener("change", renderApiParams);
@@ -2568,6 +3663,7 @@
     if (IS_WORKSPACE_MODE) document.body.classList.add("zip-workspace");
     document.body.classList.add("zip-logged-out");
     if (els.status) els.status.title = FOOTER_HINT_TOOLTIP;
+    await loadThemeState();
     await loadSidePanelContext();
     initializeZdApiContainerVisibility();
     wireEvents();
