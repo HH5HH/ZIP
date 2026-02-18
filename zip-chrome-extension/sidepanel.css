@@ -8,6 +8,7 @@
 html {
   width: 100%;
   height: 100%;
+  min-width: var(--zip-panel-min-width, 220px);
   overflow: hidden;
 }
 
@@ -90,6 +91,8 @@ body {
   --zip-density-line-detail: var(--spectrum-line-height-75);
   --zip-density-line-body: var(--spectrum-line-height-100);
   --zip-density-control-height: var(--spectrum-component-height-100);
+  --zip-header-height: calc(var(--zip-density-control-height) + (var(--space-xs) * 2));
+  --zip-footer-height: calc(var(--zip-density-control-height) + (var(--space-xs) * 2));
   --zip-density-control-height-compact: var(--spectrum-component-height-75);
   --zip-density-field-pad-inline: var(--spectrum-component-edge-to-text-75);
   --zip-density-field-pad-inline-lg: var(--spectrum-component-edge-to-text-100);
@@ -432,6 +435,7 @@ body {
   margin: 0;
   width: 100%;
   height: 100%;
+  min-width: var(--zip-panel-min-width, 220px);
   min-height: 0;
   max-height: 100%;
   background:
@@ -443,7 +447,7 @@ body {
   line-height: 1.5;
   color-scheme: var(--zip-color-scheme);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: var(--zip-header-height) minmax(0, 1fr) var(--zip-footer-height);
   overflow: hidden;
 }
 
@@ -477,10 +481,13 @@ body.zip-workspace #zipAppScreen .section:first-child {
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
   gap: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
+  padding: var(--space-xxs) var(--space-sm);
+  min-height: var(--zip-header-height);
+  height: var(--zip-header-height);
+  max-height: var(--zip-header-height);
   color: var(--fg-default);
   color-scheme: var(--zip-color-scheme);
   background:
@@ -493,69 +500,20 @@ body.zip-workspace #zipAppScreen .section:first-child {
     0 2px 10px var(--zip-shadow-soft);
   position: relative;
   isolation: isolate;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
   min-width: 0;
-  flex: 1;
-}
-
-.top-identity-wrap {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  max-width: 220px;
-}
-
-.top-identity-name {
-  font-size: var(--spectrum-font-size-100);
-  font-weight: var(--spectrum-font-weight-bold);
-  color: var(--fg-primary);
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-decoration: none;
-}
-
-.top-identity-name:hover,
-.top-identity-name:focus-visible {
-  text-decoration: underline;
-  outline: none;
-}
-
-.top-identity-name.is-disabled {
-  color: var(--fg-default);
-  text-decoration: none;
-  cursor: default;
-  pointer-events: none;
-}
-
-.top-identity-tz {
-  font-size: var(--spectrum-font-size-75);
-  color: var(--fg-subtle);
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.top-identity-meta {
-  font-size: var(--spectrum-font-size-75);
-  color: var(--fg-hint);
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-transform: lowercase;
+  flex: 0 0 auto;
 }
 
 .top-avatar-wrap {
-  --zip-avatar-width: 30px;
-  --zip-avatar-height: 30px;
+  --zip-avatar-width: var(--zip-density-control-height);
+  --zip-avatar-height: var(--zip-density-control-height);
   width: var(--zip-avatar-width);
   height: var(--zip-avatar-height);
   border-radius: 999px;
@@ -592,13 +550,6 @@ body.zip-workspace #zipAppScreen .section:first-child {
   font-weight: var(--spectrum-font-weight-bold);
 }
 
-.actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  margin-left: auto;
-}
-
 .topbar .spectrum-Button,
 .topbar .spectrum-Textfield-input {
   --spectrum-neutral-content-color-default: var(--fg-default);
@@ -621,12 +572,6 @@ body.zip-workspace #zipAppScreen .section:first-child {
 
 .topbar .spectrum-Button .spectrum-Button-label {
   color: inherit;
-}
-
-@media (max-width: 520px) {
-  .top-identity-wrap {
-    max-width: 150px;
-  }
 }
 
 .btn {
@@ -655,16 +600,27 @@ body.zip-workspace #zipAppScreen .section:first-child {
 
 .docs-menu {
   margin: 0;
+  margin-left: auto;
+  min-width: 0;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: var(--zip-control-bg);
   color: var(--fg-default);
   min-height: 32px;
-  max-width: min(52vw, 260px);
+  flex: 0 0 auto;
+  inline-size: auto;
+  max-width: min(56vw, 180px);
   padding: 0 var(--space-xs);
   font: var(--spectrum-font-weight-medium) var(--spectrum-font-size-100)/1.2 var(--font-system);
   cursor: pointer;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spectrum-body-color) 12%, transparent);
+}
+
+#zipSignoutBtn {
+  flex: 0 0 auto;
+  min-inline-size: 0;
+  inline-size: auto;
+  padding-inline: var(--zip-density-field-pad-inline);
 }
 
 .zip-select-control {
@@ -720,6 +676,7 @@ select.zip-select-control {
 }
 
 .body {
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
@@ -736,13 +693,16 @@ select.zip-select-control {
   align-items: center;
   justify-content: space-between;
   gap: var(--zip-density-gap-md);
+  min-width: 0;
   flex-shrink: 0;
-  padding: var(--zip-density-gap) var(--zip-density-gap-md);
+  padding: 0 var(--zip-density-gap-md);
+  min-height: var(--zip-footer-height);
+  height: var(--zip-footer-height);
+  max-height: var(--zip-footer-height);
   border-top: 1px solid var(--zip-surface-border-accent);
   background:
     linear-gradient(180deg, var(--zip-footer-grad-a) 0%, var(--zip-footer-grad-b) 100%),
     var(--zip-shell-surface-bg);
-  min-height: var(--zip-density-control-height);
   color: var(--fg-default);
   color-scheme: var(--zip-color-scheme);
 }
@@ -921,6 +881,19 @@ select.zip-select-control {
   -webkit-backdrop-filter: none;
 }
 
+.zip-context-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  background: color-mix(in srgb, var(--zip-shadow-strong) 16%, transparent);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.zip-context-menu-backdrop.hidden {
+  display: none !important;
+}
+
 .zip-context-menu.hidden {
   pointer-events: none;
 }
@@ -1082,24 +1055,6 @@ select.zip-select-control {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: var(--spectrum-font-weight-medium);
-}
-
-.zip-context-menu-theme-parent-content {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1px;
-  min-width: 0;
-}
-
-.zip-context-menu-theme-parent-meta {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--spectrum-font-size-75);
-  line-height: 1.25;
-  color: var(--zip-theme-preview-subtle, var(--zip-menu-fg-subtle));
   font-weight: var(--spectrum-font-weight-medium);
 }
 
@@ -1687,11 +1642,90 @@ input::placeholder {
   margin-top: var(--zip-density-gap);
   margin-bottom: 0;
   padding: var(--zip-density-gap);
+  gap: var(--space-xxs);
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
   border: 1px solid var(--zip-surface-border-accent);
   border-radius: var(--radius-md);
   background:
     linear-gradient(180deg, var(--zip-table-foot-bg-a) 0%, var(--zip-table-foot-bg-b) 100%),
     var(--bg-recessed);
+}
+
+.ticket-table-footer #zipTicketSearch {
+  flex: 1 1 18ch;
+  min-width: 7ch;
+  max-width: 100%;
+}
+
+.ticket-table-footer #zipStatusFilter {
+  flex: 0 1 auto;
+  min-width: 5ch;
+  max-width: 8ch;
+  width: 8ch;
+}
+
+.ticket-table-footer .spectrum-Button {
+  min-height: var(--zip-density-control-height);
+  border-radius: var(--radius-md);
+  padding-inline: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spectrum-body-color) 12%, transparent);
+}
+
+.ticket-table-footer .spectrum-Button:hover {
+  background: var(--zip-control-hover-bg);
+  border-color: var(--zip-control-border-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spectrum-body-color) 20%, transparent);
+}
+
+.ticket-table-footer .spectrum-Button:focus-visible {
+  outline: none;
+  border-color: var(--spectrum-focus-color);
+  box-shadow:
+    0 0 0 2px var(--spectrum-focus-ring-color),
+    inset 0 0 0 1px color-mix(in srgb, var(--spectrum-focus-color) 40%, transparent);
+}
+
+.ticket-table-footer .spectrum-Button:disabled {
+  opacity: 1;
+  color: var(--fg-hint);
+  border-color: var(--border-subtle);
+  background: var(--bg-subtle);
+  box-shadow: none;
+}
+
+#zipReloadTicketsBtn {
+  inline-size: var(--zip-density-control-height);
+  min-inline-size: var(--zip-density-control-height);
+}
+
+#zipExportCsvBtn {
+  inline-size: var(--zip-density-control-height);
+  min-inline-size: var(--zip-density-control-height);
+  font: var(--spectrum-font-weight-medium) 9px/1 var(--font-mono);
+  letter-spacing: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#zipExportCsvBtn .spectrum-Button-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 100%;
+  block-size: 100%;
+  align-self: center;
+  padding-block-start: 0;
+  padding-block-end: 0;
+  margin: 0;
+  line-height: 1;
+  font-size: inherit;
+  font-family: inherit;
+  font-weight: var(--spectrum-font-weight-medium);
+  white-space: nowrap;
 }
 
 .api-form { margin-bottom: var(--zip-density-gap); }
@@ -2236,14 +2270,18 @@ body.zip-logged-out .zip-footer {
 
 body.zip-logged-out .topbar > *,
 body.zip-logged-out .zip-footer > * {
-  opacity: 0;
-  pointer-events: none;
-  user-select: none;
+  display: none !important;
 }
 
 body.zip-logged-out .body {
   display: grid;
   align-items: stretch;
+  min-width: 0;
+}
+
+body.zip-logged-out .login-wrap {
+  width: 100%;
+  min-width: 0;
 }
 
 body.zip-logged-out .login-card { padding: var(--space-md); }

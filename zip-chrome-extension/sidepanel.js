@@ -7,7 +7,6 @@
   const LOGIN_URL = BASE + "/auth/v3/signin?return_to=" + encodeURIComponent(ASSIGNED_FILTER_URL);
   const TICKET_URL_PREFIX = BASE + "/agent/tickets/";
   const SHOW_TICKET_API_PATH = "/api/v2/tickets/{ticket_id}";
-  const OUTLOOK_DEEPLINK_COMPOSE_URL = "https://outlook.office.com/mail/deeplink/compose";
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
   const DEFAULT_FOOTER_HINT = "Tip: Click your avatar for ZIP menu actions";
   const FOOTER_HINT_TOOLTIP = "Click your avatar to open the ZIP context menu.";
@@ -79,7 +78,7 @@
   const FILTER_CATALOG_RETRY_ATTEMPTS = 3;
   const FILTER_CATALOG_RETRY_BASE_DELAY_MS = 500;
   const STATUS_FILTER_ALL_VALUE = "all";
-  const STATUS_FILTER_ALL_LABEL = "All Statuses";
+  const STATUS_FILTER_ALL_LABEL = "all";
   const PREFERRED_STATUS_ORDER = ["new", "open", "pending", "hold", "solved", "closed"];
   const ZD_API_VISIBILITY_STORAGE_KEY = "zip.ui.showZdApiContainers.v1";
   const CONTEXT_MENU_ZD_API_SHOW_LABEL = "Show ZD API";
@@ -402,10 +401,6 @@
     topAvatarWrap: $("zipTopAvatarWrap"),
     topAvatar: $("zipTopAvatar"),
     topAvatarFallback: $("zipTopAvatarFallback"),
-    topIdentity: $("zipTopIdentity"),
-    topIdentityName: $("zipTopIdentityName"),
-    topIdentityTz: $("zipTopIdentityTz"),
-    topIdentityMeta: $("zipTopIdentityMeta"),
     loginScreen: $("zipLoginScreen"),
     appDescription: $("zipAppDescription"),
     appScreen: $("zipAppScreen"),
@@ -415,6 +410,7 @@
     appVersionLink: $("zipAppVersionLink"),
     appVersion: $("zipAppVersion"),
     loginAppVersion: $("zipLoginAppVersion"),
+    contextMenuBackdrop: $("zipContextMenuBackdrop"),
     ticketNetworkIndicator: $("zipTicketNetworkIndicator"),
     ticketNetworkLabel: $("zipTicketNetworkLabel"),
     contextMenu: $("zipContextMenu"),
@@ -462,13 +458,6 @@
     } else {
       window.open(safeUrl, "_blank", "noopener");
     }
-  }
-
-  function openOutlookComposeForEmail(email) {
-    const to = String(email || "").trim();
-    if (!to) return;
-    const url = OUTLOOK_DEEPLINK_COMPOSE_URL + "?to=" + encodeURIComponent(to);
-    openExternalUrl(url);
   }
 
   function readZdApiVisibilityPreference() {
@@ -973,35 +962,26 @@
       parentBtn.setAttribute("aria-haspopup", "true");
       parentBtn.setAttribute("aria-expanded", openStop === stopId ? "true" : "false");
       const parentSelected = activeStop === stopId;
-      const parentAccentLabel = getAccentFamilyLabel(parentTheme.accentFamily);
       if (parentSelected) parentBtn.classList.add("is-selected");
       parentBtn.setAttribute("aria-current", parentSelected ? "true" : "false");
       if (openStop === stopId) parentBtn.classList.add("is-open");
       applyThemeSwatchStyles(parentBtn, parentTheme);
       parentBtn.innerHTML = ""
         + "<span class=\"zip-context-menu-theme-dot\" aria-hidden=\"true\"></span>"
-        + "<span class=\"zip-context-menu-theme-parent-content\">"
-        + "<span class=\"zip-context-menu-theme-parent-title\">Spectrum 2 " + escapeHtml(stop.label) + "</span>"
-        + "<span class=\"zip-context-menu-theme-parent-meta\">"
-        + (parentSelected ? "Active | " : "Accent | ")
-        + escapeHtml(parentAccentLabel)
-        + "</span>"
-        + "</span>"
+        + "<span class=\"zip-context-menu-theme-parent-title\">" + escapeHtml(stop.label) + "</span>"
         + "<span class=\"zip-context-menu-theme-parent-state\" aria-hidden=\"true\">"
         + (parentSelected ? "Active" : "")
         + "</span>";
       const openThemeStopFlyout = (event) => {
-        if (event && event.type === "pointerdown" && event.button !== 0) return;
+        if (!event) return;
+        if (event.type === "click" && event.button !== 0) return;
+        if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         event.stopPropagation();
         toggleThemeFlyout(stopId, parentBtn);
       };
-      parentBtn.addEventListener("pointerdown", openThemeStopFlyout);
-      parentBtn.addEventListener("keydown", (event) => {
-        if (!event) return;
-        if (event.key !== "Enter" && event.key !== " ") return;
-        openThemeStopFlyout(event);
-      });
+      parentBtn.addEventListener("click", openThemeStopFlyout);
+      parentBtn.addEventListener("keydown", openThemeStopFlyout);
 
       if (openStop === stopId) anchorForOpenStop = parentBtn;
 
@@ -1089,8 +1069,16 @@
     return match ? match.label : "Spectrum 2 Theme";
   }
 
+  function setContextMenuBackdropVisible(visible) {
+    if (!els.contextMenuBackdrop) return;
+    const show = !!visible;
+    els.contextMenuBackdrop.classList.toggle("hidden", !show);
+    els.contextMenuBackdrop.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
   function hideContextMenu() {
     hideThemeFlyout();
+    setContextMenuBackdropVisible(false);
     if (!els.contextMenu) return;
     els.contextMenu.classList.add("hidden");
   }
@@ -1130,6 +1118,7 @@
     syncContextMenuAuthVisibility();
     syncContextMenuZdApiToggleLabel();
     menu.classList.remove("hidden");
+    setContextMenuBackdropVisible(true);
     function placeMenu() {
       menu.style.left = "0px";
       menu.style.top = "0px";
@@ -1961,38 +1950,10 @@
       .replaceAll('"', "&quot;");
   }
 
-  function syncTopAvatarSizeToIdentityRows() {
-    if (!els.topAvatarWrap || !els.topIdentity) return;
-    const identityRect = els.topIdentity.getBoundingClientRect();
-    const size = Math.max(0, Math.round(identityRect.height));
-    if (size > 0) {
-      els.topAvatarWrap.style.setProperty("--zip-avatar-width", size + "px");
-      els.topAvatarWrap.style.setProperty("--zip-avatar-height", size + "px");
-      return;
-    }
-    els.topAvatarWrap.style.removeProperty("--zip-avatar-width");
-    els.topAvatarWrap.style.removeProperty("--zip-avatar-height");
-  }
-
-  function formatRoleAndId(user) {
-    const role = user && user.role != null ? String(user.role).trim().toLowerCase() : "";
-    const id = user && user.id != null ? String(user.id).trim() : "";
-    return [role, id].filter(Boolean).join(" ");
-  }
-
   function setTopIdentityFromUser(user) {
     if (!user) return;
     const name = user.name || user.email || "Agent";
-    const timeZone = user.time_zone || "";
     const email = user.email || "";
-    const roleAndId = formatRoleAndId(user);
-    if (els.topIdentityName) {
-      els.topIdentityName.textContent = name;
-      els.topIdentityName.href = email ? "mailto:" + email : "#";
-      els.topIdentityName.classList.toggle("is-disabled", !email);
-    }
-    if (els.topIdentityTz) els.topIdentityTz.textContent = timeZone;
-    if (els.topIdentityMeta) els.topIdentityMeta.textContent = roleAndId;
     const avatarUrl = user.photo && (user.photo.content_url || user.photo.url || user.photo.mapped_content_url);
     if (els.topAvatarFallback) {
       const fallbackInitial = (String(name).trim().charAt(0) || "?").toUpperCase();
@@ -2011,26 +1972,15 @@
       els.topAvatarWrap.title = state.busy ? "Loading…" : idleTitle;
       els.topAvatarWrap.dataset.idleTitle = idleTitle;
     }
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncTopAvatarSizeToIdentityRows);
-    else syncTopAvatarSizeToIdentityRows();
   }
 
   function resetTopIdentity() {
     if (els.topAvatar) els.topAvatar.classList.add("hidden");
     if (els.topAvatarFallback) { els.topAvatarFallback.textContent = "?"; els.topAvatarFallback.classList.remove("hidden"); }
     if (els.topAvatarWrap) {
-      els.topAvatarWrap.style.removeProperty("--zip-avatar-width");
-      els.topAvatarWrap.style.removeProperty("--zip-avatar-height");
       els.topAvatarWrap.title = "Not logged in";
       els.topAvatarWrap.dataset.idleTitle = "Not logged in";
     }
-    if (els.topIdentityName) {
-      els.topIdentityName.textContent = "Not logged in";
-      els.topIdentityName.href = "#";
-      els.topIdentityName.classList.add("is-disabled");
-    }
-    if (els.topIdentityTz) els.topIdentityTz.textContent = "";
-    if (els.topIdentityMeta) els.topIdentityMeta.textContent = "";
   }
 
   function resetTopFilterMenuCatalogState() {
@@ -2150,6 +2100,13 @@
     state.filteredTickets = [];
     state.selectedTicketId = null;
     applyFiltersAndRender();
+  }
+
+  function resetStatusFilterSelection() {
+    state.statusFilter = STATUS_FILTER_ALL_VALUE;
+    if (els.statusFilter) {
+      els.statusFilter.value = STATUS_FILTER_ALL_VALUE;
+    }
   }
 
   function applyFiltersAndRender() {
@@ -3394,7 +3351,6 @@
       });
       window.addEventListener("resize", () => {
         refreshThemeFlyoutPosition();
-        if (state.user) syncTopAvatarSizeToIdentityRows();
       });
       window.addEventListener("blur", () => { hideContextMenu(); });
       document.addEventListener("visibilitychange", () => {
@@ -3409,18 +3365,26 @@
       e.preventDefault();
       hideContextMenu();
     });
-    document.addEventListener("click", (e) => {
+    document.addEventListener("scroll", (e) => {
       if (!els.contextMenu || els.contextMenu.classList.contains("hidden")) return;
-      const clickedMenu = els.contextMenu.contains(e.target);
-      const clickedFlyout = !!(els.contextMenuThemeFlyout
+      const target = e && e.target;
+      const scrolledMenu = !!(target && els.contextMenu.contains(target));
+      const scrolledFlyout = !!(target
+        && els.contextMenuThemeFlyout
         && !els.contextMenuThemeFlyout.classList.contains("hidden")
-        && els.contextMenuThemeFlyout.contains(e.target));
-      if (!clickedMenu && !clickedFlyout) hideContextMenu();
-    });
-    document.addEventListener("scroll", () => { hideContextMenu(); }, true);
+        && els.contextMenuThemeFlyout.contains(target));
+      if (!scrolledMenu && !scrolledFlyout) hideContextMenu();
+    }, true);
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") hideContextMenu();
     });
+    if (els.contextMenuBackdrop) {
+      els.contextMenuBackdrop.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        hideContextMenu();
+      });
+    }
     if (els.contextMenuToggleSide) {
       els.contextMenuToggleSide.addEventListener("click", () => {
         runContextMenuAction("toggleSide");
@@ -3471,15 +3435,6 @@
     setContextMenuBuildLabel();
     loadContextMenuUpdateState(false).catch(() => {});
     if (els.signoutBtn) els.signoutBtn.addEventListener("click", signout);
-    if (els.topIdentityName) {
-      els.topIdentityName.addEventListener("click", (e) => {
-        const href = (els.topIdentityName.getAttribute("href") || "").trim();
-        if (href && href.toLowerCase().startsWith("mailto:")) {
-          e.preventDefault();
-          openOutlookComposeForEmail(href.slice("mailto:".length));
-        }
-      });
-    }
     if (els.topAvatarWrap) {
       els.topAvatarWrap.addEventListener("click", (e) => {
         if (!state.user) return;
@@ -3542,6 +3497,7 @@
       els.assignedTicketsLink.addEventListener("click", (e) => {
         e.preventDefault();
         if (!state.user || state.user.id == null) return;
+        resetStatusFilterSelection();
         setBusy(true);
         runAssignedTicketsQueryWithMainFilter()
           .then((result) => setAssignedTicketsLoadStatus(result.navError))

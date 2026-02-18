@@ -13,29 +13,23 @@
         <img id="zipTopAvatar" class="top-avatar hidden" alt="Zendesk agent avatar" />
         <span id="zipTopAvatarFallback" class="top-avatar-fallback">?</span>
       </div>
-      <div id="zipTopIdentity" class="top-identity-wrap">
-        <a id="zipTopIdentityName" class="top-identity-name" href="#">Not logged in</a>
-        <div id="zipTopIdentityTz" class="top-identity-tz"></div>
-        <div id="zipTopIdentityMeta" class="top-identity-meta"></div>
-      </div>
     </div>
-    <div class="actions">
-      <select id="zipDocsMenu" class="docs-menu zip-select-control spectrum-Textfield-input" title="Open Adobe Pass resources" aria-label="Open Adobe Pass resources">
-        <option value=""></option>
-        <option value="https://status.adobe.com/products/503478">status.adobe</option>
-        <option value="https://experienceleague.adobe.com/en/docs/pass">pass docs</option>
-        <option value="https://developer.adobe.com/adobe-pass/api/dcr_api/interactive/">DCR v2</option>
-        <option value="https://tve.zendesk.com/hc/en-us/articles/33912526308372-Adobe-Pass-Authentication-Degradation-API-v3">Degradation v3</option>
-        <option value="https://experienceleague.adobe.com/en/docs/pass/authentication/integration-guide-programmers/features-premium/esm/entitlement-service-monitoring-api">ESM v3</option>
-        <option value="https://developer.adobe.com/adobe-pass/api/rest_api_v2/interactive/">REST v2</option>
-        <option value="" disabled>────────</option>
-        <option value="https://sp.auth-staging.adobe.com/apitest/api.html">apitest</option>
-        <option value="https://tve.zendesk.com/hc/en-us">pt hub</option>
-      </select>
-      <button id="zipSignoutBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS">
-        <span class="spectrum-Button-label">Sign out</span>
-      </button>
-    </div>
+    <select id="zipDocsMenu" class="docs-menu zip-select-control spectrum-Textfield-input" title="Open Adobe Pass resources" aria-label="Open Adobe Pass resources">
+      <option value="">Links</option>
+      <option value="https://status.adobe.com/products/503478">status.adobe</option>
+      <option value="https://experienceleague.adobe.com/en/docs/pass">pass docs</option>
+      <option value="https://developer.adobe.com/adobe-pass/api/dcr_api/interactive/">DCR v2</option>
+      <option value="https://tve.zendesk.com/hc/en-us/articles/33912526308372-Adobe-Pass-Authentication-Degradation-API-v3">Degradation v3</option>
+      <option value="https://experienceleague.adobe.com/en/docs/pass/authentication/integration-guide-programmers/features-premium/esm/entitlement-service-monitoring-api">ESM v3</option>
+      <option value="https://developer.adobe.com/adobe-pass/api/rest_api_v2/interactive/">REST v2</option>
+      <option value="" disabled>────────</option>
+      <option value="https://experience.adobe.com/#/@adobepass/pass/authentication/release-production">@adobepass</option>
+      <option value="https://sp.auth-staging.adobe.com/apitest/api.html">apitest</option>
+      <option value="https://tve.zendesk.com/hc/en-us">pt hub</option>
+    </select>
+    <button id="zipSignoutBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS">
+      <span class="spectrum-Button-label">Sign out</span>
+    </button>
   </header>
   <div class="body">
     <div id="zipLoginScreen" class="login-wrap">
@@ -99,20 +93,17 @@
           </table>
         </div>
         <div class="ticket-table-footer control-row">
-          <input id="zipTicketSearch" class="zip-text-input spectrum-Textfield-input" type="text" placeholder="Search tickets" />
+          <input id="zipTicketSearch" class="zip-text-input spectrum-Textfield-input" type="text" placeholder="search" />
           <select id="zipStatusFilter" class="zip-select-control spectrum-Textfield-input">
-            <option value="all">All Statuses</option>
+            <option value="all">all</option>
           </select>
           <button id="zipReloadTicketsBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Refresh" aria-label="Refresh tickets">
             <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 5a7 7 0 1 1-6.93 8h2.03a5 5 0 1 0 1.24-4.1L11 11H4V4l2.81 2.81A8.96 8.96 0 0 1 12 5z" fill="currentColor"></path>
             </svg>
           </button>
-          <button id="zipExportCsvBtn" class="btn icon-btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Export current table as CSV" aria-label="Export current ticket table as CSV" disabled>
-            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3v10.17l3.59-3.58L17 11l-5 5-5-5 1.41-1.41L11 13.17V3h1zm-7 14h14v2H5v-2z" fill="currentColor"></path>
-            </svg>
-            <span class="icon-btn-label spectrum-Button-label">CSV</span>
+          <button id="zipExportCsvBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Export current table as csv" aria-label="Export current ticket table as csv" disabled>
+            <span class="spectrum-Button-label">CSV</span>
           </button>
         </div>
       </section>
@@ -160,6 +151,7 @@
       <span class="zip-footer-brand-build">v<span id="zipAppVersion" class="app-version-num">—</span></span>
     </a>
   </footer>
+  <div id="zipContextMenuBackdrop" class="zip-context-menu-backdrop hidden" aria-hidden="true"></div>
   <div id="zipContextMenu" class="zip-context-menu hidden" role="menu" aria-label="ZIP context menu">
     <div class="zip-context-menu-root" role="presentation">
       <svg class="zip-logo-svg zip-context-menu-logo" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
