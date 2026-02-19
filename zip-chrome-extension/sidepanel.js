@@ -7,6 +7,24 @@
   const LOGIN_URL = BASE + "/auth/v3/signin?return_to=" + encodeURIComponent(ASSIGNED_FILTER_URL);
   const TICKET_URL_PREFIX = BASE + "/agent/tickets/";
   const SHOW_TICKET_API_PATH = "/api/v2/tickets/{ticket_id}";
+  const PASS_AI_SLACK_WORKSPACE_ORIGIN = "https://adobedx.slack.com";
+  const PASS_AI_SLACK_API_ENDPOINT = PASS_AI_SLACK_WORKSPACE_ORIGIN + "/api";
+  const PASS_AI_SLACK_APP_ID = "A0AGPACM3UG";
+  const PASS_AI_SLACK_SINGULARITY_USER_ID = "U05PQCUFN0H";
+  const PASS_AI_SLACK_TEAM_ID = "T02CAQ0B2";
+  const PASS_AI_SLACK_TEAM_STORAGE_KEY = "zip.passAi.expectedSlackTeamId";
+  const PASS_AI_SLACK_LOGIN_URL = PASS_AI_SLACK_WORKSPACE_ORIGIN + "/signin";
+  const PASS_AI_SLACK_CHANNEL_STORAGE_KEY = "zip.passAi.singularityChannelId";
+  const PASS_AI_SLACK_CHANNEL_DEFAULT = "C08SX9ZR891";
+  const PASS_AI_SINGULARITY_MENTION_STORAGE_KEY = "zip.passAi.singularityMention";
+  const PASS_AI_SINGULARITY_MENTION_DEFAULT = "@Singularity";
+  const PASS_AI_SINGULARITY_NAME_PATTERN = "singularity";
+  const PASS_AI_POLL_INTERVAL_MS = 1500;
+  const PASS_AI_POLL_MAX_ATTEMPTS = 48;
+  const PASS_AI_INACTIVITY_FINAL_MS = 6000;
+  const PASS_AI_MIN_SINGULARITY_REPLIES = 2;
+  const PASS_AI_SLACK_AUTH_POLL_INTERVAL_MS = 2500;
+  const PASS_AI_SLACK_AUTH_POLL_MAX_ATTEMPTS = 36;
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
   const DEFAULT_FOOTER_HINT = "Tip: Click your avatar for ZIP menu actions";
   const FOOTER_HINT_TOOLTIP = "Click your avatar to open the ZIP context menu.";
@@ -17,7 +35,8 @@
     { key: "status", label: "Status", type: "string" },
     { key: "priority", label: "Priority", type: "string" },
     { key: "created_at", label: "Created", type: "date" },
-    { key: "updated_at", label: "Updated", type: "date" }
+    { key: "updated_at", label: "Updated", type: "date" },
+    { key: "__ticket_email_actions", label: "", type: "utility", sortable: false }
   ];
 
   const state = {
@@ -62,6 +81,24 @@
     showZdApiContainers: false,
     sidePanelLayout: "unknown",
     zendeskTabId: null,
+    slackTabId: null,
+    slackLoginWindowId: null,
+    slackAuthTabBootstrapAt: 0,
+    passAiLoading: false,
+    passAiTicketId: null,
+    passAiActiveClientId: "",
+    passAiSlackReady: false,
+    passAiSlackAuthPolling: false,
+    passAiSlackUserId: "",
+    passAiSlackTeamId: getExpectedPassAiSlackTeamId() || PASS_AI_SLACK_TEAM_ID,
+    passAiSlackAuthError: "",
+    passAiSlackAuthBootstrapCount: 0,
+    passAiLastThreadContext: null,
+    passAiDeleteInFlight: false,
+    ticketEmailCopyBusyById: Object.create(null),
+    ticketEmailUserEmailCacheById: Object.create(null),
+    ticketEmailRequesterByTicketId: Object.create(null),
+    ticketEmailCopyCacheByTicketId: Object.create(null),
     themeId: "s2-dark-blue",
     themeOptions: [],
     themeFlyoutStop: ""
@@ -69,14 +106,20 @@
 
   let authCheckIntervalId = null;
   let authCheckInFlight = false;
+  let passAiSlackAuthPollTimerId = null;
+  let passAiSlackAuthPollAttempt = 0;
+  let toastHideTimerId = null;
   const AUTH_CHECK_INTERVAL_MS = 5000;
   const VIEW_COUNT_CACHE_KEY = "zip.filter.viewCounts.v1";
   const ORG_COUNT_CACHE_KEY = "zip.filter.orgCounts.v1";
   const GROUP_COUNT_CACHE_KEY = "zip.filter.groupCounts.v1";
   const ZENDESK_TAB_RETRY_MAX_ATTEMPTS = 6;
   const ZENDESK_TAB_RETRY_BASE_DELAY_MS = 150;
+  const SLACK_TAB_RETRY_MAX_ATTEMPTS = 6;
+  const SLACK_TAB_RETRY_BASE_DELAY_MS = 150;
   const FILTER_CATALOG_RETRY_ATTEMPTS = 3;
   const FILTER_CATALOG_RETRY_BASE_DELAY_MS = 500;
+  const TICKET_EMAIL_COPY_CACHE_TTL_MS = 5 * 60 * 1000;
   const STATUS_FILTER_ALL_VALUE = "all";
   const STATUS_FILTER_ALL_LABEL = "all";
   const PREFERRED_STATUS_ORDER = ["new", "open", "pending", "hold", "solved", "closed"];
@@ -423,6 +466,21 @@
     rawThead: $("zipRawThead"),
     rawBody: $("zipRawBody"),
     rawDownload: $("zipRawDownload"),
+    toast: $("zipToast"),
+    slackLoginBtn: $("zipSlackLoginBtn"),
+    passAiCtaZone: $("zipPassAiCtaZone"),
+    passAiSubmitWrap: $("zipPassAiSubmitWrap"),
+    passAiSubmitHint: $("zipPassAiSubmitHint"),
+    askPassAiBtn: $("zipAskPassAiBtn"),
+    passAiSlackAuthStatus: $("zipPassAiSlackAuthStatus"),
+    passAiInlineStatus: $("zipPassAiInlineStatus"),
+    passAiResultsBox: $("zipPassAiResultsBox"),
+    passAiError: $("zipPassAiError"),
+    passAiQuestionLabel: $("zipPassAiQuestionLabel"),
+    passAiQuestion: $("zipPassAiQuestion"),
+    passAiAnswerBlock: $("zipPassAiAnswerBlock"),
+    passAiAnswerPlaceholder: $("zipPassAiAnswerPlaceholder"),
+    passAiDynamicReplyHost: $("zipPassAiDynamicReplyHost"),
     ticketSearch: $("zipTicketSearch"),
     statusFilter: $("zipStatusFilter"),
     reloadTicketsBtn: $("zipReloadTicketsBtn"),
@@ -447,6 +505,12 @@
     });
   }
 
+  function getSlackTabId() {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "ZIP_GET_SLACK_TAB" }, (r) => resolve(r?.tabId ?? null));
+    });
+  }
+
   function openExternalUrl(url) {
     const safeUrl = String(url || "").trim();
     if (!safeUrl) return;
@@ -455,6 +519,83 @@
     } else {
       window.open(safeUrl, "_blank", "noopener");
     }
+  }
+
+  function sendBackgroundRequest(type, payload) {
+    const body = payload && typeof payload === "object" ? payload : {};
+    return new Promise((resolve, reject) => {
+      if (!chrome || !chrome.runtime || typeof chrome.runtime.sendMessage !== "function") {
+        reject(new Error("Extension runtime is unavailable."));
+        return;
+      }
+      chrome.runtime.sendMessage({ type, ...body }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message || "Extension request failed."));
+          return;
+        }
+        resolve(response || {});
+      });
+    });
+  }
+
+  function openSlackLoginDialog(url) {
+    const safeUrl = String(url || "").trim();
+    if (!safeUrl) {
+      return Promise.reject(new Error("Slack login URL is missing."));
+    }
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "ZIP_OPEN_SLACK_LOGIN", url: safeUrl }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message || "Unable to open Slack login dialog."));
+          return;
+        }
+        if (response && response.error) {
+          reject(new Error(response.error));
+          return;
+        }
+        resolve(response || { windowId: null, tabId: null });
+      });
+    });
+  }
+
+  function openSlackWorkspaceTab(url, options) {
+    const safeUrl = String(url || "").trim();
+    if (!safeUrl) {
+      return Promise.reject(new Error("Slack workspace URL is missing."));
+    }
+    const active = !!(options && options.active);
+    return new Promise((resolve, reject) => {
+      if (!chrome || !chrome.tabs || typeof chrome.tabs.create !== "function") {
+        reject(new Error("Unable to open Slack tab in this browser context."));
+        return;
+      }
+      chrome.tabs.create({ url: safeUrl, active }, (tab) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message || "Unable to open Slack tab."));
+          return;
+        }
+        resolve({
+          tabId: tab && tab.id != null ? tab.id : null,
+          windowId: tab && tab.windowId != null ? tab.windowId : null
+        });
+      });
+    });
+  }
+
+  function closeSlackLoginDialog(windowId) {
+    const numericId = Number(windowId);
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      return Promise.resolve({ ok: false, error: "Invalid Slack login window id." });
+    }
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "ZIP_CLOSE_WINDOW", windowId: numericId }, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, error: chrome.runtime.lastError.message || "Unable to close Slack login dialog." });
+          return;
+        }
+        resolve(response || { ok: true });
+      });
+    });
   }
 
   function readZdApiVisibilityPreference() {
@@ -1250,6 +1391,81 @@
     })();
   }
 
+  function sendToSlackTab(inner) {
+    const shouldTryNextSlackTabCandidate = (result) => {
+      if (!result || typeof result !== "object") return false;
+      if (result.ok !== false) return false;
+      const message = normalizePassAiCommentBody(result.error || result.message).toLowerCase();
+      if (!message) return false;
+      if (message.includes("not a slack tab")) return true;
+      if (message.includes("session token not found")) return true;
+      if (message.includes("no slack web session token")) return true;
+      if (message.includes("complete login first")) return true;
+      if (message.includes("login first")) return true;
+      if (String(inner && inner.action || "") === "slackAuthTest" && message.includes("slack session unavailable")) {
+        return true;
+      }
+      return false;
+    };
+
+    const sendOnce = (tabId) => new Promise((resolve, reject) => {
+      if (!tabId) {
+        reject(new Error("No Slack tab available"));
+        return;
+      }
+      const requestId = "s" + Date.now() + "_" + Math.random().toString(36).slice(2);
+      chrome.runtime.sendMessage(
+        { type: "ZIP_REQUEST", tabId, requestId, inner },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message || "Extension error"));
+            return;
+          }
+          if (response && response.error) {
+            reject(new Error(response.error));
+            return;
+          }
+          if (response && response.result !== undefined) resolve(response.result);
+          else if (response && response.type === "ZIP_RESPONSE" && response.result !== undefined) resolve(response.result);
+          else resolve(response);
+        }
+      );
+    });
+
+    return (async () => {
+      let lastError = null;
+      for (let attempt = 1; attempt <= SLACK_TAB_RETRY_MAX_ATTEMPTS; attempt += 1) {
+        const slackTabId = await getSlackTabId();
+        const candidateIds = [];
+        if (state.slackTabId != null) candidateIds.push(state.slackTabId);
+        if (slackTabId != null && !candidateIds.includes(slackTabId)) candidateIds.push(slackTabId);
+        if (!candidateIds.length) {
+          throw new Error("No Slack tab available. Click Sign in with Slack first.");
+        }
+
+        for (const candidateId of candidateIds) {
+          try {
+            const result = await sendOnce(candidateId);
+            if (shouldTryNextSlackTabCandidate(result)) {
+              lastError = new Error(result.error || "Slack tab is not ready yet.");
+              if (state.slackTabId === candidateId) state.slackTabId = null;
+              continue;
+            }
+            state.slackTabId = candidateId;
+            return result;
+          } catch (err) {
+            lastError = err || null;
+            if (state.slackTabId === candidateId) state.slackTabId = null;
+          }
+        }
+
+        if (attempt >= SLACK_TAB_RETRY_MAX_ATTEMPTS) break;
+        await wait(SLACK_TAB_RETRY_BASE_DELAY_MS * attempt);
+      }
+      throw lastError || new Error("Unable to reach Slack tab.");
+    })();
+  }
+
   function ensureAssignedFilterTabOpen() {
     return new Promise((resolve, reject) => {
       if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
@@ -1376,6 +1592,32 @@
     if (!stillLoading) els.status.classList.remove("loading");
   }
 
+  function hideToast() {
+    if (!els.toast) return;
+    els.toast.classList.add("hidden");
+    els.toast.textContent = "";
+    if (toastHideTimerId != null) {
+      window.clearTimeout(toastHideTimerId);
+      toastHideTimerId = null;
+    }
+  }
+
+  function showToast(message, durationMs) {
+    if (!els.toast) return;
+    const text = String(message || "").trim();
+    if (!text) return;
+    if (toastHideTimerId != null) {
+      window.clearTimeout(toastHideTimerId);
+      toastHideTimerId = null;
+    }
+    els.toast.textContent = text;
+    els.toast.classList.remove("hidden");
+    const delay = Math.max(300, Number(durationMs) || 2000);
+    toastHideTimerId = window.setTimeout(() => {
+      hideToast();
+    }, delay);
+  }
+
   function setRawTitle(path) {
     state.lastApiPath = path || state.lastApiPath;
     if (els.rawTitle) els.rawTitle.textContent = "GET " + (state.lastApiPath || "/api/v2/users/me");
@@ -1414,9 +1656,137 @@
     els.rawDownload.download = getDownloadFilename();
   }
 
+  function renderPassAiSlackAuthStatus() {
+    if (!els.passAiSlackAuthStatus) return;
+    els.passAiSlackAuthStatus.textContent = "";
+    els.passAiSlackAuthStatus.classList.add("hidden");
+    els.passAiSlackAuthStatus.classList.remove("ready");
+    els.passAiSlackAuthStatus.classList.remove("error");
+  }
+
+  function hasPassAiRenderedAnswer() {
+    return !!(
+      els.passAiDynamicReplyHost
+      && !els.passAiDynamicReplyHost.classList.contains("hidden")
+      && String(els.passAiDynamicReplyHost.textContent || "").trim()
+    );
+  }
+
+  function updatePassAiAnswerPlaceholder() {
+    if (!els.passAiAnswerPlaceholder) return;
+    const hasRenderedAnswer = hasPassAiRenderedAnswer();
+    const showInline = !!(els.passAiInlineStatus && !els.passAiInlineStatus.classList.contains("hidden"));
+    const shouldShow = !hasRenderedAnswer && !showInline;
+    els.passAiAnswerPlaceholder.classList.toggle("hidden", !shouldShow);
+  }
+
+  function ensurePassAiActionLayout() {
+    if (!els.passAiResultsBox || !els.passAiQuestion) return;
+
+    if (!els.slackLoginBtn) els.slackLoginBtn = $("zipSlackLoginBtn");
+    if (!els.askPassAiBtn) els.askPassAiBtn = $("zipAskPassAiBtn");
+    if (!els.passAiSlackAuthStatus) els.passAiSlackAuthStatus = $("zipPassAiSlackAuthStatus");
+    if (!els.passAiSubmitHint) els.passAiSubmitHint = $("zipPassAiSubmitHint");
+    if (!els.passAiCtaZone) els.passAiCtaZone = $("zipPassAiCtaZone");
+    if (!els.passAiSubmitWrap) els.passAiSubmitWrap = $("zipPassAiSubmitWrap");
+    if (!els.passAiQuestionLabel) els.passAiQuestionLabel = $("zipPassAiQuestionLabel");
+    if (!els.passAiError) els.passAiError = $("zipPassAiError");
+    if (!els.passAiAnswerBlock) els.passAiAnswerBlock = $("zipPassAiAnswerBlock");
+    if (!els.passAiAnswerPlaceholder) els.passAiAnswerPlaceholder = $("zipPassAiAnswerPlaceholder");
+    if (!els.passAiDynamicReplyHost) els.passAiDynamicReplyHost = $("zipPassAiDynamicReplyHost");
+    if (!els.passAiInlineStatus) els.passAiInlineStatus = $("zipPassAiInlineStatus");
+
+    if (els.passAiSubmitWrap && els.slackLoginBtn && els.slackLoginBtn.parentElement !== els.passAiSubmitWrap) {
+      els.passAiSubmitWrap.appendChild(els.slackLoginBtn);
+    }
+    if (els.passAiSubmitWrap && els.askPassAiBtn && els.askPassAiBtn.parentElement !== els.passAiSubmitWrap) {
+      els.passAiSubmitWrap.appendChild(els.askPassAiBtn);
+    }
+    if (els.passAiCtaZone && els.passAiSubmitHint && els.passAiSubmitHint.parentElement !== els.passAiCtaZone) {
+      els.passAiCtaZone.appendChild(els.passAiSubmitHint);
+    }
+    if (els.passAiCtaZone && els.passAiSlackAuthStatus && els.passAiSlackAuthStatus.parentElement !== els.passAiCtaZone) {
+      els.passAiCtaZone.appendChild(els.passAiSlackAuthStatus);
+    }
+
+    if (els.passAiAnswerBlock && els.passAiDynamicReplyHost && els.passAiDynamicReplyHost.parentElement !== els.passAiAnswerBlock) {
+      els.passAiAnswerBlock.appendChild(els.passAiDynamicReplyHost);
+    }
+    if (els.passAiAnswerBlock && els.passAiInlineStatus && els.passAiInlineStatus.parentElement !== els.passAiAnswerBlock) {
+      els.passAiAnswerBlock.appendChild(els.passAiInlineStatus);
+    }
+
+    renderPassAiSlackAuthStatus();
+    updatePassAiAnswerPlaceholder();
+  }
+
   function updateTicketActionButtons() {
+    ensurePassAiActionLayout();
+
     const hasRows = Array.isArray(state.filteredTickets) && state.filteredTickets.length > 0;
     if (els.exportCsvBtn) els.exportCsvBtn.disabled = !hasRows;
+    const selectedTicketId = getSelectedPassAiTicketId();
+    const hasSelectedTicket = selectedTicketId != null;
+    const passAiActionMode = !hasSelectedTicket
+      ? "none"
+      : (state.passAiSlackReady ? "slack_ready" : "needs_slack_auth");
+    const showPassAiForm = hasSelectedTicket;
+    const showAnswerBlock = hasSelectedTicket && hasPassAiRenderedAnswer();
+    const showSubmitWrap = hasSelectedTicket;
+    const showAskPassAi = passAiActionMode === "slack_ready";
+    const showSlackLogin = passAiActionMode === "needs_slack_auth";
+
+    if (!hasSelectedTicket && !state.passAiLoading) {
+      state.passAiTicketId = null;
+      clearPassAiResultsDisplay();
+    } else if (
+      hasSelectedTicket
+      && normalizeTicketIdValue(state.passAiTicketId) !== normalizeTicketIdValue(selectedTicketId)
+      && !state.passAiLoading
+    ) {
+      state.passAiTicketId = selectedTicketId;
+      clearPassAiResultsDisplay();
+    } else if (hasSelectedTicket && state.passAiTicketId == null) {
+      state.passAiTicketId = selectedTicketId;
+    }
+
+    if (els.passAiResultsBox) {
+      els.passAiResultsBox.classList.toggle("hidden", !showPassAiForm);
+    }
+    if (els.passAiAnswerBlock) {
+      els.passAiAnswerBlock.classList.toggle("hidden", !showAnswerBlock);
+    }
+
+    if (showPassAiForm) {
+      setPassAiQuestionLabel(selectedTicketId);
+      if (els.passAiQuestion) {
+        els.passAiQuestion.classList.remove("hidden");
+      }
+    }
+
+    if (els.passAiSubmitWrap) {
+      els.passAiSubmitWrap.classList.toggle("hidden", !showSubmitWrap);
+    }
+    if (els.passAiCtaZone) {
+      els.passAiCtaZone.classList.toggle("hidden", !showSubmitWrap);
+    }
+    if (els.passAiSubmitHint) {
+      els.passAiSubmitHint.classList.toggle("hidden", !showAskPassAi);
+    }
+    if (els.askPassAiBtn) {
+      els.askPassAiBtn.classList.toggle("hidden", !showAskPassAi);
+      els.askPassAiBtn.disabled = !showAskPassAi || state.passAiLoading;
+    }
+    if (els.slackLoginBtn) {
+      els.slackLoginBtn.classList.toggle("hidden", !showSlackLogin);
+      els.slackLoginBtn.disabled = !showSlackLogin || state.passAiLoading || state.passAiSlackAuthPolling;
+    }
+    renderPassAiSlackAuthStatus();
+    if (els.passAiInlineStatus) {
+      const showInline = hasSelectedTicket && state.passAiLoading;
+      els.passAiInlineStatus.classList.toggle("hidden", !showInline);
+    }
+    updatePassAiAnswerPlaceholder();
   }
 
   function sanitizeFilenamePart(value, maxLength) {
@@ -2020,8 +2390,15 @@
   }
 
   function showLogin() {
+    stopPassAiSlackAuthPolling();
+    hideToast();
+    if (state.slackLoginWindowId != null) {
+      closeSlackLoginDialog(state.slackLoginWindowId).catch(() => {});
+      state.slackLoginWindowId = null;
+    }
     state.user = null;
     state.zendeskTabId = null;
+    state.slackTabId = null;
     if (state.manualZipSignout) stopAuthCheckPolling();
     else startAuthCheckPolling();
     state.userProfile = null;
@@ -2036,6 +2413,18 @@
     state.lastApiPayload = null;
     state.lastApiPayloadString = "";
     state.lastApiRequest = null;
+    state.passAiLoading = false;
+    state.passAiTicketId = null;
+    state.passAiActiveClientId = "";
+    state.passAiSlackReady = false;
+    state.passAiSlackUserId = "";
+    state.passAiSlackTeamId = getExpectedPassAiSlackTeamId() || PASS_AI_SLACK_TEAM_ID;
+    state.passAiSlackAuthError = "";
+    state.passAiSlackAuthBootstrapCount = 0;
+    state.ticketEmailUserEmailCacheById = Object.create(null);
+    state.ticketEmailRequesterByTicketId = Object.create(null);
+    state.ticketEmailCopyCacheByTicketId = Object.create(null);
+    clearPassAiResultsDisplay();
     renderApiResultTable(null);
     if (els.rawTitle) els.rawTitle.textContent = "GET /api/v2/users/me";
     updateRawDownloadLink();
@@ -2055,6 +2444,7 @@
     els.loginScreen.classList.add("hidden");
     els.appScreen.classList.remove("hidden");
     syncContextMenuAuthVisibility();
+    refreshPassAiSlackAuth({ silent: true }).catch(() => {});
   }
 
   function formatDateTime(v) {
@@ -2089,6 +2479,2207 @@
     return normalized ? normalized : null;
   }
 
+  function toEpochMs(value) {
+    const parsed = Date.parse(String(value || ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function normalizeZendeskTicketId(value) {
+    const normalized = normalizeTicketIdValue(value);
+    if (normalized == null) return null;
+    const stripped = normalized.replace(/^ZD-/i, "").trim();
+    if (!/^\d+$/.test(stripped)) return null;
+    return stripped;
+  }
+
+  function normalizeTicketContextId(value) {
+    const normalized = normalizeZendeskTicketId(value);
+    if (normalized == null) return "";
+    return "ZD-" + normalized;
+  }
+
+  function normalizeEmailAddress(value) {
+    const raw = String(value == null ? "" : value).trim();
+    if (!raw) return "";
+    const match = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    return match ? String(match[0]).toLowerCase() : "";
+  }
+
+  function isAdobeEmailAddress(email) {
+    const normalized = normalizeEmailAddress(email);
+    return normalized.endsWith("@adobe.com");
+  }
+
+  function dedupeEmailAddresses(values) {
+    const rows = Array.isArray(values) ? values : [];
+    const out = [];
+    const seen = new Set();
+    rows.forEach((value) => {
+      const normalized = normalizeEmailAddress(value);
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      out.push(normalized);
+    });
+    return out;
+  }
+
+  function getZendeskApiErrorMessage(payload, fallback) {
+    const apiError = payload && typeof payload === "object"
+      ? (
+        payload.error
+        || payload.description
+        || payload.message
+        || payload.details
+      )
+      : "";
+    const normalized = normalizePassAiCommentBody(apiError);
+    if (normalized) return normalized;
+    return String(fallback || "Zendesk API request failed.");
+  }
+
+  async function fetchZendeskJson(url, label) {
+    const endpoint = String(url || "").trim();
+    const contextLabel = String(label || "Zendesk request");
+    if (!endpoint) {
+      throw new Error(contextLabel + " URL is empty.");
+    }
+    const result = await sendToZendeskTab({ action: "fetch", url: endpoint });
+    const ok = !!(result && result.ok);
+    const status = Number(result && result.status);
+    const payload = result && typeof result === "object" ? result.payload : null;
+    if (!ok) {
+      const detail = getZendeskApiErrorMessage(payload, contextLabel + " failed.");
+      throw new Error(
+        contextLabel
+        + (Number.isFinite(status) ? " (HTTP " + status + "). " : ". ")
+        + detail
+      );
+    }
+    if (!payload || typeof payload !== "object") {
+      throw new Error(contextLabel + " returned an invalid response.");
+    }
+    return payload;
+  }
+
+  function extractRequesterIdFromTicketPayload(payload) {
+    const root = payload && typeof payload === "object" ? payload : {};
+    const ticket = root.ticket && typeof root.ticket === "object" ? root.ticket : root;
+    const requesterId = ticket.requester_id ?? ticket.requesterId;
+    if (requesterId == null) return "";
+    return String(requesterId).trim();
+  }
+
+  function getCachedRequesterIdForTicket(ticketId) {
+    const normalizedTicketId = normalizeZendeskTicketId(ticketId);
+    if (normalizedTicketId == null) return "";
+    const cache = state.ticketEmailRequesterByTicketId || Object.create(null);
+    const requesterId = String(cache[normalizedTicketId] || "").trim();
+    return requesterId;
+  }
+
+  function cacheRequesterIdForTicket(ticketId, requesterId) {
+    const normalizedTicketId = normalizeZendeskTicketId(ticketId);
+    if (normalizedTicketId == null) return "";
+    const normalizedRequesterId = String(requesterId == null ? "" : requesterId).trim();
+    if (!normalizedRequesterId) return "";
+    if (!state.ticketEmailRequesterByTicketId || typeof state.ticketEmailRequesterByTicketId !== "object") {
+      state.ticketEmailRequesterByTicketId = Object.create(null);
+    }
+    state.ticketEmailRequesterByTicketId[normalizedTicketId] = normalizedRequesterId;
+    return normalizedRequesterId;
+  }
+
+  function getCachedTicketEmailCopyResult(ticketId) {
+    const normalizedTicketId = normalizeZendeskTicketId(ticketId);
+    if (normalizedTicketId == null) return null;
+    const cache = state.ticketEmailCopyCacheByTicketId || Object.create(null);
+    const entry = cache[normalizedTicketId];
+    if (!entry || typeof entry !== "object") return null;
+    const cachedAtMs = Number(entry.cachedAtMs);
+    if (!Number.isFinite(cachedAtMs) || Date.now() - cachedAtMs > TICKET_EMAIL_COPY_CACHE_TTL_MS) {
+      delete cache[normalizedTicketId];
+      return null;
+    }
+    const emails = dedupeEmailAddresses(Array.isArray(entry.emails) ? entry.emails : []);
+    const clipboardText = String(entry.clipboardText || "").trim();
+    if (!emails.length || !clipboardText) {
+      delete cache[normalizedTicketId];
+      return null;
+    }
+    return {
+      ticketId: normalizedTicketId,
+      emails: emails.slice(),
+      clipboardText,
+      fromCache: true
+    };
+  }
+
+  function cacheTicketEmailCopyResult(result) {
+    const normalizedTicketId = normalizeZendeskTicketId(result && result.ticketId);
+    if (normalizedTicketId == null) return null;
+    const emails = dedupeEmailAddresses(result && result.emails);
+    const clipboardText = emails.join(", ");
+    if (!emails.length || !clipboardText) return null;
+    if (!state.ticketEmailCopyCacheByTicketId || typeof state.ticketEmailCopyCacheByTicketId !== "object") {
+      state.ticketEmailCopyCacheByTicketId = Object.create(null);
+    }
+    const entry = {
+      emails: emails.slice(),
+      clipboardText,
+      cachedAtMs: Date.now()
+    };
+    state.ticketEmailCopyCacheByTicketId[normalizedTicketId] = entry;
+    return {
+      ticketId: normalizedTicketId,
+      emails: emails.slice(),
+      clipboardText
+    };
+  }
+
+  function extractEmailFromUserPayload(payload) {
+    const root = payload && typeof payload === "object" ? payload : {};
+    const user = root.user && typeof root.user === "object" ? root.user : root;
+    return normalizeEmailAddress(
+      user.email
+      || user.primary_email
+      || user.default_email
+      || user.user_email
+    );
+  }
+
+  function extractEmailFromIdentityPayload(payload) {
+    const root = payload && typeof payload === "object" ? payload : {};
+    const identities = []
+      .concat(Array.isArray(root.identities) ? root.identities : [])
+      .concat(Array.isArray(root.user_identities) ? root.user_identities : [])
+      .concat(root.identity && typeof root.identity === "object" ? [root.identity] : []);
+    for (let i = 0; i < identities.length; i += 1) {
+      const identity = identities[i];
+      if (!identity || typeof identity !== "object") continue;
+      const type = String(identity.type || identity.identity_type || "").trim().toLowerCase();
+      const candidate = normalizeEmailAddress(
+        identity.value
+        || identity.email
+        || identity.address
+        || identity.user_email
+      );
+      if (!candidate) continue;
+      if (type && type !== "email") continue;
+      return candidate;
+    }
+    return "";
+  }
+
+  async function fetchZendeskUserEmailsByIds(userIds) {
+    const ids = Array.from(new Set((Array.isArray(userIds) ? userIds : [])
+      .map((id) => String(id == null ? "" : id).trim())
+      .filter(Boolean)));
+    const emptyResult = { emails: [], emailsById: Object.create(null) };
+    if (!ids.length) return emptyResult;
+
+    const emails = [];
+    const emailsById = Object.create(null);
+    const cachedById = state.ticketEmailUserEmailCacheById || Object.create(null);
+    const addEmail = (userId, value) => {
+      const email = normalizeEmailAddress(value);
+      if (!email) return;
+      emails.push(email);
+      if (userId) {
+        emailsById[userId] = email;
+        cachedById[userId] = email;
+      }
+      return email;
+    };
+    const readUsersFromPayload = (payload) => {
+      const root = payload && typeof payload === "object" ? payload : {};
+      const rows = Array.isArray(root.users)
+        ? root.users
+        : (root.user && typeof root.user === "object")
+          ? [root.user]
+          : [];
+      rows.forEach((user) => {
+        if (!user || typeof user !== "object") return;
+        const userId = user.id != null ? String(user.id).trim() : "";
+        addEmail(
+          userId,
+          user.email
+          || user.primary_email
+          || user.default_email
+          || user.user_email
+          || (user.primary_identity && user.primary_identity.value)
+        );
+      });
+    };
+
+    ids.forEach((id) => {
+      const cachedEmail = normalizeEmailAddress(cachedById[id] || "");
+      if (cachedEmail) addEmail(id, cachedEmail);
+    });
+
+    let unresolved = ids.filter((id) => !emailsById[id]);
+    if (unresolved.length) {
+      try {
+        const payload = await fetchZendeskJson(
+          BASE + "/api/v2/users/show_many.json?ids=" + encodeURIComponent(unresolved.join(",")),
+          "Ticket CC user lookup"
+        );
+        readUsersFromPayload(payload);
+      } catch (_) {}
+    }
+    unresolved = ids.filter((id) => !emailsById[id]);
+
+    if (unresolved.length) {
+      await Promise.all(unresolved.map(async (id) => {
+        try {
+          const payload = await fetchZendeskJson(
+            BASE + "/api/v2/users/" + encodeURIComponent(id) + ".json",
+            "Ticket CC user lookup"
+          );
+          readUsersFromPayload(payload);
+        } catch (_) {}
+      }));
+    }
+    unresolved = ids.filter((id) => !emailsById[id]);
+
+    if (unresolved.length) {
+      await Promise.all(unresolved.map(async (id) => {
+        try {
+          const payload = await fetchZendeskJson(
+            BASE + "/api/v2/users/" + encodeURIComponent(id) + "/identities.json",
+            "Ticket CC user identity lookup"
+          );
+          const identityEmail = extractEmailFromIdentityPayload(payload);
+          if (identityEmail) addEmail(id, identityEmail);
+        } catch (_) {}
+      }));
+    }
+
+    return {
+      emails: dedupeEmailAddresses(emails),
+      emailsById
+    };
+  }
+
+  function extractExternalCcEmailsFromPayload(payload, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const unresolvedUserIds = opts.unresolvedUserIds instanceof Set ? opts.unresolvedUserIds : null;
+    const root = payload && typeof payload === "object" ? payload : {};
+    const users = Array.isArray(root.users) ? root.users : [];
+    const usersById = Object.create(null);
+    const seenObjects = typeof WeakSet !== "undefined" ? new WeakSet() : null;
+    const candidates = [];
+    users.forEach((user) => {
+      if (!user || typeof user !== "object" || user.id == null) return;
+      const email = normalizeEmailAddress(user.email || user.primary_email || user.default_email);
+      if (!email) return;
+      usersById[String(user.id)] = email;
+      candidates.push(email);
+    });
+
+    const addUserId = (value) => {
+      if (value == null) return;
+      const normalizedUserId = String(value).trim();
+      if (!normalizedUserId) return;
+      const mappedEmail = usersById[normalizedUserId];
+      if (mappedEmail) candidates.push(mappedEmail);
+      else if (unresolvedUserIds) unresolvedUserIds.add(normalizedUserId);
+    };
+
+    const collectEntry = (entry, depth) => {
+      if (depth > 5 || entry == null) return;
+      if (typeof entry === "string") {
+        candidates.push(entry);
+        return;
+      }
+      if (Array.isArray(entry)) {
+        entry.forEach((row) => collectEntry(row, depth + 1));
+        return;
+      }
+      if (typeof entry !== "object") return;
+      if (seenObjects) {
+        if (seenObjects.has(entry)) return;
+        seenObjects.add(entry);
+      }
+
+      candidates.push(entry.email);
+      candidates.push(entry.email_cc);
+      candidates.push(entry.emailCc);
+      candidates.push(entry.user_email);
+      candidates.push(entry.address);
+      candidates.push(entry.email_address);
+      candidates.push(entry.value);
+      candidates.push(entry.recipient);
+      candidates.push(entry.recipient_email);
+      candidates.push(entry.requester_email);
+
+      const nestedUser = entry.user && typeof entry.user === "object" ? entry.user : null;
+      if (nestedUser) {
+        candidates.push(nestedUser.email);
+        candidates.push(nestedUser.primary_email);
+        addUserId(nestedUser.id);
+      }
+
+      addUserId(entry.user_id ?? entry.userId);
+      addUserId(entry.recipient_id ?? entry.recipientId);
+      addUserId(entry.requester_id ?? entry.requesterId);
+
+      if (entry.email_cc && typeof entry.email_cc === "object") collectEntry(entry.email_cc, depth + 1);
+      if (entry.ticket_email_cc && typeof entry.ticket_email_cc === "object") collectEntry(entry.ticket_email_cc, depth + 1);
+      if (entry.ticketEmailCc && typeof entry.ticketEmailCc === "object") collectEntry(entry.ticketEmailCc, depth + 1);
+      if (Array.isArray(entry.email_ccs)) collectEntry(entry.email_ccs, depth + 1);
+      if (Array.isArray(entry.ticket_email_ccs)) collectEntry(entry.ticket_email_ccs, depth + 1);
+      if (Array.isArray(entry.ticketEmailCcs)) collectEntry(entry.ticketEmailCcs, depth + 1);
+      if (Array.isArray(entry.recipients)) collectEntry(entry.recipients, depth + 1);
+      if (Array.isArray(entry.users)) collectEntry(entry.users, depth + 1);
+    };
+
+    collectEntry(root.email_ccs, 0);
+    collectEntry(root.emailCcs, 0);
+    collectEntry(root.email_cc, 0);
+    collectEntry(root.emailCc, 0);
+    collectEntry(root.ticket_email_ccs, 0);
+    collectEntry(root.ticketEmailCcs, 0);
+    collectEntry(root.ticket_email_cc, 0);
+    collectEntry(root.ticketEmailCc, 0);
+
+    const unique = dedupeEmailAddresses(candidates);
+    return unique.filter((email) => !isAdobeEmailAddress(email));
+  }
+
+  async function copyTextToClipboard(value) {
+    const text = String(value == null ? "" : value);
+    if (!text) throw new Error("Clipboard text is empty.");
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.setAttribute("readonly", "true");
+    textArea.style.position = "fixed";
+    textArea.style.opacity = "0";
+    textArea.style.pointerEvents = "none";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(textArea);
+    if (!copied) {
+      throw new Error("Clipboard API unavailable.");
+    }
+  }
+
+  async function buildTicketEmailClipboardString(ticketId, options) {
+    const normalizedTicketId = normalizeZendeskTicketId(ticketId);
+    if (normalizedTicketId == null) {
+      throw new Error("Ticket ID is required.");
+    }
+    const opts = options && typeof options === "object" ? options : {};
+    const allowCache = opts.allowCache !== false;
+    if (allowCache) {
+      const cachedResult = getCachedTicketEmailCopyResult(normalizedTicketId);
+      if (cachedResult) return cachedResult;
+    }
+    const seededRequesterId = String(opts.requesterId == null ? "" : opts.requesterId).trim();
+    let requesterId = seededRequesterId || getCachedRequesterIdForTicket(normalizedTicketId);
+
+    const ccUrl = BASE + "/api/v2/tickets/" + encodeURIComponent(normalizedTicketId) + "/email_ccs.json";
+    let ticketPayload = null;
+    const ccPayloadPromise = fetchZendeskJson(ccUrl, "Ticket email CC lookup");
+    if (!requesterId) {
+      ticketPayload = await fetchZendeskJson(
+        BASE + "/api/v2/tickets/" + encodeURIComponent(normalizedTicketId) + ".json",
+        "Ticket lookup"
+      );
+      requesterId = extractRequesterIdFromTicketPayload(ticketPayload);
+    }
+    const ccPayload = await ccPayloadPromise;
+    if (!requesterId) {
+      throw new Error("Requester ID not found for ticket " + normalizedTicketId + ".");
+    }
+    cacheRequesterIdForTicket(normalizedTicketId, requesterId);
+
+    const unresolvedCcUserIds = new Set();
+    const externalCcEmails = extractExternalCcEmailsFromPayload(ccPayload, {
+      unresolvedUserIds: unresolvedCcUserIds
+    });
+
+    const idsToResolve = new Set(Array.from(unresolvedCcUserIds));
+    idsToResolve.add(requesterId);
+    const resolvedUsers = await fetchZendeskUserEmailsByIds(Array.from(idsToResolve));
+    let requesterEmail = normalizeEmailAddress(resolvedUsers.emailsById[requesterId] || "");
+    if (!requesterEmail) {
+      const requesterPayload = await fetchZendeskJson(
+        BASE + "/api/v2/users/" + encodeURIComponent(requesterId) + ".json",
+        "Requester lookup"
+      );
+      requesterEmail = extractEmailFromUserPayload(requesterPayload);
+    }
+    if (!requesterEmail) {
+      throw new Error("Requester email not found for ticket " + normalizedTicketId + ".");
+    }
+
+    const resolvedCcEmails = dedupeEmailAddresses(
+      externalCcEmails
+        .concat(Array.isArray(resolvedUsers.emails) ? resolvedUsers.emails : [])
+        .filter((email) => !isAdobeEmailAddress(email))
+    );
+
+    const combined = dedupeEmailAddresses([requesterEmail].concat(resolvedCcEmails));
+    if (!combined.length) {
+      throw new Error("No ticket emails available for clipboard copy.");
+    }
+    return cacheTicketEmailCopyResult({
+      ticketId: normalizedTicketId,
+      emails: combined.slice(),
+      clipboardText: combined.join(", ")
+    }) || {
+      ticketId: normalizedTicketId,
+      emails: combined.slice(),
+      clipboardText: combined.join(", ")
+    };
+  }
+
+  function normalizePassProduct(value) {
+    const normalized = String(value || "").trim().toUpperCase();
+    return normalized === "PASS_CM" ? "PASS_CM" : "PASS_AUTH";
+  }
+
+  function normalizePassAiCommentType(value) {
+    return String(value || "").trim().toLowerCase() === "internal" ? "internal" : "public";
+  }
+
+  function normalizePassAiCommentBody(value) {
+    if (value == null) return "";
+    const raw = typeof value === "string" ? value : String(value);
+    const withoutTags = raw.includes("<") && raw.includes(">")
+      ? raw.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, " ")
+      : raw;
+    return withoutTags
+      .replace(/\r\n?/g, "\n")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/[ \t\f\v]+/g, " ")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function normalizePassAiAnswerBody(value) {
+    if (value == null) return "";
+    return String(value)
+      .replace(/\r\n?/g, "\n")
+      .replace(/\t/g, "  ")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{4,}/g, "\n\n\n")
+      .trim();
+  }
+
+  function hasPassAiSourcesFooter(value) {
+    const text = String(value || "").replace(/\r\n?/g, "\n").trim().toLowerCase();
+    if (!text) return false;
+    const idx = text.lastIndexOf("\nsources:");
+    const start = idx >= 0 ? idx + 1 : (text.startsWith("sources:") ? 0 : -1);
+    if (start < 0) return false;
+    const tail = text.slice(start);
+    if (!tail.includes("sources:")) return false;
+    if (!tail.includes("confidence-source")) return false;
+    return true;
+  }
+
+  function hasPassAiCompletionFooter(value) {
+    const text = String(value || "").replace(/\r\n?/g, "\n").trim().toLowerCase();
+    if (!text) return false;
+    if (text.includes("if you have any more questions, just tag me in this thread")) return true;
+    if (text.includes("ai generated content. check important info for mistakes")) return true;
+    if (text.includes("how helpful was this answer")) return true;
+    return hasPassAiSourcesFooter(text);
+  }
+
+  function normalizePassAiSlackTeamId(value) {
+    const teamId = String(value || "").trim().toUpperCase();
+    return /^[TE][A-Z0-9]{8,}$/.test(teamId) ? teamId : "";
+  }
+
+  function normalizePassAiSlackChannelId(value) {
+    const channelId = String(value || "").trim().toUpperCase();
+    return /^[CGD][A-Z0-9]{8,}$/.test(channelId) ? channelId : "";
+  }
+
+  function getExpectedPassAiSlackTeamId() {
+    let configured = "";
+    try {
+      configured = String(window.localStorage.getItem(PASS_AI_SLACK_TEAM_STORAGE_KEY) || "").trim();
+    } catch (_) {}
+    if (!configured && typeof window !== "undefined") {
+      configured = String(
+        window.ZIP_PASS_AI_EXPECTED_SLACK_TEAM_ID
+        || window.ZIP_PASS_AI_EXPECTED_TEAM_ID
+        || window.ZIP_PASS_AI_SLACK_TEAM_ID
+        || ""
+      ).trim();
+    }
+    return normalizePassAiSlackTeamId(configured || PASS_AI_SLACK_TEAM_ID);
+  }
+
+  function getPassAiWorkspaceTeamIdForUrls() {
+    const expected = getExpectedPassAiSlackTeamId();
+    if (expected && expected.startsWith("T")) return expected;
+    const fallback = normalizePassAiSlackTeamId(PASS_AI_SLACK_TEAM_ID);
+    return fallback && fallback.startsWith("T") ? fallback : "";
+  }
+
+  function buildPassAiSlackWorkspaceLandingUrl() {
+    const channelId = getPassAiSingularityChannelId() || PASS_AI_SLACK_CHANNEL_DEFAULT;
+    const workspaceTeamId = getPassAiWorkspaceTeamIdForUrls();
+    if (workspaceTeamId && channelId) {
+      return PASS_AI_SLACK_WORKSPACE_ORIGIN + "/client/" + encodeURIComponent(workspaceTeamId) + "/" + encodeURIComponent(channelId);
+    }
+    if (channelId) {
+      return PASS_AI_SLACK_WORKSPACE_ORIGIN + "/archives/" + encodeURIComponent(channelId);
+    }
+    return PASS_AI_SLACK_WORKSPACE_ORIGIN + "/";
+  }
+
+  function buildPassAiSlackTeamMismatchError(actualTeamId, actualEnterpriseId) {
+    const expectedTeamId = getExpectedPassAiSlackTeamId();
+    const actual = normalizePassAiSlackTeamId(actualTeamId);
+    const enterprise = normalizePassAiSlackTeamId(actualEnterpriseId);
+    if (!expectedTeamId) {
+      return "Slack workspace validation is not configured.";
+    }
+    if (!actual && !enterprise) {
+      return "Slack workspace could not be verified. Expected workspace/team " + expectedTeamId + ".";
+    }
+    if (actual && enterprise) {
+      return "Slack workspace mismatch. Connected team " + actual + " (enterprise " + enterprise + "), expected team " + expectedTeamId + ".";
+    }
+    if (actual) {
+      return "Slack workspace mismatch. Connected team " + actual + ", expected team " + expectedTeamId + ".";
+    }
+    return "Slack workspace mismatch. Connected enterprise " + enterprise + ", expected team " + expectedTeamId + ".";
+  }
+
+  function normalizeExistingTicketComments(comments) {
+    const rows = Array.isArray(comments) ? comments : [];
+    const normalizedRows = rows.map((comment) => ({
+      type: normalizePassAiCommentType(comment && comment.type),
+      author: String((comment && comment.author) || "").trim(),
+      body: normalizePassAiCommentBody(comment && comment.body),
+      createdAt: String((comment && comment.createdAt) || "").trim()
+    })).filter((comment) => comment.body);
+    normalizedRows.sort((a, b) => toEpochMs(a.createdAt) - toEpochMs(b.createdAt));
+    return normalizedRows;
+  }
+
+  function getCurrentTicketContext() {
+    if (typeof window === "undefined") return null;
+    const current = window.currentTicket;
+    if (!current || typeof current !== "object") return null;
+    return current;
+  }
+
+  function syncCurrentTicketContextFromSelection(ticketId) {
+    const current = getCurrentTicketContext() || {};
+    const synced = {
+      ...current,
+      id: normalizeTicketContextId(ticketId || current.id || ""),
+      product: normalizePassProduct(current.product),
+      agentEmail: String((current && current.agentEmail) || (state.user && state.user.email) || "").trim(),
+      comments: normalizeExistingTicketComments(current.comments)
+    };
+    if (typeof window !== "undefined") {
+      window.currentTicket = synced;
+    }
+    return synced;
+  }
+
+  function getSelectedPassAiTicketId() {
+    const selectedTicketId = normalizeZendeskTicketId(state.selectedTicketId);
+    return selectedTicketId != null ? selectedTicketId : null;
+  }
+
+  function setPassAiLastThreadContext(context) {
+    if (!context || typeof context !== "object") {
+      state.passAiLastThreadContext = null;
+      state.passAiDeleteInFlight = false;
+      return;
+    }
+    const channelId = normalizePassAiSlackChannelId(context.channelId || context.channel_id || "");
+    const parentTs = normalizePassAiCommentBody(context.parentTs || context.parent_ts || context.threadTs || context.thread_ts);
+    if (!channelId || !parentTs) {
+      state.passAiLastThreadContext = null;
+      state.passAiDeleteInFlight = false;
+      return;
+    }
+    state.passAiLastThreadContext = {
+      channelId,
+      parentTs,
+      workspaceOrigin: String(context.workspaceOrigin || PASS_AI_SLACK_WORKSPACE_ORIGIN).trim() || PASS_AI_SLACK_WORKSPACE_ORIGIN
+    };
+    state.passAiDeleteInFlight = false;
+  }
+
+  function getPassAiLastThreadContext() {
+    const context = state.passAiLastThreadContext;
+    if (!context || typeof context !== "object") return null;
+    const channelId = normalizePassAiSlackChannelId(context.channelId || "");
+    const parentTs = normalizePassAiCommentBody(context.parentTs || "");
+    if (!channelId || !parentTs) return null;
+    return {
+      channelId,
+      parentTs,
+      workspaceOrigin: String(context.workspaceOrigin || PASS_AI_SLACK_WORKSPACE_ORIGIN).trim() || PASS_AI_SLACK_WORKSPACE_ORIGIN
+    };
+  }
+
+  function clearPassAiResultsDisplay(options) {
+    const keepPanelVisible = !!(options && options.keepPanelVisible);
+    const resetQuestion = !(options && options.resetQuestion === false);
+    const keepThreadContext = !!(options && options.keepThreadContext);
+    if (!keepThreadContext) {
+      setPassAiLastThreadContext(null);
+    }
+    if (els.passAiError) {
+      els.passAiError.textContent = "";
+      els.passAiError.classList.add("hidden");
+    }
+    if (els.passAiQuestionLabel && resetQuestion) els.passAiQuestionLabel.classList.add("hidden");
+    if (els.passAiQuestion) {
+      if (resetQuestion) {
+        els.passAiQuestion.value = "";
+        els.passAiQuestion.classList.add("hidden");
+      } else {
+        els.passAiQuestion.classList.remove("hidden");
+      }
+    }
+    if (els.passAiDynamicReplyHost) {
+      els.passAiDynamicReplyHost.innerHTML = "";
+      els.passAiDynamicReplyHost.classList.add("hidden");
+    }
+    if (els.passAiInlineStatus) {
+      els.passAiInlineStatus.classList.add("hidden");
+    }
+    if (els.passAiAnswerBlock && !keepPanelVisible) {
+      els.passAiAnswerBlock.classList.add("hidden");
+    }
+    if (els.passAiResultsBox && !keepPanelVisible) {
+      els.passAiResultsBox.classList.add("hidden");
+    }
+    updatePassAiAnswerPlaceholder();
+  }
+
+  function setPassAiQuestionLabel(ticketId) {
+    const normalizedTicketId = normalizeZendeskTicketId(ticketId) || getSelectedPassAiTicketId();
+    const labelText = normalizedTicketId != null
+      ? ("ZD #" + normalizedTicketId + " says:")
+      : "ZD #{ticket_id} says:";
+    if (!els.passAiQuestionLabel) return;
+    els.passAiQuestionLabel.textContent = labelText;
+    els.passAiQuestionLabel.classList.remove("hidden");
+  }
+
+  function setPassAiLoading(on) {
+    state.passAiLoading = !!on;
+    updateTicketActionButtons();
+  }
+
+  function stopPassAiSlackAuthPolling() {
+    if (passAiSlackAuthPollTimerId != null) {
+      window.clearTimeout(passAiSlackAuthPollTimerId);
+      passAiSlackAuthPollTimerId = null;
+    }
+    passAiSlackAuthPollAttempt = 0;
+    state.passAiSlackAuthBootstrapCount = 0;
+    if (state.passAiSlackAuthPolling) {
+      state.passAiSlackAuthPolling = false;
+      updateTicketActionButtons();
+    }
+  }
+
+  function setPassAiSlackAuthState(nextState) {
+    const ready = !!(nextState && nextState.ready);
+    const expectedTeamId = getExpectedPassAiSlackTeamId();
+    const reportedTeamId = normalizePassAiSlackTeamId(nextState && nextState.teamId);
+    const reportedEnterpriseId = normalizePassAiSlackTeamId(nextState && nextState.enterpriseId);
+    const hasExpectedTeam = !!expectedTeamId;
+    const hasObservedTeam = !!(reportedTeamId || reportedEnterpriseId);
+    const teamMatchesExpected = !hasExpectedTeam
+      || !hasObservedTeam
+      || reportedTeamId === expectedTeamId
+      || reportedEnterpriseId === expectedTeamId;
+    const teamMismatch = !!(ready && !teamMatchesExpected);
+
+    state.passAiSlackReady = ready && !teamMismatch;
+    state.passAiSlackUserId = state.passAiSlackReady ? String((nextState && nextState.userId) || "").trim() : "";
+    state.passAiSlackTeamId = reportedEnterpriseId || reportedTeamId || expectedTeamId || "";
+    if (state.passAiSlackReady) {
+      state.passAiSlackAuthError = "";
+    } else if (teamMismatch) {
+      state.passAiSlackAuthError = buildPassAiSlackTeamMismatchError(reportedTeamId, reportedEnterpriseId);
+    } else {
+      state.passAiSlackAuthError = String((nextState && nextState.error) || "").trim();
+    }
+    updateTicketActionButtons();
+  }
+
+  function shouldBootstrapSlackAuthTab(errorMessage) {
+    const message = String(errorMessage || "").trim().toLowerCase();
+    if (!message) return false;
+    return (
+      message.includes("no slack tab available")
+      || message.includes("unable to reach slack tab")
+      || message.includes("could not establish connection")
+      || message.includes("receiving end does not exist")
+      || message.includes("extension context invalidated")
+      || message.includes("not a slack tab")
+    );
+  }
+
+  async function refreshPassAiSlackAuth(options) {
+    const silent = !!(options && options.silent);
+    const allowTabBootstrap = !(options && options.allowTabBootstrap === false);
+    const expectedTeamId = getExpectedPassAiSlackTeamId();
+    const requestSlackAuthTest = async () => {
+      const response = await sendToSlackTab({
+        action: "slackAuthTest",
+        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+        expectedTeamId
+      });
+      const ready = !!(
+        response
+        && response.ok === true
+        && (
+          response.ready === true
+          || response.ready == null
+        )
+      );
+      if (!ready) {
+        throw new Error(
+          normalizePassAiCommentBody(response && (response.error || response.message))
+            || "Slack web session is unavailable."
+        );
+      }
+      return response;
+    };
+
+    try {
+      const response = await requestSlackAuthTest();
+      setPassAiSlackAuthState({
+        ready: true,
+        userId: response.user_id || response.userId || "",
+        teamId: response.team_id || response.teamId || "",
+        enterpriseId: response.enterprise_id || response.enterpriseId || ""
+      });
+      if (!state.passAiSlackReady) {
+        const message = state.passAiSlackAuthError || "Slack workspace mismatch.";
+        if (!silent) setStatus(message, true);
+        return false;
+      }
+      if (!silent) setStatus("Slack connected for PASS AI.", false);
+      return true;
+    } catch (tabErr) {
+      let tabMessage = normalizePassAiCommentBody(tabErr && tabErr.message);
+      const nowMs = Date.now();
+      const canBootstrapTab = allowTabBootstrap
+        && shouldBootstrapSlackAuthTab(tabMessage)
+        && Number(state.passAiSlackAuthBootstrapCount || 0) < 1
+        && (nowMs - Number(state.slackAuthTabBootstrapAt || 0) > 1000);
+
+      if (canBootstrapTab) {
+        state.slackAuthTabBootstrapAt = nowMs;
+        state.passAiSlackAuthBootstrapCount = Number(state.passAiSlackAuthBootstrapCount || 0) + 1;
+        try {
+          const existingSlackTabId = await getSlackTabId();
+          if (existingSlackTabId) {
+            state.slackTabId = existingSlackTabId;
+          } else {
+            const opened = await openSlackWorkspaceTab(buildPassAiSlackWorkspaceLandingUrl(), { active: false });
+            const openedTabId = Number(opened && opened.tabId);
+            if (Number.isFinite(openedTabId) && openedTabId > 0) {
+              state.slackTabId = openedTabId;
+            }
+          }
+          await wait(900);
+          const retry = await requestSlackAuthTest();
+          setPassAiSlackAuthState({
+            ready: true,
+            userId: retry.user_id || retry.userId || "",
+            teamId: retry.team_id || retry.teamId || "",
+            enterpriseId: retry.enterprise_id || retry.enterpriseId || ""
+          });
+          if (!state.passAiSlackReady) {
+            const message = state.passAiSlackAuthError || "Slack workspace mismatch.";
+            if (!silent) setStatus(message, true);
+            return false;
+          }
+          if (!silent) setStatus("Slack connected for PASS AI.", false);
+          return true;
+        } catch (retryErr) {
+          const retryMessage = normalizePassAiCommentBody(retryErr && retryErr.message);
+          if (retryMessage) tabMessage = retryMessage;
+        }
+      }
+
+      let oauthMessage = "";
+      try {
+        const oauthStatus = await sendBackgroundRequest("ZIP_SLACK_OAUTH_STATUS", {
+          expectedTeamId
+        });
+        if (oauthStatus && oauthStatus.ok === true && oauthStatus.ready) {
+          oauthMessage = "Slack OAuth is ready, but Slack web is not signed in on an open Slack tab.";
+        } else {
+          oauthMessage = normalizePassAiCommentBody(oauthStatus && (oauthStatus.error || oauthStatus.message));
+        }
+      } catch (_) {}
+
+      const message = tabMessage || oauthMessage || "Slack sign-in is required.";
+      setPassAiSlackAuthState({ ready: false, error: message });
+      if (!silent) {
+        setStatus("Slack sign-in required. Click Sign in with Slack.", true);
+      }
+      return false;
+    }
+  }
+
+  function startPassAiSlackAuthPolling() {
+    stopPassAiSlackAuthPolling();
+    state.passAiSlackAuthPolling = true;
+    passAiSlackAuthPollAttempt = 0;
+    updateTicketActionButtons();
+
+    const poll = () => {
+      passAiSlackAuthPollAttempt += 1;
+      refreshPassAiSlackAuth({ silent: true })
+        .then((ready) => {
+          if (ready) {
+            stopPassAiSlackAuthPolling();
+            if (state.slackLoginWindowId != null) {
+              const windowId = state.slackLoginWindowId;
+              state.slackLoginWindowId = null;
+              closeSlackLoginDialog(windowId).catch(() => {});
+            }
+            setStatus("Slack sign-in detected. AI? is now enabled.", false);
+            return;
+          }
+          if (passAiSlackAuthPollAttempt >= PASS_AI_SLACK_AUTH_POLL_MAX_ATTEMPTS) {
+            stopPassAiSlackAuthPolling();
+            setStatus("Slack sign-in not detected yet. Retry Sign in with Slack.", true);
+            return;
+          }
+          passAiSlackAuthPollTimerId = window.setTimeout(poll, PASS_AI_SLACK_AUTH_POLL_INTERVAL_MS);
+        })
+        .catch(() => {
+          if (passAiSlackAuthPollAttempt >= PASS_AI_SLACK_AUTH_POLL_MAX_ATTEMPTS) {
+            stopPassAiSlackAuthPolling();
+            setStatus("Slack sign-in not detected yet. Retry Sign in with Slack.", true);
+            return;
+          }
+          passAiSlackAuthPollTimerId = window.setTimeout(poll, PASS_AI_SLACK_AUTH_POLL_INTERVAL_MS);
+        });
+    };
+
+    passAiSlackAuthPollTimerId = window.setTimeout(poll, PASS_AI_SLACK_AUTH_POLL_INTERVAL_MS);
+  }
+
+  async function beginSlackLoginFlow() {
+    stopPassAiSlackAuthPolling();
+    state.passAiSlackAuthError = "";
+    state.slackAuthTabBootstrapAt = 0;
+    state.passAiSlackAuthBootstrapCount = 0;
+    updateTicketActionButtons();
+    setStatus("Opening Sign in with Slack…", false);
+    try {
+      if (state.slackLoginWindowId != null) {
+        const windowId = state.slackLoginWindowId;
+        state.slackLoginWindowId = null;
+        closeSlackLoginDialog(windowId).catch(() => {});
+      }
+
+      const loginUrl = buildPassAiSlackLoginUrl();
+      const opened = await openSlackLoginDialog(loginUrl);
+      const openedWindowId = Number(opened && opened.windowId);
+      state.slackLoginWindowId = Number.isFinite(openedWindowId) && openedWindowId > 0 ? openedWindowId : null;
+      const openedTabId = Number(opened && opened.tabId);
+      if (Number.isFinite(openedTabId) && openedTabId > 0) {
+        state.slackTabId = openedTabId;
+      }
+
+      const readyNow = await refreshPassAiSlackAuth({ silent: true });
+      if (readyNow) {
+        if (state.slackLoginWindowId != null) {
+          const windowId = state.slackLoginWindowId;
+          state.slackLoginWindowId = null;
+          closeSlackLoginDialog(windowId).catch(() => {});
+        }
+        setStatus("Slack connected for PASS AI.", false);
+        return;
+      }
+
+      startPassAiSlackAuthPolling();
+      setStatus("Complete Slack sign-in in the popup window.", false);
+    } catch (err) {
+      const message = normalizePassAiCommentBody(err && err.message) || "Slack sign-in failed.";
+      setPassAiSlackAuthState({ ready: false, error: message });
+      setStatus("Slack sign-in failed: " + message, true);
+      state.passAiSlackAuthPolling = false;
+      updateTicketActionButtons();
+    }
+  }
+
+  async function ensurePassAiSlackSession() {
+    if (state.passAiSlackReady) return true;
+    const ready = await refreshPassAiSlackAuth({ silent: true });
+    if (!ready) {
+      throw new Error("Slack sign-in is required. Click Sign in with Slack and complete login in Slack web.");
+    }
+    return true;
+  }
+
+  function renderPassAiError(message) {
+    const text = message || "PASS AI is unavailable right now. Please try again.";
+    if (els.passAiError) {
+      els.passAiError.textContent = text;
+      els.passAiError.classList.remove("hidden");
+    }
+    renderPassAiAnswer(text, {
+      error: true,
+      showCopy: false,
+      showDelete: !!getPassAiLastThreadContext(),
+      title: "AI Error"
+    });
+  }
+
+  function getPassAiDynamicReplyHost() {
+    if (els.passAiDynamicReplyHost) return els.passAiDynamicReplyHost;
+    if (!els.passAiResultsBox || !els.passAiResultsBox.parentNode) return null;
+    const host = document.createElement("div");
+    host.id = "zipPassAiDynamicReplyHost";
+    host.className = "zip-pass-ai-dynamic-host";
+    host.setAttribute("aria-live", "polite");
+    const answerBlock = els.passAiAnswerBlock || $("zipPassAiAnswerBlock");
+    const inlineStatus = els.passAiInlineStatus || $("zipPassAiInlineStatus");
+    if (answerBlock && answerBlock.parentNode) {
+      if (inlineStatus && inlineStatus.parentNode === answerBlock) {
+        inlineStatus.insertAdjacentElement("beforebegin", host);
+      } else {
+        answerBlock.appendChild(host);
+      }
+    } else if (els.passAiResultsBox && els.passAiResultsBox.parentNode) {
+      els.passAiResultsBox.appendChild(host);
+    }
+    els.passAiDynamicReplyHost = host;
+    return host;
+  }
+
+  async function copyPassAiReplyToClipboard(text, triggerButton) {
+    const value = String(text || "");
+    if (!value) return;
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(value);
+      } else {
+        throw new Error("Clipboard API unavailable");
+      }
+      if (triggerButton) {
+        const original = triggerButton.textContent;
+        triggerButton.textContent = "Copied";
+        window.setTimeout(() => {
+          triggerButton.textContent = original;
+        }, 1500);
+      }
+      setStatus("AI response copied to clipboard.", false);
+    } catch (err) {
+      setStatus("Unable to copy AI response: " + (err && err.message ? err.message : "Unknown error"), true);
+    }
+  }
+
+  function escapePassAiHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function normalizePassAiMarkdownRefKey(value) {
+    return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  function isPassAiHttpUrl(value) {
+    return /^https?:\/\//i.test(String(value || "").trim());
+  }
+
+  function buildPassAiMarkdownLinkHtml(label, url) {
+    const href = String(url || "").trim();
+    if (!isPassAiHttpUrl(href)) return escapePassAiHtml(label || href);
+    const safeHref = escapePassAiHtml(href);
+    const safeLabel = escapePassAiHtml(label || href);
+    return '<a href="' + safeHref + '" target="_blank" rel="noopener noreferrer">' + safeLabel + "</a>";
+  }
+
+  function normalizePassAiSourceLineForLinks(value) {
+    return String(value == null ? "" : value)
+      .replace(/^[-*+]\s+/, "")
+      .replace(/:(https?:\/\/)/gi, ": $1")
+      .trim();
+  }
+
+  function parsePassAiMarkdownReferences(value) {
+    const references = Object.create(null);
+    const bodyLines = [];
+    const lines = String(value == null ? "" : value).replace(/\r\n?/g, "\n").split("\n");
+    lines.forEach((line) => {
+      const match = String(line || "").match(/^\s{0,3}\[([^\]]+)\]:\s*(<?https?:\/\/\S+>?)(?:\s+["'(].*["')])?\s*$/i);
+      if (!match) {
+        bodyLines.push(line);
+        return;
+      }
+      const key = normalizePassAiMarkdownRefKey(match[1]);
+      let url = String(match[2] || "").trim();
+      if (url.startsWith("<") && url.endsWith(">")) {
+        url = url.slice(1, -1).trim();
+      }
+      if (key && isPassAiHttpUrl(url)) {
+        references[key] = url;
+      } else {
+        bodyLines.push(line);
+      }
+    });
+    return {
+      body: bodyLines.join("\n"),
+      references
+    };
+  }
+
+  function renderPassAiInlineMarkdown(value, referenceMap) {
+    const placeholders = [];
+    const refs = referenceMap && typeof referenceMap === "object" ? referenceMap : Object.create(null);
+    let html = escapePassAiHtml(value);
+
+    html = html.replace(/`([^`\n]+)`/g, (_match, codeText) => {
+      const token = "%%ZIP_PASS_AI_CODE_" + String(placeholders.length) + "%%";
+      placeholders.push("<code>" + escapePassAiHtml(codeText) + "</code>");
+      return token;
+    });
+
+    html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+    html = html.replace(/(^|[\s(])\*([^*\n][^*\n]*?)\*(?=[\s).,!?:;]|$)/g, "$1<em>$2</em>");
+    html = html.replace(/(^|[\s(])_([^_\n][^_\n]*?)_(?=[\s).,!?:;]|$)/g, "$1<em>$2</em>");
+    html = html.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi, (_match, label, url) => {
+      return buildPassAiMarkdownLinkHtml(label, url);
+    });
+
+    html = html.replace(/\[([^\]]+)\]\[([^\]]*)\]/g, (_match, label, refIdRaw) => {
+      const refId = normalizePassAiMarkdownRefKey(refIdRaw || label);
+      const href = refs[refId];
+      if (!href) return _match;
+      return buildPassAiMarkdownLinkHtml(label, href);
+    });
+
+    html = html.replace(/&lt;(https?:\/\/[^|&<>\s]+)\|([^&<>]+)&gt;/gi, (_match, url, label) => {
+      return buildPassAiMarkdownLinkHtml(label, url);
+    });
+
+    html = html.replace(/&lt;(https?:\/\/[^&<>\s]+)&gt;/gi, (_match, url) => {
+      return buildPassAiMarkdownLinkHtml(url, url);
+    });
+
+    html = html.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)(?=$|[\s),.!?:;\]])/g, (_match, prefix, url) => {
+      return prefix + buildPassAiMarkdownLinkHtml(url, url);
+    });
+
+    for (let i = 0; i < placeholders.length; i += 1) {
+      const token = "%%ZIP_PASS_AI_CODE_" + String(i) + "%%";
+      html = html.split(token).join(placeholders[i]);
+    }
+    return html;
+  }
+
+  function parsePassAiMarkdownTableRow(line) {
+    const text = String(line || "").trim();
+    if (!text || text.indexOf("|") === -1) return null;
+    let row = text;
+    if (row.startsWith("|")) row = row.slice(1);
+    if (row.endsWith("|")) row = row.slice(0, -1);
+    const cells = row.split("|").map((cell) => String(cell || "").trim());
+    if (cells.length < 2) return null;
+    return cells;
+  }
+
+  function isPassAiMarkdownTableDivider(line) {
+    const cells = parsePassAiMarkdownTableRow(line);
+    if (!cells) return false;
+    return cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+  }
+
+  function renderPassAiMarkdownTable(headerCells, bodyRows, referenceMap) {
+    const header = Array.isArray(headerCells) ? headerCells : [];
+    if (!header.length) return "";
+    const rows = Array.isArray(bodyRows) ? bodyRows : [];
+    const thead = "<thead><tr>" + header.map((cell) => "<th>" + renderPassAiInlineMarkdown(cell, referenceMap) + "</th>").join("") + "</tr></thead>";
+    const tbodyRows = rows.map((row) => {
+      const normalizedRow = Array.isArray(row) ? row : [];
+      const padded = header.map((_cell, idx) => normalizedRow[idx] != null ? normalizedRow[idx] : "");
+      return "<tr>" + padded.map((cell) => "<td>" + renderPassAiInlineMarkdown(cell, referenceMap) + "</td>").join("") + "</tr>";
+    }).join("");
+    const tbody = "<tbody>" + tbodyRows + "</tbody>";
+    return '<div class="zip-pass-ai-markdown-table-wrap"><table class="zip-pass-ai-markdown-table">' + thead + tbody + "</table></div>";
+  }
+
+  function renderPassAiMarkdownToHtml(value) {
+    const parsed = parsePassAiMarkdownReferences(value);
+    const normalized = String(parsed.body == null ? "" : parsed.body).replace(/\r\n?/g, "\n");
+    const refs = parsed.references || Object.create(null);
+    if (!normalized.trim()) return "";
+
+    const lines = normalized.split("\n");
+    const parts = [];
+    let listType = "";
+    let inCode = false;
+    let codeLines = [];
+    let inSources = false;
+    let sourceItems = [];
+
+    const closeList = () => {
+      if (!listType) return;
+      parts.push("</" + listType + ">");
+      listType = "";
+    };
+    const flushSources = () => {
+      if (!inSources && !sourceItems.length) return;
+      if (sourceItems.length) {
+        parts.push('<ul class="zip-pass-ai-sources-list">');
+        sourceItems.forEach((itemHtml) => {
+          parts.push("<li>" + itemHtml + "</li>");
+        });
+        parts.push("</ul>");
+      }
+      inSources = false;
+      sourceItems = [];
+    };
+    const flushCode = () => {
+      if (!inCode) return;
+      parts.push("<pre><code>" + escapePassAiHtml(codeLines.join("\n")) + "</code></pre>");
+      inCode = false;
+      codeLines = [];
+    };
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const rawLine = String(lines[i] || "");
+      const trimmed = rawLine.trim();
+
+      if (/^```/.test(trimmed)) {
+        flushSources();
+        closeList();
+        if (!inCode) {
+          inCode = true;
+          codeLines = [];
+        } else {
+          flushCode();
+        }
+        continue;
+      }
+      if (inCode) {
+        codeLines.push(rawLine);
+        continue;
+      }
+      if (!trimmed) {
+        flushSources();
+        closeList();
+        continue;
+      }
+      if (inSources) {
+        const sourceLine = normalizePassAiSourceLineForLinks(trimmed);
+        if (sourceLine) {
+          sourceItems.push(renderPassAiInlineMarkdown(sourceLine, refs));
+        }
+        continue;
+      }
+
+      const sourcesHeaderMatch = trimmed.match(/^sources:\s*(.*)$/i);
+      if (sourcesHeaderMatch) {
+        closeList();
+        parts.push("<h4>Sources</h4>");
+        inSources = true;
+        const rest = normalizePassAiSourceLineForLinks(sourcesHeaderMatch[1] || "");
+        if (rest) {
+          sourceItems.push(renderPassAiInlineMarkdown(rest, refs));
+        }
+        continue;
+      }
+
+      const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
+      if (headingMatch) {
+        flushSources();
+        closeList();
+        const level = Math.min(6, headingMatch[1].length);
+        parts.push("<h" + String(level) + ">" + renderPassAiInlineMarkdown(headingMatch[2], refs) + "</h" + String(level) + ">");
+        continue;
+      }
+
+      const blockquoteMatch = trimmed.match(/^>\s?(.*)$/);
+      if (blockquoteMatch) {
+        flushSources();
+        closeList();
+        parts.push("<blockquote>" + renderPassAiInlineMarkdown(blockquoteMatch[1], refs) + "</blockquote>");
+        continue;
+      }
+
+      const tableHeader = parsePassAiMarkdownTableRow(trimmed);
+      if (tableHeader && i + 1 < lines.length && isPassAiMarkdownTableDivider(lines[i + 1])) {
+        flushSources();
+        closeList();
+        const tableRows = [];
+        let cursor = i + 2;
+        while (cursor < lines.length) {
+          const nextRow = parsePassAiMarkdownTableRow(lines[cursor]);
+          if (!nextRow) break;
+          tableRows.push(nextRow);
+          cursor += 1;
+        }
+        parts.push(renderPassAiMarkdownTable(tableHeader, tableRows, refs));
+        i = cursor - 1;
+        continue;
+      }
+
+      const ulMatch = trimmed.match(/^[-*+]\s+(.*)$/);
+      if (ulMatch) {
+        if (listType !== "ul") {
+          closeList();
+          parts.push("<ul>");
+          listType = "ul";
+        }
+        parts.push("<li>" + renderPassAiInlineMarkdown(ulMatch[1], refs) + "</li>");
+        continue;
+      }
+
+      const olMatch = trimmed.match(/^\d+\.\s+(.*)$/);
+      if (olMatch) {
+        if (listType !== "ol") {
+          closeList();
+          parts.push("<ol>");
+          listType = "ol";
+        }
+        parts.push("<li>" + renderPassAiInlineMarkdown(olMatch[1], refs) + "</li>");
+        continue;
+      }
+
+      closeList();
+      parts.push("<p>" + renderPassAiInlineMarkdown(trimmed, refs) + "</p>");
+    }
+
+    flushSources();
+    closeList();
+    flushCode();
+    return parts.join("");
+  }
+
+  async function deletePassAiSlackThread(triggerButton) {
+    const context = getPassAiLastThreadContext();
+    if (!context) {
+      setStatus("No Slack thread is available to delete.", true);
+      return;
+    }
+    if (state.passAiDeleteInFlight) return;
+
+    const confirmed = typeof window !== "undefined" && typeof window.confirm === "function"
+      ? window.confirm("Delete this Slack thread from channel " + context.channelId + "? This cannot be undone.")
+      : true;
+    if (!confirmed) return;
+
+    state.passAiDeleteInFlight = true;
+    if (triggerButton) triggerButton.disabled = true;
+
+    try {
+      const response = await sendToSlackTab({
+        action: "slackDeleteSingularityThread",
+        workspaceOrigin: context.workspaceOrigin || PASS_AI_SLACK_WORKSPACE_ORIGIN,
+        channelId: context.channelId,
+        parentTs: context.parentTs,
+        limit: 200
+      });
+      if (!response || response.ok !== true) {
+        throw buildPassAiSlackRequestError(response, "Unable to delete Slack thread.");
+      }
+
+      const deletedCount = Number(response.deletedCount || response.deleted_count || 0);
+      const failedCount = Number(response.failedCount || response.failed_count || 0);
+      const totalMessages = Number(response.totalMessages || response.total_messages || 0);
+      const total = Number.isFinite(totalMessages) && totalMessages > 0 ? totalMessages : (deletedCount + failedCount);
+      if (failedCount > 0) {
+        setStatus("Slack delete partially completed: " + deletedCount + "/" + total + " removed.", true);
+      } else {
+        setStatus("Slack thread deleted (" + deletedCount + " messages).", false);
+      }
+
+      setPassAiLastThreadContext(null);
+      if (triggerButton) {
+        triggerButton.disabled = true;
+        triggerButton.innerHTML = '<span class="spectrum-Button-label">Deleted</span>';
+      }
+    } catch (err) {
+      setStatus("Slack delete failed: " + (err && err.message ? err.message : "Unknown error"), true);
+    } finally {
+      state.passAiDeleteInFlight = false;
+    }
+  }
+
+  function renderPassAiReplyCard(replyText, options) {
+    const host = getPassAiDynamicReplyHost();
+    if (!host) return;
+    const pending = !!(options && options.pending);
+    const error = !!(options && options.error);
+    const statusText = String((options && options.statusText) || "");
+    const text = String(replyText || "");
+    const hasReplyText = !!text.trim();
+    if (!hasReplyText && !error) return;
+    const showCopy = options && Object.prototype.hasOwnProperty.call(options, "showCopy")
+      ? !!options.showCopy
+      : !pending && !error && !!text;
+    const showDelete = options && Object.prototype.hasOwnProperty.call(options, "showDelete")
+      ? !!options.showDelete
+      : !pending && !!text && !!getPassAiLastThreadContext();
+
+    const previousBody = host.querySelector(".zip-pass-ai-reply-body");
+    const previousScroll = previousBody
+      ? {
+          top: previousBody.scrollTop,
+          height: previousBody.scrollHeight,
+          atBottom: (previousBody.scrollHeight - previousBody.scrollTop - previousBody.clientHeight) <= 24
+        }
+      : null;
+
+    host.classList.remove("hidden");
+    host.innerHTML = "";
+
+    const card = document.createElement("div");
+    card.className = "zip-pass-ai-reply-card";
+    if (pending) card.classList.add("pending");
+    if (error) card.classList.add("error");
+
+    if (statusText) {
+      const head = document.createElement("div");
+      head.className = "zip-pass-ai-reply-head";
+      const meta = document.createElement("span");
+      meta.className = "zip-pass-ai-reply-meta";
+      const statusLabel = document.createElement("span");
+      statusLabel.textContent = statusText;
+      meta.appendChild(statusLabel);
+      head.appendChild(meta);
+      card.appendChild(head);
+    }
+
+    const body = document.createElement("div");
+    body.className = "zip-pass-ai-box zip-pass-ai-answer zip-pass-ai-reply-body zip-pass-ai-reply-body-markdown spectrum-Textfield-input";
+    body.tabIndex = 0;
+    body.innerHTML = renderPassAiMarkdownToHtml(text);
+
+    card.appendChild(body);
+
+    const actions = document.createElement("div");
+    actions.className = "zip-pass-ai-reply-actions";
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS";
+    copyBtn.innerHTML = '<span class="spectrum-Button-label">Copy</span>';
+    copyBtn.disabled = !showCopy;
+    copyBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      copyPassAiReplyToClipboard(text, copyBtn).catch(() => {});
+    });
+    actions.appendChild(copyBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS";
+    deleteBtn.innerHTML = '<span class="spectrum-Button-label">Delete</span>';
+    deleteBtn.disabled = !showDelete || state.passAiDeleteInFlight;
+    deleteBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      deletePassAiSlackThread(deleteBtn).catch(() => {});
+    });
+    actions.appendChild(deleteBtn);
+    card.appendChild(actions);
+
+    host.appendChild(card);
+
+    if (previousScroll) {
+      if (previousScroll.atBottom) {
+        body.scrollTop = body.scrollHeight;
+      } else {
+        const maxScrollTop = Math.max(0, body.scrollHeight - body.clientHeight);
+        body.scrollTop = Math.min(maxScrollTop, previousScroll.top);
+      }
+    }
+    if (els.passAiAnswerBlock) {
+      els.passAiAnswerBlock.classList.remove("hidden");
+    }
+    updatePassAiAnswerPlaceholder();
+  }
+
+  function renderPassAiQuestionDraft(questionText, options) {
+    const keepAnswer = !!(options && options.keepAnswer);
+    const ticketId = options && options.ticketId;
+    if (els.passAiResultsBox) els.passAiResultsBox.classList.remove("hidden");
+    if (els.passAiError) {
+      els.passAiError.textContent = "";
+      els.passAiError.classList.add("hidden");
+    }
+    setPassAiQuestionLabel(ticketId);
+    if (els.passAiQuestion) {
+      els.passAiQuestion.classList.remove("hidden");
+      els.passAiQuestion.value = questionText || "";
+    }
+    if (!keepAnswer && els.passAiDynamicReplyHost) {
+      els.passAiDynamicReplyHost.innerHTML = "";
+      els.passAiDynamicReplyHost.classList.add("hidden");
+    }
+    updatePassAiAnswerPlaceholder();
+  }
+
+  function getPassAiQuestionDraft() {
+    return normalizePassAiCommentBody(els.passAiQuestion && els.passAiQuestion.value);
+  }
+
+  function renderPassAiAnswer(answerText, options) {
+    if (els.passAiResultsBox) els.passAiResultsBox.classList.remove("hidden");
+    if (els.passAiError) {
+      els.passAiError.textContent = "";
+      els.passAiError.classList.add("hidden");
+    }
+    renderPassAiReplyCard(answerText, options);
+  }
+
+  function getPassAiServiceId(product) {
+    return normalizePassProduct(product) === "PASS_CM" ? "pass-cm" : "pass-auth";
+  }
+
+  function appendPassAiDebugLine(debugLines, line) {
+    if (!Array.isArray(debugLines)) return;
+    debugLines.push(String(line == null ? "" : line));
+  }
+
+  function formatPassAiResponseForDisplay(result) {
+    const finalText = normalizePassAiAnswerBody(result && (result.finalText || result.answer));
+    if (finalText) return finalText;
+    if (result && result.payload && typeof result.payload === "object") {
+      try {
+        return JSON.stringify(result.payload, null, 2);
+      } catch (_) {}
+    }
+    const rawText = result && result.rawText != null ? String(result.rawText) : "";
+    if (rawText.trim()) return rawText.trim();
+    return "PASS Singularity returned no response body.";
+  }
+
+  function getPassAiSingularityChannelId() {
+    const locked = normalizePassAiSlackChannelId(PASS_AI_SLACK_CHANNEL_DEFAULT);
+    if (!locked) return "";
+    try {
+      const configured = normalizePassAiSlackChannelId(window.localStorage.getItem(PASS_AI_SLACK_CHANNEL_STORAGE_KEY) || "");
+      if (configured && configured !== locked) {
+        window.localStorage.setItem(PASS_AI_SLACK_CHANNEL_STORAGE_KEY, locked);
+      }
+    } catch (_) {}
+    return locked;
+  }
+
+  function buildPassAiSlackLoginUrl() {
+    return buildPassAiSlackWorkspaceLandingUrl();
+  }
+
+  function getPassAiSingularityMention() {
+    const canonicalize = (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return PASS_AI_SINGULARITY_MENTION_DEFAULT;
+      if (/^<@[UW][A-Z0-9]{8,}>$/i.test(raw)) return raw;
+      const plain = raw.startsWith("@") ? raw.slice(1).trim() : raw;
+      if (!plain) return PASS_AI_SINGULARITY_MENTION_DEFAULT;
+      if (plain.toLowerCase() === "singularity") return PASS_AI_SINGULARITY_MENTION_DEFAULT;
+      return "@" + plain;
+    };
+
+    let configured = "";
+    try {
+      configured = String(window.localStorage.getItem(PASS_AI_SINGULARITY_MENTION_STORAGE_KEY) || "").trim();
+    } catch (_) {}
+    if (!configured && typeof window !== "undefined") {
+      configured = String(window.ZIP_PASS_AI_SINGULARITY_MENTION || "").trim();
+    }
+    const normalized = canonicalize(configured || PASS_AI_SINGULARITY_MENTION_DEFAULT);
+    try {
+      if (configured && configured !== normalized) {
+        window.localStorage.setItem(PASS_AI_SINGULARITY_MENTION_STORAGE_KEY, normalized);
+      }
+    } catch (_) {}
+    return normalized;
+  }
+
+  function getPassAiSlackError(payload, fallback) {
+    const diagnostics = payload && payload.diagnostics && typeof payload.diagnostics === "object"
+      ? payload.diagnostics
+      : null;
+    const diagnosticsText = diagnostics
+      ? (
+        "\nDiagnostic\n"
+        + "phase: " + String(diagnostics.phase || "unknown") + "\n"
+        + "classification: " + String(diagnostics.classification || "unknown") + "\n"
+        + "issueSource: " + String(diagnostics.issueSource || "unknown") + "\n"
+        + "expectedTeam: " + String(diagnostics.expectedTeamId || "") + "\n"
+        + "actualTeam: " + String(diagnostics.actualTeamId || "") + "\n"
+        + "enterprise: " + String(diagnostics.actualEnterpriseId || "") + "\n"
+        + "channel: " + String(diagnostics.channelId || "") + "\n"
+        + "parentTs: " + String(diagnostics.parentTs || "") + "\n"
+        + "errorCode: " + String(diagnostics.errorCode || "") + "\n"
+        + "httpStatus: " + String(diagnostics.httpStatus || 0) + "\n"
+        + "scope: " + String(diagnostics.scope || "") + "\n"
+        + "action: " + String(diagnostics.recommendedAction || "")
+      )
+      : "";
+    const message = normalizePassAiCommentBody(
+      payload && (
+        payload.error
+        || payload.message
+        || payload.details
+        || payload.warning
+        || (payload.meta && payload.meta.error)
+        || (payload.slack && payload.slack.error)
+      )
+    );
+    if (message) return (message + diagnosticsText).trim();
+    const base = String(fallback || "Slack request failed.");
+    return (base + diagnosticsText).trim();
+  }
+
+  function buildPassAiSlackRequestError(payload, fallback) {
+    const message = getPassAiSlackError(payload, fallback);
+    const error = new Error(message);
+    const diagnostics = payload && payload.diagnostics && typeof payload.diagnostics === "object"
+      ? payload.diagnostics
+      : null;
+    error.passAiIssueSource = diagnostics ? String(diagnostics.issueSource || "").trim().toLowerCase() : "";
+    error.passAiClassification = diagnostics ? String(diagnostics.classification || "").trim().toLowerCase() : "";
+    error.passAiErrorCode = diagnostics ? String(diagnostics.errorCode || "").trim().toLowerCase() : "";
+    return error;
+  }
+
+  function isHandledPassAiSlackConfigError(err) {
+    if (!err) return false;
+    const issueSource = String(err.passAiIssueSource || "").trim().toLowerCase();
+    if (issueSource === "slack_config") return true;
+
+    const classification = String(err.passAiClassification || "").trim().toLowerCase();
+    if (
+      classification === "slack_scope_config"
+      || classification === "slack_workspace_config"
+      || classification === "slack_auth_config"
+      || classification === "slack_channel_access"
+    ) {
+      return true;
+    }
+
+    const errorCode = String(err.passAiErrorCode || "").trim().toLowerCase();
+    if (
+      errorCode === "missing_scope"
+      || errorCode === "channel_not_found"
+      || errorCode === "not_in_channel"
+      || errorCode === "workspace_mismatch"
+      || errorCode === "not_authed"
+      || errorCode === "invalid_auth"
+    ) {
+      return true;
+    }
+
+    const message = String(err && err.message || "").trim().toLowerCase();
+    if (!message) return false;
+    return (
+      message.includes("classification: slack_scope_config")
+      || message.includes("classification: slack_workspace_config")
+      || message.includes("classification: slack_auth_config")
+      || message.includes("classification: slack_channel_access")
+      || message.includes("errorcode: missing_scope")
+      || message.includes("errorcode: workspace_mismatch")
+      || message.includes("errorcode: channel_not_found")
+      || message.includes("slack sign-in is required")
+    );
+  }
+
+  function logPassAiRequestFailure(err) {
+    const debugEnabled = typeof window !== "undefined" && window.ZIP_DEBUG_PASS_AI === true;
+    if (isHandledPassAiSlackConfigError(err)) {
+      if (debugEnabled) console.warn("PASS AI handled Slack config issue:", err);
+      return;
+    }
+    if (debugEnabled) console.error("PASS AI request failed:", err);
+  }
+
+  function generatePassAiClientId() {
+    try {
+      if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+      }
+    } catch (_) {}
+    return "zip-pass-ai-client-" + String(Date.now()) + "-" + String(Math.floor(Math.random() * 1000000));
+  }
+
+  async function requestPassAiConversation(ticketContext, questionText, debugLines) {
+    const question = normalizePassAiCommentBody(questionText);
+    if (!question) throw new Error("Latest customer question is empty.");
+
+    const ticketId = normalizeTicketContextId(ticketContext && ticketContext.id);
+    if (!ticketId) throw new Error("Ticket ID is unavailable.");
+
+    const frontendClientId = generatePassAiClientId();
+    state.passAiActiveClientId = frontendClientId;
+    const channelId = getPassAiSingularityChannelId();
+    const expectedTeamId = getExpectedPassAiSlackTeamId();
+    if (!channelId) throw new Error("Singularity channel ID is not configured.");
+    const mention = getPassAiSingularityMention();
+    const messageText = (mention + " " + question).trim();
+
+    appendPassAiDebugLine(debugLines, "ticketId=" + ticketId);
+    appendPassAiDebugLine(debugLines, "frontendClientId=" + frontendClientId);
+    appendPassAiDebugLine(debugLines, "serviceId=" + getPassAiServiceId(ticketContext && ticketContext.product));
+    appendPassAiDebugLine(debugLines, "workspaceOrigin=" + PASS_AI_SLACK_WORKSPACE_ORIGIN);
+    appendPassAiDebugLine(debugLines, "slackAppId=" + PASS_AI_SLACK_APP_ID);
+    appendPassAiDebugLine(debugLines, "teamId=" + (expectedTeamId || "(unset)"));
+    appendPassAiDebugLine(debugLines, "channelId=" + channelId);
+    appendPassAiDebugLine(debugLines, "POST " + PASS_AI_SLACK_API_ENDPOINT + "/chat.postMessage");
+
+    const sendPayload = await sendToSlackTab({
+      action: "slackSendToSingularity",
+      workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+      channelId,
+      expectedTeamId,
+      ticketId,
+      question,
+      messageText,
+      frontendClientId,
+      singularityUserId: PASS_AI_SLACK_SINGULARITY_USER_ID,
+      mention
+    });
+    if (!sendPayload || sendPayload.ok !== true) {
+      throw buildPassAiSlackRequestError(sendPayload, "Unable to post message to Singularity.");
+    }
+
+    const parentTs = normalizePassAiCommentBody(
+      sendPayload.parent_ts
+      || sendPayload.thread_ts
+      || sendPayload.ts
+      || sendPayload.message_ts
+      || (sendPayload.message && sendPayload.message.ts)
+    );
+    const postedChannel = normalizePassAiCommentBody(sendPayload.channel || channelId);
+    if (!parentTs) {
+      throw new Error("Slack post response did not include a parent thread timestamp.");
+    }
+    appendPassAiDebugLine(debugLines, "parent_ts=" + parentTs);
+    setPassAiLastThreadContext({
+      channelId: postedChannel || channelId,
+      parentTs,
+      workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN
+    });
+
+    let finalPayload = null;
+    let lastPollPayload = null;
+    let latestReplyTs = "";
+    let latestReplyText = "";
+    let lastReplyAtMs = 0;
+    let pollCachedLatestUpdates = null;
+    let lastObservedReplySignature = "";
+
+    for (let attempt = 1; attempt <= PASS_AI_POLL_MAX_ATTEMPTS; attempt += 1) {
+      if (state.passAiActiveClientId !== frontendClientId) {
+        throw new Error("Superseded by a newer AI request.");
+      }
+
+      appendPassAiDebugLine(debugLines, "Poll attempt " + String(attempt) + ": " + PASS_AI_SLACK_API_ENDPOINT + "/conversations.replies");
+      const pollPayload = await sendToSlackTab({
+        action: "slackPollSingularityThread",
+        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+        channelId: postedChannel,
+        expectedTeamId,
+        parentTs,
+        singularityUserId: PASS_AI_SLACK_SINGULARITY_USER_ID,
+        singularityNamePattern: PASS_AI_SINGULARITY_NAME_PATTERN,
+        finalMarkerRegex: "FINAL_RESPONSE",
+        frontendClientId,
+        ticketId,
+        limit: 40,
+        cached_latest_updates: pollCachedLatestUpdates
+      });
+      lastPollPayload = pollPayload && typeof pollPayload === "object" ? pollPayload : null;
+      if (!pollPayload || pollPayload.ok !== true) {
+        throw buildPassAiSlackRequestError(pollPayload, "Unable to fetch thread replies.");
+      }
+      const pollCachedCandidate = pollPayload && (
+        pollPayload.cachedLatestUpdates
+        || pollPayload.cached_latest_updates
+      );
+      if (pollCachedCandidate && typeof pollCachedCandidate === "object") {
+        pollCachedLatestUpdates = { ...pollCachedCandidate };
+      }
+
+      const pollStatus = String((pollPayload && pollPayload.status) || "").trim().toLowerCase();
+      const pollReplyTs = normalizePassAiCommentBody(
+        pollPayload && (
+          pollPayload.latestReplyTs
+          || pollPayload.finalReplyTs
+          || pollPayload.replyTs
+          || pollPayload.latest_reply_ts
+          || pollPayload.final_reply_ts
+          || pollPayload.reply_ts
+          || pollPayload.ts
+        )
+      );
+      const pollReplyText = normalizePassAiAnswerBody(
+        pollPayload && (
+          pollPayload.latestReplyText
+          || pollPayload.finalText
+          || pollPayload.partialText
+          || pollPayload.text
+          ||
+          pollPayload.latest_reply_text
+          || pollPayload.final_text
+          || pollPayload.answer
+        )
+      );
+      const pollCombinedText = normalizePassAiAnswerBody(
+        pollPayload && (
+          pollPayload.combinedReplyText
+          || pollPayload.combined_reply_text
+          || (Array.isArray(pollPayload.allReplyTexts) ? pollPayload.allReplyTexts.join("\n\n") : "")
+        )
+      );
+      const markerFinal = !!(
+        pollPayload && (
+          pollPayload.hasFinalMarker
+          || pollPayload.final === true
+          || pollPayload.status === "final"
+          ||
+          pollPayload.has_final_marker
+          || pollStatus === "final"
+        )
+      );
+      const pollAckOnly = !!(
+        pollPayload && (
+          pollPayload.ackOnly === true
+          || pollPayload.ack_only === true
+        )
+      );
+      const pollHasCompletionFooter = !!(
+        pollPayload && (
+          pollPayload.hasCompletionFooter === true
+          || pollPayload.has_completion_footer === true
+          || pollPayload.hasSourcesFooter === true
+          || pollPayload.has_sources_footer === true
+        )
+      );
+      const pollReplyCount = Number(
+        pollPayload && (
+          pollPayload.singularityRepliesCount
+          || pollPayload.singularity_replies_count
+          || pollPayload.repliesCount
+          || pollPayload.replyCount
+          || (Array.isArray(pollPayload.allReplies) ? pollPayload.allReplies.length : 0)
+        )
+      );
+      const hasMinimumReplies = Number.isFinite(pollReplyCount) && pollReplyCount >= PASS_AI_MIN_SINGULARITY_REPLIES;
+
+      if (pollCombinedText) {
+        const nextTs = pollReplyTs || latestReplyTs;
+        const nextText = pollCombinedText;
+        const nextSignature = String(nextTs || "") + "::" + nextText;
+        const changed = nextSignature !== lastObservedReplySignature;
+        if (changed) {
+          lastReplyAtMs = Date.now();
+          lastObservedReplySignature = nextSignature;
+        }
+        if (nextTs) latestReplyTs = nextTs;
+        latestReplyText = nextText;
+      } else if (pollReplyTs && pollReplyTs !== latestReplyTs) {
+        latestReplyTs = pollReplyTs;
+        latestReplyText = pollReplyText || latestReplyText;
+        lastReplyAtMs = Date.now();
+        lastObservedReplySignature = String(latestReplyTs || "") + "::" + String(latestReplyText || "");
+      } else if (pollReplyText && !latestReplyText) {
+        latestReplyText = pollReplyText;
+        lastReplyAtMs = Date.now();
+        lastObservedReplySignature = String(latestReplyTs || "") + "::" + String(latestReplyText || "");
+      }
+
+      const partial = pollCombinedText || pollReplyText || latestReplyText;
+      const partialHasCompletionFooter = hasPassAiCompletionFooter(partial);
+      const hasCompletionSignal = markerFinal || pollHasCompletionFooter || partialHasCompletionFooter;
+      const canFinalize = !pollAckOnly && (hasMinimumReplies || pollHasCompletionFooter || partialHasCompletionFooter);
+      if (state.passAiActiveClientId === frontendClientId && partial) {
+        const statusMessage = canFinalize
+          ? "Receiving updates..."
+          : "Received ACK. Waiting for full answer...";
+        renderPassAiAnswer(partial, {
+          pending: true,
+          statusText: statusMessage,
+          title: "Singularity Reply",
+          showCopy: false,
+          showDelete: false
+        });
+      }
+
+      if (canFinalize && hasCompletionSignal && (pollCombinedText || pollReplyText || latestReplyText)) {
+        finalPayload = {
+          ...(pollPayload || {}),
+          finalText: pollCombinedText || pollReplyText || latestReplyText
+        };
+        break;
+      }
+
+      if (canFinalize && latestReplyText && lastReplyAtMs && Date.now() - lastReplyAtMs >= PASS_AI_INACTIVITY_FINAL_MS) {
+        finalPayload = {
+          ...(pollPayload || {}),
+          finalText: pollCombinedText || pollReplyText || latestReplyText
+        };
+        break;
+      }
+
+      await wait(PASS_AI_POLL_INTERVAL_MS);
+    }
+
+    if (!finalPayload) {
+      const fallbackTs = normalizePassAiCommentBody(
+        latestReplyTs
+        || (lastPollPayload && (
+          lastPollPayload.latestReplyTs
+          || lastPollPayload.finalReplyTs
+          || lastPollPayload.replyTs
+          || lastPollPayload.latest_reply_ts
+          || lastPollPayload.final_reply_ts
+          || lastPollPayload.reply_ts
+          || lastPollPayload.ts
+        ))
+      );
+      const fallbackText = normalizePassAiAnswerBody(
+        latestReplyText
+        || (lastPollPayload && (
+          lastPollPayload.combinedReplyText
+          || lastPollPayload.combined_reply_text
+          || (Array.isArray(lastPollPayload.allReplyTexts) ? lastPollPayload.allReplyTexts.join("\n\n") : "")
+          || lastPollPayload.latestReplyText
+          || lastPollPayload.finalText
+          || lastPollPayload.partialText
+          || lastPollPayload.text
+          || lastPollPayload.answer
+          || lastPollPayload.latest_reply_text
+          || lastPollPayload.final_text
+        ))
+      );
+      const fallbackReplyCount = Number(lastPollPayload && (
+        lastPollPayload.singularityRepliesCount
+        || lastPollPayload.singularity_replies_count
+        || lastPollPayload.repliesCount
+        || lastPollPayload.replyCount
+        || 0
+      ));
+      const fallbackAckOnly = !!(lastPollPayload && (
+        lastPollPayload.ackOnly === true
+        || lastPollPayload.ack_only === true
+      ));
+      const fallbackHasCompletionFooter = !!(lastPollPayload && (
+        lastPollPayload.hasCompletionFooter === true
+        || lastPollPayload.has_completion_footer === true
+        || lastPollPayload.hasSourcesFooter === true
+        || lastPollPayload.has_sources_footer === true
+      ));
+      const fallbackHasSourcesFooter = hasPassAiSourcesFooter(fallbackText);
+      const fallbackCanFinalize = !fallbackAckOnly && (
+        (Number.isFinite(fallbackReplyCount) && fallbackReplyCount >= PASS_AI_MIN_SINGULARITY_REPLIES)
+        || fallbackHasCompletionFooter
+        || fallbackHasSourcesFooter
+      );
+      const fallbackNonSingularityReplyCount = Number(lastPollPayload && (
+        lastPollPayload.nonSingularityRepliesCount
+        || lastPollPayload.non_singularity_replies_count
+        || 0
+      ));
+      if (
+        fallbackCanFinalize
+        && (
+          fallbackText
+          || fallbackTs
+        )
+      ) {
+        finalPayload = {
+          ...(lastPollPayload || {}),
+          finalText: fallbackText || "Singularity replied without a FINAL marker."
+        };
+      } else if ((fallbackAckOnly || (Number.isFinite(fallbackReplyCount) && fallbackReplyCount === 1)) && latestReplyText) {
+        throw new Error("Only the initial ACK was received from @Singularity before timeout.");
+      } else if (Number.isFinite(fallbackNonSingularityReplyCount) && fallbackNonSingularityReplyCount > 0) {
+        throw new Error("Thread activity was detected, but @Singularity has not replied yet.");
+      }
+    }
+
+    if (!finalPayload) {
+      throw new Error("No @Singularity reply was received before timeout.");
+    }
+
+    const finalText = normalizePassAiAnswerBody(
+      finalPayload && (
+        finalPayload.finalText
+        || finalPayload.combinedReplyText
+        || finalPayload.combined_reply_text
+        || (Array.isArray(finalPayload.allReplyTexts) ? finalPayload.allReplyTexts.join("\n\n") : "")
+        || finalPayload.final_text
+        || finalPayload.latest_reply_text
+        || finalPayload.text
+        || finalPayload.answer
+      )
+    );
+    if (!finalText) {
+      throw new Error("Singularity returned an empty final response.");
+    }
+
+    return {
+      answer: finalText,
+      finalText,
+      payload: finalPayload,
+      rawText: finalText,
+      channelId: postedChannel || channelId,
+      parentTs,
+      workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+      endpoint: PASS_AI_SLACK_API_ENDPOINT,
+      attempt: "slack_web_session_token"
+    };
+  }
+
+  function parseAuditsToTicketComments(auditsPayload) {
+    const audits = Array.isArray(auditsPayload && auditsPayload.audits) ? auditsPayload.audits : [];
+    const comments = [];
+    audits.forEach((audit) => {
+      const auditCreatedAt = String((audit && audit.created_at) || "").trim();
+      const auditAuthor = String((audit && audit.author_id) || "").trim();
+      const events = Array.isArray(audit && audit.events) ? audit.events : [];
+      events.forEach((event) => {
+        const eventType = String((event && event.type) || "").trim().toLowerCase();
+        if (eventType !== "comment") return;
+        const body = normalizePassAiCommentBody(
+          event && event.plain_body != null
+            ? event.plain_body
+            : event && event.body != null
+              ? event.body
+              : event && event.html_body != null
+                ? event.html_body
+                : ""
+        );
+        if (!body) return;
+        comments.push({
+          type: event && event.public === false ? "internal" : "public",
+          author: String((event && event.author_id) || auditAuthor || "").trim(),
+          body,
+          createdAt: String((event && event.created_at) || auditCreatedAt || "").trim()
+        });
+      });
+    });
+    comments.sort((a, b) => toEpochMs(a.createdAt) - toEpochMs(b.createdAt));
+    return comments;
+  }
+
+  function getDescriptionFallbackFromComments(comments) {
+    const rows = normalizeExistingTicketComments(comments);
+    for (let i = 0; i < rows.length; i += 1) {
+      if (rows[i].type === "public" && rows[i].body) return rows[i].body;
+    }
+    return "";
+  }
+
+  /**
+   * @param {{ comments?: Array<{type?: string, author?: string, body?: string, createdAt?: string}>, description?: string, originalDescription?: string } | null | undefined} ticket
+   * @returns {string}
+   */
+  function getLatestPublicUpdate(ticket) {
+    const comments = normalizeExistingTicketComments(ticket && ticket.comments);
+    for (let i = comments.length - 1; i >= 0; i -= 1) {
+      const comment = comments[i];
+      if (comment.type !== "public") continue;
+      if (comment.body) return comment.body;
+    }
+    const description = normalizePassAiCommentBody(ticket && (ticket.description || ticket.originalDescription));
+    if (description) return description;
+    return "";
+  }
+
+  function getLatestIncomingCustomerQuestion(ticket) {
+    const comments = normalizeExistingTicketComments(ticket && ticket.comments);
+    const agentId = state.user && state.user.id != null ? String(state.user.id).trim() : "";
+    for (let i = comments.length - 1; i >= 0; i -= 1) {
+      const comment = comments[i];
+      if (comment.type !== "public") continue;
+      const authorId = String(comment.author || "").trim();
+      if (agentId && authorId && authorId === agentId) continue;
+      if (comment.body) return comment.body;
+    }
+    return getLatestPublicUpdate(ticket);
+  }
+
+  async function fetchZendeskTicketAudits(ticketId) {
+    const normalizedTicketId = normalizeZendeskTicketId(ticketId);
+    if (normalizedTicketId == null) throw new Error("Select a ticket before asking PASS AI.");
+    const auditsUrl = BASE + "/api/v2/tickets/" + encodeURIComponent(normalizedTicketId) + "/audits.json";
+    const result = await sendToZendeskTab({ action: "fetch", url: auditsUrl });
+    const payload = result && typeof result === "object" ? result.payload : null;
+    const ok = !!(result && result.ok);
+    const status = Number(result && result.status);
+    if (!ok) {
+      const apiMessage = normalizePassAiCommentBody(
+        payload && (payload.error || payload.description || payload.message || payload.details)
+      );
+      throw new Error(
+        "Zendesk audits request failed"
+          + (Number.isFinite(status) ? " (HTTP " + status + ")." : ".")
+          + (apiMessage ? " " + apiMessage : "")
+      );
+    }
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Zendesk audits returned an invalid response.");
+    }
+    return payload;
+  }
+
+  function buildTicketContextFromAudits(ticketId, auditsPayload) {
+    const currentTicket = syncCurrentTicketContextFromSelection(ticketId);
+    const auditComments = parseAuditsToTicketComments(auditsPayload);
+    const fallbackComments = normalizeExistingTicketComments(currentTicket.comments);
+    const comments = auditComments.length ? auditComments : fallbackComments;
+    const description = normalizePassAiCommentBody(
+      (currentTicket && (currentTicket.description || currentTicket.originalDescription))
+      || getDescriptionFallbackFromComments(comments)
+    );
+    const ticketContext = {
+      id: normalizeTicketContextId((currentTicket && currentTicket.id) || ticketId),
+      product: normalizePassProduct(currentTicket && currentTicket.product),
+      agentEmail: String((currentTicket && currentTicket.agentEmail) || (state.user && state.user.email) || "").trim(),
+      comments
+    };
+    if (description) ticketContext.description = description;
+    if (typeof window !== "undefined") {
+      window.currentTicket = { ...currentTicket, ...ticketContext };
+    }
+    return ticketContext;
+  }
+
+  async function loadLatestQuestionForTicket(ticketId, options) {
+    const normalizedTicketId = normalizeZendeskTicketId(ticketId);
+    if (normalizedTicketId == null) return "";
+    const selectedTicketId = normalizeZendeskTicketId(state.selectedTicketId);
+    if (selectedTicketId != null && selectedTicketId !== normalizedTicketId) return "";
+
+    try {
+      const auditsPayload = await fetchZendeskTicketAudits(normalizedTicketId);
+      const ticketContext = buildTicketContextFromAudits(normalizedTicketId, auditsPayload);
+      const latestQuestion = getLatestIncomingCustomerQuestion(ticketContext);
+      if (!latestQuestion) {
+        throw new Error("No latest public customer comment found.");
+      }
+      renderPassAiQuestionDraft(latestQuestion, { ticketId: normalizedTicketId });
+      return latestQuestion;
+    } catch (err) {
+      const fallbackContext = syncCurrentTicketContextFromSelection(normalizedTicketId);
+      const fallbackQuestion = getLatestIncomingCustomerQuestion(fallbackContext);
+      if (fallbackQuestion) {
+        renderPassAiQuestionDraft(fallbackQuestion, { ticketId: normalizedTicketId });
+        return fallbackQuestion;
+      }
+      if (!(options && options.silentError)) {
+        setStatus("Unable to load latest ticket comment. " + (err && err.message ? err.message : ""), true);
+      }
+      throw err;
+    }
+  }
+
+  async function askPassAiForSelectedTicket() {
+    const selectedTicketId = getSelectedPassAiTicketId();
+    const debugLines = [];
+    if (selectedTicketId == null) {
+      appendPassAiDebugLine(debugLines, "No selected Zendesk ticket.");
+      renderPassAiAnswer("Select a ticket first, then ask PASS AI.", {
+        error: true,
+        title: "AI Error",
+        showCopy: false
+      });
+      setStatus("PASS AI request blocked: no ticket selected.", true);
+      return;
+    }
+    state.passAiTicketId = selectedTicketId;
+    state.passAiActiveClientId = "";
+    setPassAiLastThreadContext(null);
+    setPassAiLoading(true);
+    setStatus("Sending question to PASS Singularity…", false);
+    try {
+      await ensurePassAiSlackSession();
+      let ticketContext = syncCurrentTicketContextFromSelection(selectedTicketId);
+      let questionDraft = getPassAiQuestionDraft();
+      if (!questionDraft) {
+        questionDraft = await loadLatestQuestionForTicket(selectedTicketId, { silentError: true });
+      } else {
+        renderPassAiQuestionDraft(questionDraft, { ticketId: selectedTicketId });
+      }
+      ticketContext = getCurrentTicketContext() || ticketContext;
+      if (!questionDraft) {
+        throw new Error("No latest public customer comment was found on this ticket.");
+      }
+
+      appendPassAiDebugLine(debugLines, "ticketId=" + normalizeTicketContextId(selectedTicketId));
+      appendPassAiDebugLine(debugLines, "product=" + normalizePassProduct(ticketContext && ticketContext.product));
+      appendPassAiDebugLine(debugLines, "serviceId=" + getPassAiServiceId(ticketContext && ticketContext.product));
+      appendPassAiDebugLine(debugLines, "agentEmail=" + String(ticketContext && ticketContext.agentEmail || "(missing)"));
+      appendPassAiDebugLine(debugLines, "questionChars=" + String(questionDraft.length));
+      appendPassAiDebugLine(debugLines, "questionText:");
+      appendPassAiDebugLine(debugLines, questionDraft);
+
+      renderPassAiQuestionDraft(questionDraft, { ticketId: selectedTicketId, keepAnswer: true });
+      const aiResult = await requestPassAiConversation(ticketContext, questionDraft, debugLines);
+      setPassAiLastThreadContext({
+        channelId: aiResult && aiResult.channelId,
+        parentTs: aiResult && aiResult.parentTs,
+        workspaceOrigin: aiResult && aiResult.workspaceOrigin
+      });
+      const finalReplyText = formatPassAiResponseForDisplay(aiResult);
+      renderPassAiAnswer(finalReplyText, {
+        title: "Singularity Final Reply",
+        statusText: "Complete",
+        showCopy: true,
+        showDelete: true
+      });
+      setStatus("Singularity reply ready for " + normalizeTicketContextId(selectedTicketId) + ".", false);
+    } catch (err) {
+      logPassAiRequestFailure(err);
+      const message = err && err.message ? err.message : "Unknown error";
+      appendPassAiDebugLine(debugLines, "Final error: " + message);
+      const hasExistingAnswer = hasPassAiRenderedAnswer();
+      if (hasExistingAnswer) {
+        if (els.passAiError) {
+          els.passAiError.textContent = "Polling stopped: " + message;
+          els.passAiError.classList.remove("hidden");
+        }
+      } else {
+        renderPassAiAnswer("Unable to get a PASS Singularity response right now. " + message, {
+          error: true,
+          title: "AI Error",
+          showCopy: false,
+          showDelete: !!getPassAiLastThreadContext()
+        });
+      }
+      setStatus("PASS Singularity request failed: " + message, true);
+    } finally {
+      state.passAiActiveClientId = "";
+      setPassAiLoading(false);
+    }
+  }
+
   /** Clear ticket data and selection, then re-render table (e.g. before loading a new source). */
   function clearTicketTable(options) {
     const showLoading = !!(options && options.loading);
@@ -2120,8 +4711,8 @@
     const col = TICKET_COLUMNS.find((c) => c.key === state.sortKey) || TICKET_COLUMNS[0];
     rows.sort((a, b) => compareByColumn(a, b, col));
     state.filteredTickets = rows;
-    const sid = normalizeTicketIdValue(state.selectedTicketId);
-    if (sid != null && !rows.some((r) => normalizeTicketIdValue(r && r.id) === sid)) state.selectedTicketId = null;
+    const sid = normalizeZendeskTicketId(state.selectedTicketId);
+    if (sid != null && !rows.some((r) => normalizeZendeskTicketId(r && r.id) === sid)) state.selectedTicketId = null;
     renderTicketRows();
   }
 
@@ -2129,59 +4720,149 @@
     els.ticketHead.innerHTML = "";
     TICKET_COLUMNS.forEach((col) => {
       const th = document.createElement("th");
+      const isSortable = col.sortable !== false;
       th.className = "spectrum-Table-headCell ticket-col-header";
-      const isActiveSort = state.sortKey === col.key;
+      if (!isSortable) th.classList.add("ticket-col-header-static");
+      const isActiveSort = isSortable && state.sortKey === col.key;
       const sortDirection = isActiveSort ? state.sortDir : "none";
       th.classList.toggle("is-active", isActiveSort);
-      th.setAttribute("role", "button");
-      th.tabIndex = 0;
-      th.setAttribute("aria-sort", sortDirection === "asc" ? "ascending" : (sortDirection === "desc" ? "descending" : "none"));
-      th.title = "Sort by " + col.label + (isActiveSort ? (" (" + (sortDirection === "asc" ? "ascending" : "descending") + ")") : "");
+      th.setAttribute("aria-sort", isSortable
+        ? (sortDirection === "asc" ? "ascending" : (sortDirection === "desc" ? "descending" : "none"))
+        : "none");
+      if (isSortable) {
+        th.setAttribute("role", "button");
+        th.tabIndex = 0;
+        th.title = "Sort by " + col.label + (isActiveSort ? (" (" + (sortDirection === "asc" ? "ascending" : "descending") + ")") : "");
+        th.removeAttribute("aria-label");
+      } else {
+        th.removeAttribute("role");
+        th.tabIndex = -1;
+        th.title = "Ticket email actions";
+        th.setAttribute("aria-label", "Ticket email actions");
+      }
 
       const label = document.createElement("span");
       label.className = "ticket-col-header-label";
       label.textContent = col.label;
       th.appendChild(label);
 
-      const indicator = document.createElement("span");
-      indicator.className = "ticket-col-header-indicator";
-      indicator.setAttribute("aria-hidden", "true");
-      indicator.textContent = sortDirection === "asc" ? "\u25B2" : (sortDirection === "desc" ? "\u25BC" : "\u2195");
-      th.appendChild(indicator);
+      if (isSortable) {
+        const indicator = document.createElement("span");
+        indicator.className = "ticket-col-header-indicator";
+        indicator.setAttribute("aria-hidden", "true");
+        indicator.textContent = sortDirection === "asc" ? "\u25B2" : (sortDirection === "desc" ? "\u25BC" : "\u2195");
+        th.appendChild(indicator);
+      }
 
       const triggerSort = () => {
+        if (!isSortable) return;
         if (state.sortKey === col.key) state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
         else { state.sortKey = col.key; state.sortDir = col.type === "string" ? "asc" : "desc"; }
         renderTicketHeaders();
         applyFiltersAndRender();
       };
 
-      th.addEventListener("click", triggerSort);
-      th.addEventListener("keydown", (event) => {
-        if (!event) return;
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        triggerSort();
-      });
+      if (isSortable) {
+        th.addEventListener("click", triggerSort);
+        th.addEventListener("keydown", (event) => {
+          if (!event) return;
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          triggerSort();
+        });
+      }
       els.ticketHead.appendChild(th);
     });
   }
 
+  function selectTicketRow(ticketId) {
+    const id = normalizeZendeskTicketId(ticketId);
+    state.selectedTicketId = id;
+    if (id != null) {
+      syncCurrentTicketContextFromSelection(id);
+    }
+    if (els.ticketBody) {
+      els.ticketBody.querySelectorAll("tr.ticket-row").forEach((r) => r.classList.remove("ticket-row-selected"));
+      if (id != null) {
+        const selectedRow = els.ticketBody.querySelector(`tr.ticket-row[data-ticket-id="${String(id)}"]`);
+        if (selectedRow) selectedRow.classList.add("ticket-row-selected");
+      }
+    }
+    updateTicketActionButtons();
+    return id;
+  }
+
+  function setTicketEmailCopyButtonBusy(button, isBusy) {
+    if (!button) return;
+    button.disabled = !!isBusy;
+    button.classList.toggle("is-busy", !!isBusy);
+    button.setAttribute("aria-busy", isBusy ? "true" : "false");
+  }
+
+  async function handleCopyTicketEmails(ticketId, triggerButton, options) {
+    const normalizedTicketId = normalizeZendeskTicketId(ticketId);
+    if (normalizedTicketId == null) {
+      setStatus("Unable to copy ticket emails: missing ticket ID.", true);
+      return;
+    }
+    const opts = options && typeof options === "object" ? options : {};
+    const rowUrl = String(opts.rowUrl || "").trim();
+    const selectedTicketId = normalizeZendeskTicketId(state.selectedTicketId);
+    let showTicketPromise = null;
+    if (selectedTicketId !== normalizedTicketId) {
+      const ticketUrl = rowUrl || (TICKET_URL_PREFIX + normalizedTicketId);
+      openTicketInMainTab(ticketUrl, normalizedTicketId);
+      showTicketPromise = runShowTicketApiForTicket(normalizedTicketId).catch(() => null);
+    } else {
+      selectTicketRow(normalizedTicketId);
+    }
+    if (state.ticketEmailCopyBusyById[normalizedTicketId]) return;
+    state.ticketEmailCopyBusyById[normalizedTicketId] = true;
+    setTicketEmailCopyButtonBusy(triggerButton, true);
+    setStatus("Collecting ticket emails for ZD #" + normalizedTicketId + "...", false);
+    try {
+      const cachedCopyResult = getCachedTicketEmailCopyResult(normalizedTicketId);
+      if (cachedCopyResult) {
+        await copyTextToClipboard(cachedCopyResult.clipboardText);
+        const cachedMessage = "copied " + String(cachedCopyResult.emails.length) + " emails from ZD" + normalizedTicketId;
+        showToast(cachedMessage, 2000);
+        setStatus(cachedMessage, false);
+        return;
+      }
+      let requesterId = getCachedRequesterIdForTicket(normalizedTicketId);
+      if (!requesterId && showTicketPromise) {
+        const showTicketResult = await showTicketPromise;
+        requesterId = String(showTicketResult && showTicketResult.requesterId || "").trim();
+      }
+      const copyResult = await buildTicketEmailClipboardString(normalizedTicketId, { requesterId });
+      const clipboardValue = copyResult && copyResult.clipboardText ? String(copyResult.clipboardText) : "";
+      const emailCount = Array.isArray(copyResult && copyResult.emails) ? copyResult.emails.length : 0;
+      await copyTextToClipboard(clipboardValue);
+      const copiedMessage = "copied " + String(emailCount) + " emails from ZD" + normalizedTicketId;
+      showToast(copiedMessage, 2000);
+      setStatus(copiedMessage, false);
+    } catch (err) {
+      const message = err && err.message ? err.message : "Unknown error";
+      setStatus("Unable to copy ticket emails: " + message, true);
+    } finally {
+      delete state.ticketEmailCopyBusyById[normalizedTicketId];
+      setTicketEmailCopyButtonBusy(triggerButton, false);
+    }
+  }
+
   /** Navigate main ZD tab to ticket URL, update selected state, and sync row highlight. Single source of truth for "open ticket". */
   function openTicketInMainTab(url, ticketId) {
-    const id = normalizeTicketIdValue(ticketId);
+    const id = selectTicketRow(ticketId);
     const ticketUrl = (url && String(url).trim()) || (id != null ? TICKET_URL_PREFIX + id : "");
     if (ticketUrl) {
       getActiveTabId().then((tabId) => {
         if (tabId) chrome.runtime.sendMessage({ type: "ZIP_NAVIGATE", tabId, url: ticketUrl }, () => {});
       });
     }
-    state.selectedTicketId = id;
-    if (!els.ticketBody) return;
-    els.ticketBody.querySelectorAll("tr.ticket-row").forEach((r) => r.classList.remove("ticket-row-selected"));
     if (id != null) {
-      const sel = els.ticketBody.querySelector(`tr.ticket-row[data-ticket-id="${String(id)}"]`);
-      if (sel) sel.classList.add("ticket-row-selected");
+      loadLatestQuestionForTicket(id, { silentError: false }).catch((err) => {
+        console.error("Failed to load latest ticket question:", err);
+      });
     }
   }
 
@@ -2196,17 +4877,23 @@
   }
 
   async function runShowTicketApiForTicket(ticketId) {
-    const normalizedTicketId = String(ticketId == null ? "" : ticketId).trim();
-    if (!normalizedTicketId || !els.apiPathSelect) return;
+    const normalizedTicketId = normalizeZendeskTicketId(ticketId);
+    if (normalizedTicketId == null || !els.apiPathSelect) return { requesterId: "" };
     const hasShowTicketPath = Array.from(els.apiPathSelect.options || []).some((opt) => opt.value === SHOW_TICKET_API_PATH);
-    if (!hasShowTicketPath) return;
+    if (!hasShowTicketPath) return { requesterId: "" };
     if (els.apiPathSelect.value !== SHOW_TICKET_API_PATH) {
       els.apiPathSelect.value = SHOW_TICKET_API_PATH;
     }
     renderApiParams();
     const input = document.getElementById("zipApiParam_ticket_id");
     if (input) input.value = normalizedTicketId;
-    await runZdGet();
+    const result = await runZdGet();
+    const payload = result && typeof result === "object" ? result.payload : null;
+    const requesterId = cacheRequesterIdForTicket(
+      normalizedTicketId,
+      extractRequesterIdFromTicketPayload(payload)
+    );
+    return { requesterId };
   }
 
   function renderTicketRows() {
@@ -2241,11 +4928,11 @@
     state.filteredTickets.forEach((row) => {
       const tr = document.createElement("tr");
       tr.className = "spectrum-Table-row ticket-row";
-      const rowId = normalizeTicketIdValue(row && row.id);
+      const rowId = normalizeZendeskTicketId(row && row.id);
       const rowUrl = (row.url && String(row.url).trim()) || (rowId != null ? TICKET_URL_PREFIX + rowId : "");
       tr.dataset.ticketId = rowId || "";
       tr.dataset.ticketUrl = rowUrl;
-      if (normalizeTicketIdValue(state.selectedTicketId) != null && normalizeTicketIdValue(state.selectedTicketId) === rowId) tr.classList.add("ticket-row-selected");
+      if (normalizeZendeskTicketId(state.selectedTicketId) != null && normalizeZendeskTicketId(state.selectedTicketId) === rowId) tr.classList.add("ticket-row-selected");
       tr.addEventListener("click", (e) => {
         const tid = tr.dataset.ticketId;
         const turl = tr.dataset.ticketUrl;
@@ -2257,7 +4944,29 @@
       TICKET_COLUMNS.forEach((col) => {
         const td = document.createElement("td");
         td.className = "spectrum-Table-cell";
-        if (col.key === "id" && rowId != null) {
+        if (col.key === "__ticket_email_actions") {
+          td.classList.add("ticket-email-action-cell");
+          const copyBtn = document.createElement("button");
+          copyBtn.type = "button";
+          copyBtn.className = "ticket-email-copy-btn spectrum-ActionButton spectrum-ActionButton--sizeS";
+          copyBtn.setAttribute("aria-label", rowId != null
+            ? ("Copy requestor and external CC emails for ticket " + rowId)
+            : "Copy requestor and external CC emails");
+          copyBtn.title = "Copy requestor + external CC emails";
+          const btnLabel = document.createElement("span");
+          btnLabel.className = "spectrum-ActionButton-label";
+          btnLabel.textContent = "@";
+          copyBtn.appendChild(btnLabel);
+          setTicketEmailCopyButtonBusy(copyBtn, rowId != null && !!state.ticketEmailCopyBusyById[rowId]);
+          copyBtn.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            handleCopyTicketEmails(rowId, copyBtn, { rowUrl }).catch((err) => {
+              console.error("Ticket email copy failed:", err);
+            });
+          });
+          td.appendChild(copyBtn);
+        } else if (col.key === "id" && rowId != null) {
           const a = document.createElement("a");
           a.href = rowUrl || "#";
           a.rel = "noopener";
@@ -2327,11 +5036,24 @@
     return ZD_GET_PATHS.find((p) => p.path === path) || ZD_GET_PATHS[0];
   }
 
+  function getActiveTicketIdForApiParam() {
+    const selectedTicketId = normalizeZendeskTicketId(state.selectedTicketId);
+    if (selectedTicketId != null) return selectedTicketId;
+    const currentTicket = getCurrentTicketContext();
+    const currentTicketId = normalizeZendeskTicketId(currentTicket && currentTicket.id);
+    if (currentTicketId != null) return currentTicketId;
+    const passAiTicketId = normalizeZendeskTicketId(state.passAiTicketId);
+    if (passAiTicketId != null) return passAiTicketId;
+    return "";
+  }
+
   function getDefaultParamValue(param) {
+    const key = String(param || "").trim().toLowerCase();
     const p = state.userProfile || {};
-    if (param === "userId" || param === "user_id") return p.user_id != null || p.id != null ? String(p.user_id ?? p.id) : "";
-    if (param === "group_id") return p.default_group_id != null || p.group_id != null ? String(p.default_group_id ?? p.group_id) : "";
-    if (param === "organization_id") return p.organization_id != null ? String(p.organization_id) : "";
+    if (key === "ticket_id") return getActiveTicketIdForApiParam();
+    if (key === "userid" || key === "user_id") return p.user_id != null || p.id != null ? String(p.user_id ?? p.id) : "";
+    if (key === "group_id") return p.default_group_id != null || p.group_id != null ? String(p.default_group_id ?? p.group_id) : "";
+    if (key === "organization_id") return p.organization_id != null ? String(p.organization_id) : "";
     return "";
   }
 
@@ -2385,9 +5107,11 @@
       setRawFromPayload(result.payload != null ? result.payload : (result.text || ""));
       setRawTitle(requestContext.specPath);
       setStatus(result.ok ? "GET succeeded." : "GET returned " + result.status + ".", !result.ok);
+      return result;
     } catch (err) {
       setStatus("API call failed: " + (err && err.message ? err.message : "Unknown error"), true);
       setRawFromPayload(null);
+      return null;
     } finally {
       setBusy(false);
     }
@@ -3328,6 +6052,9 @@
   function signout(options) {
     const manual = !(options && options.manual === false);
     state.manualZipSignout = manual;
+    if (manual) {
+      sendBackgroundRequest("ZIP_SLACK_OAUTH_SIGN_OUT").catch(() => {});
+    }
     clearFilterCountCaches();
     showLogin();
   }
@@ -3464,6 +6191,24 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     });
+    if (els.askPassAiBtn) {
+      els.askPassAiBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (state.passAiLoading) return;
+        askPassAiForSelectedTicket();
+      });
+    }
+    if (els.slackLoginBtn) {
+      els.slackLoginBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (state.passAiLoading) return;
+        beginSlackLoginFlow().catch((err) => {
+          const message = normalizePassAiCommentBody(err && err.message) || "Slack sign-in failed.";
+          setPassAiSlackAuthState({ ready: false, error: message });
+          setStatus("Slack sign-in failed: " + message, true);
+        });
+      });
+    }
     els.reloadTicketsBtn.addEventListener("click", async () => {
       if (!state.user) return;
       setBusy(true);

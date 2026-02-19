@@ -106,6 +106,35 @@
             <span class="spectrum-Button-label">CSV</span>
           </button>
         </div>
+        <div id="zipPassAiResultsBox" class="zip-pass-ai-results-box hidden" aria-live="polite">
+          <div id="zipPassAiError" class="zip-pass-ai-error hidden" role="alert"></div>
+          <section id="zipPassAiQuestionBlock" class="zip-pass-ai-block zip-pass-ai-question-block">
+            <label id="zipPassAiQuestionLabel" for="zipPassAiQuestion" class="zip-pass-ai-label hidden">ZD #{ticket_id} says:</label>
+            <textarea id="zipPassAiQuestion" class="zip-pass-ai-box zip-pass-ai-question spectrum-Textfield-input hidden" rows="4" placeholder="Latest customer question from Zendesk will appear here."></textarea>
+            <div id="zipPassAiCtaZone" class="zip-pass-ai-cta-zone hidden">
+              <div id="zipPassAiSubmitWrap" class="zip-pass-ai-submit-wrap hidden">
+                <button id="zipSlackLoginBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS hidden" title="Sign in with Slack for PASS AI" aria-label="Sign in with Slack for PASS AI">
+                  <span class="spectrum-Button-label">Sign in with Slack</span>
+                </button>
+                <button id="zipAskPassAiBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS hidden" title="Submit question to @Singularity" aria-label="Submit question to @Singularity with PASS AI">
+                  <span class="spectrum-Button-label">AI?</span>
+                </button>
+              </div>
+              <span id="zipPassAiSlackAuthStatus" class="zip-pass-ai-slack-auth-status hidden" aria-live="polite"></span>
+            </div>
+          </section>
+          <section id="zipPassAiAnswerBlock" class="zip-pass-ai-block zip-pass-ai-answer-block hidden">
+            <div class="zip-pass-ai-answer-label">AI says:</div>
+            <div id="zipPassAiAnswerPlaceholder" class="zip-pass-ai-answer-placeholder">
+              AI responses will appear here as they stream in. Initial ACK and Thinking status will appear first.
+            </div>
+            <div id="zipPassAiDynamicReplyHost" class="zip-pass-ai-dynamic-host hidden" aria-live="polite"></div>
+            <div id="zipPassAiInlineStatus" class="zip-pass-ai-inline-status hidden" aria-live="polite">
+              <span class="inline-spinner" aria-hidden="true"></span>
+              <span>Asking PASS AI…</span>
+            </div>
+          </section>
+        </div>
       </section>
       <section id="zipApiGetSection" class="section hidden">
         <h3>ZD API – GET</h3>
@@ -151,6 +180,7 @@
       <span class="zip-footer-brand-build">v<span id="zipAppVersion" class="app-version-num">—</span></span>
     </a>
   </footer>
+  <div id="zipToast" class="zip-toast hidden" role="status" aria-live="polite"></div>
   <div id="zipContextMenuBackdrop" class="zip-context-menu-backdrop hidden" aria-hidden="true"></div>
   <div id="zipContextMenu" class="zip-context-menu hidden" role="menu" aria-label="ZIP context menu">
     <div class="zip-context-menu-root" role="presentation">
