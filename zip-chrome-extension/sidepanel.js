@@ -4,7 +4,7 @@
   const BASE = "https://adobeprimetime.zendesk.com";
   const ASSIGNED_FILTER_PATH = "/agent/filters/36464467";
   const ASSIGNED_FILTER_URL = BASE + ASSIGNED_FILTER_PATH;
-  const LOGIN_URL = BASE + "/auth/v3/signin?return_to=" + encodeURIComponent(ASSIGNED_FILTER_URL);
+  const ZENDESK_TAB_QUERY = BASE.replace(/^https?:\/\//, "*://") + "/*";
   const TICKET_URL_PREFIX = BASE + "/agent/tickets/";
   const SHOW_TICKET_API_PATH = "/api/v2/tickets/{ticket_id}";
   const PASS_AI_SLACK_WORKSPACE_ORIGIN = "https://adobedx.slack.com";
@@ -41,7 +41,6 @@
 
   const state = {
     user: null,
-    manualZipSignout: false,
     /** Parsed from GET /api/v2/users/me for API runner defaults (id, default_group_id, organization_id, etc.) */
     userProfile: null,
     mePayload: null,
@@ -95,21 +94,30 @@
     passAiSlackAuthBootstrapCount: 0,
     passAiLastThreadContext: null,
     passAiDeleteInFlight: false,
+    passAiPanelVisible: false,
     ticketEmailCopyBusyById: Object.create(null),
     ticketEmailUserEmailCacheById: Object.create(null),
     ticketEmailRequesterByTicketId: Object.create(null),
     ticketEmailCopyCacheByTicketId: Object.create(null),
-    themeId: "s2-dark-blue",
+    themeId: "s2-dark-azure-blue",
     themeOptions: [],
     themeFlyoutStop: ""
   };
 
-  let authCheckIntervalId = null;
+  let authCheckTimerId = null;
   let authCheckInFlight = false;
+  let authCheckPollingEnabled = false;
+  let authCheckLastRanAt = 0;
   let passAiSlackAuthPollTimerId = null;
   let passAiSlackAuthPollAttempt = 0;
   let toastHideTimerId = null;
-  const AUTH_CHECK_INTERVAL_MS = 5000;
+  let authHydrationInFlight = false;
+  let authRefreshInFlight = false;
+  let eventsWired = false;
+  const AUTH_CHECK_INTERVAL_ACTIVE_MS = 60 * 1000;
+  const AUTH_CHECK_INTERVAL_LOGGED_OUT_MS = 15 * 1000;
+  const AUTH_CHECK_INTERVAL_HIDDEN_MS = 120 * 1000;
+  const AUTH_CHECK_FORCE_GAP_MS = 1500;
   const VIEW_COUNT_CACHE_KEY = "zip.filter.viewCounts.v1";
   const ORG_COUNT_CACHE_KEY = "zip.filter.orgCounts.v1";
   const GROUP_COUNT_CACHE_KEY = "zip.filter.groupCounts.v1";
@@ -126,57 +134,75 @@
   const ZD_API_VISIBILITY_STORAGE_KEY = "zip.ui.showZdApiContainers.v1";
   const CONTEXT_MENU_ZD_API_SHOW_LABEL = "Show ZD API";
   const CONTEXT_MENU_ZD_API_HIDE_LABEL = "Hide ZD API";
+  const THEME_PALETTE_DATA = (
+    typeof globalThis !== "undefined"
+    && globalThis.ZIP_THEME_PALETTE_V2
+    && typeof globalThis.ZIP_THEME_PALETTE_V2 === "object"
+  )
+    ? globalThis.ZIP_THEME_PALETTE_V2
+    : null;
   const THEME_COLOR_STOPS = [
     { id: "dark", label: "Dark", spectrumColorStop: "dark", paletteSet: "dark" },
     { id: "light", label: "Light", spectrumColorStop: "light", paletteSet: "light" }
   ];
-  const THEME_ACCENT_FAMILIES = [
-    { id: "blue", label: "Blue" },
-    { id: "indigo", label: "Indigo" },
-    { id: "purple", label: "Purple" },
-    { id: "fuchsia", label: "Fuchsia" },
-    { id: "magenta", label: "Magenta" },
-    { id: "pink", label: "Pink" },
-    { id: "red", label: "Red" },
-    { id: "orange", label: "Orange" },
-    { id: "yellow", label: "Yellow" },
-    { id: "chartreuse", label: "Chartreuse" },
-    { id: "celery", label: "Celery" },
-    { id: "green", label: "Green" },
-    { id: "seafoam", label: "Seafoam" },
-    { id: "cyan", label: "Cyan" },
-    { id: "turquoise", label: "Turquoise" },
-    { id: "cinnamon", label: "Cinnamon" },
-    { id: "brown", label: "Brown" },
-    { id: "silver", label: "Silver" },
-    { id: "gray", label: "Gray" }
-  ];
+  const THEME_ACCENT_SWATCHES = (
+    THEME_PALETTE_DATA
+    && Array.isArray(THEME_PALETTE_DATA.colors)
+    && THEME_PALETTE_DATA.colors.length
+  )
+    ? THEME_PALETTE_DATA.colors.map((entry) => ({ ...entry }))
+    : [{ id: "azure-blue", name: "Azure Blue", hex: "#0078D4", spectrumToken: "spectrum-blue-600", recommendedForeground: "#ffffff", notes: "" }];
+  const THEME_ACCENT_FAMILIES = THEME_ACCENT_SWATCHES.map((accent) => ({
+    id: String(accent.id || "").trim().toLowerCase(),
+    label: String(accent.name || accent.label || accent.id || "Color").trim() || "Color"
+  }));
+  const THEME_ACCENT_FAMILY_BY_ID = Object.fromEntries(THEME_ACCENT_SWATCHES.map((accent) => [
+    String(accent.id || "").trim().toLowerCase(),
+    { ...accent, id: String(accent.id || "").trim().toLowerCase() }
+  ]));
+  const THEME_ACCENT_IDS = new Set(THEME_ACCENT_FAMILIES.map((accent) => accent.id));
+  const THEME_ACCENT_GROUPS = normalizeThemeAccentGroups(
+    THEME_PALETTE_DATA && Array.isArray(THEME_PALETTE_DATA.groups) ? THEME_PALETTE_DATA.groups : [],
+    THEME_ACCENT_SWATCHES
+  );
+  const LEGACY_ACCENT_ID_MAP = (
+    THEME_PALETTE_DATA
+    && THEME_PALETTE_DATA.legacyAccentMap
+    && typeof THEME_PALETTE_DATA.legacyAccentMap === "object"
+  )
+    ? { ...THEME_PALETTE_DATA.legacyAccentMap }
+    : {};
+  const DEFAULT_THEME_ACCENT_ID = (
+    THEME_PALETTE_DATA
+    && THEME_ACCENT_IDS.has(String(THEME_PALETTE_DATA.defaultAccentId || "").trim().toLowerCase())
+  )
+    ? String(THEME_PALETTE_DATA.defaultAccentId).trim().toLowerCase()
+    : (THEME_ACCENT_FAMILIES[0] ? THEME_ACCENT_FAMILIES[0].id : "azure-blue");
+  const DEFAULT_THEME_ID = "s2-dark-" + DEFAULT_THEME_ACCENT_ID;
+
+  function buildLegacyThemeAliases() {
+    const aliases = {
+      "s2-darkest": DEFAULT_THEME_ID,
+      "s2-dark": DEFAULT_THEME_ID,
+      "s2-light": "s2-light-" + DEFAULT_THEME_ACCENT_ID,
+      "s2-wireframe": "s2-light-" + DEFAULT_THEME_ACCENT_ID
+    };
+    Object.keys(LEGACY_ACCENT_ID_MAP).forEach((legacyAccentId) => {
+      const nextAccentId = String(LEGACY_ACCENT_ID_MAP[legacyAccentId] || "").trim().toLowerCase();
+      if (!nextAccentId || !THEME_ACCENT_IDS.has(nextAccentId)) return;
+      const legacyId = String(legacyAccentId || "").trim().toLowerCase();
+      if (!legacyId) return;
+      aliases["s2-" + legacyId] = "s2-dark-" + nextAccentId;
+      aliases["s2-dark-" + legacyId] = "s2-dark-" + nextAccentId;
+      aliases["s2-light-" + legacyId] = "s2-light-" + nextAccentId;
+      aliases["s2-darkest-" + legacyId] = "s2-dark-" + nextAccentId;
+      aliases["s2-wireframe-" + legacyId] = "s2-light-" + nextAccentId;
+    });
+    return aliases;
+  }
+
   // Legacy IDs are migrated to supported Spectrum 2 light/dark themes.
-  const LEGACY_THEME_ALIASES = {
-    "s2-darkest": "s2-dark-blue",
-    "s2-dark": "s2-dark-blue",
-    "s2-light": "s2-light-blue",
-    "s2-wireframe": "s2-light-blue",
-    "s2-blue": "s2-dark-blue",
-    "s2-indigo": "s2-dark-indigo",
-    "s2-purple": "s2-dark-purple",
-    "s2-fuchsia": "s2-dark-fuchsia",
-    "s2-magenta": "s2-dark-magenta",
-    "s2-pink": "s2-dark-pink",
-    "s2-red": "s2-dark-red",
-    "s2-orange": "s2-dark-orange",
-    "s2-yellow": "s2-dark-yellow",
-    "s2-chartreuse": "s2-dark-chartreuse",
-    "s2-celery": "s2-dark-celery",
-    "s2-green": "s2-dark-green",
-    "s2-seafoam": "s2-dark-seafoam",
-    "s2-cyan": "s2-dark-cyan",
-    "s2-turquoise": "s2-dark-turquoise",
-    "s2-cinnamon": "s2-dark-cinnamon",
-    "s2-brown": "s2-dark-brown",
-    "s2-silver": "s2-dark-silver",
-    "s2-gray": "s2-dark-gray"
-  };
+  const LEGACY_THEME_ALIASES = buildLegacyThemeAliases();
 
   function buildThemeOptions() {
     const options = [];
@@ -197,7 +223,6 @@
 
   const FALLBACK_THEME_OPTIONS = buildThemeOptions();
   const FALLBACK_THEME_OPTION_BY_ID = Object.fromEntries(FALLBACK_THEME_OPTIONS.map((option) => [option.id, option]));
-  const DEFAULT_THEME_ID = "s2-dark-blue";
   const SPECTRUM_COLORSTOP_CLASS_BY_NAME = {
     light: "spectrum--light",
     dark: "spectrum--dark"
@@ -206,84 +231,114 @@
     dark: { primary: "800", hover: "700", down: "600", link: "900", focus: "800" },
     light: { primary: "900", hover: "1000", down: "1000", link: "900", focus: "800" }
   };
-  const ACCENT_PALETTE_RGB = {
-    blue: {
-      light: { "500": "142, 185, 252", "600": "114, 158, 253", "700": "93, 137, 255", "800": "75, 117, 255", "900": "59, 99, 251", "1000": "39, 77, 234", "1100": "29, 62, 207" },
-      dark: { "500": "26, 58, 195", "600": "37, 73, 229", "700": "52, 91, 248", "800": "64, 105, 253", "900": "86, 129, 255", "1000": "105, 149, 254", "1100": "124, 169, 252" }
-    },
-    indigo: {
-      light: { "500": "167, 178, 255", "600": "145, 151, 254", "700": "132, 128, 254", "800": "122, 106, 253", "900": "113, 85, 250", "1000": "99, 56, 238", "1100": "84, 36, 219" },
-      dark: { "500": "79, 30, 209", "600": "95, 52, 235", "700": "109, 75, 248", "800": "116, 91, 252", "900": "128, 119, 254", "1000": "139, 141, 254", "1100": "153, 161, 255" }
-    },
-    purple: {
-      light: { "500": "208, 167, 243", "600": "191, 138, 238", "700": "178, 114, 235", "800": "166, 92, 231", "900": "154, 71, 226", "1000": "134, 40, 217", "1100": "115, 13, 204" },
-      dark: { "500": "107, 6, 195", "600": "130, 34, 215", "700": "148, 62, 224", "800": "157, 78, 228", "900": "173, 105, 233", "1000": "186, 127, 237", "1100": "197, 149, 240" }
-    },
-    fuchsia: {
-      light: { "500": "243, 147, 255", "600": "236, 105, 255", "700": "223, 77, 245", "800": "200, 68, 220", "900": "181, 57, 200", "1000": "156, 40, 175", "1100": "135, 27, 154" },
-      dark: { "500": "127, 23, 146", "600": "151, 38, 170", "700": "173, 51, 192", "800": "186, 60, 206", "900": "213, 73, 235", "1000": "232, 91, 253", "1100": "240, 122, 255" }
-    },
-    magenta: {
-      light: { "500": "255, 152, 187", "600": "255, 112, 159", "700": "255, 72, 133", "800": "240, 45, 110", "900": "217, 35, 97", "1000": "186, 22, 80", "1100": "163, 5, 62" },
-      dark: { "500": "152, 7, 60", "600": "181, 19, 76", "700": "207, 31, 92", "800": "224, 38, 101", "900": "255, 51, 119", "1000": "255, 96, 149", "1100": "255, 128, 171" }
-    },
-    pink: {
-      light: { "500": "255, 148, 219", "600": "255, 103, 204", "700": "242, 76, 184", "800": "228, 52, 163", "900": "206, 42, 146", "1000": "176, 31, 123", "1100": "152, 22, 104" },
-      dark: { "500": "143, 18, 97", "600": "171, 29, 119", "700": "196, 39, 138", "800": "213, 45, 151", "900": "236, 67, 175", "1000": "251, 90, 196", "1100": "255, 122, 210" }
-    },
-    red: {
-      light: { "500": "255, 157, 145", "600": "255, 118, 101", "700": "255, 81, 61", "800": "240, 56, 35", "900": "215, 50, 32", "1000": "183, 40, 24", "1100": "156, 33, 19" },
-      dark: { "500": "147, 31, 17", "600": "177, 38, 23", "700": "205, 46, 29", "800": "223, 52, 34", "900": "252, 67, 46", "1000": "255, 103, 86", "1100": "255, 134, 120" }
-    },
-    orange: {
-      light: { "500": "255, 162, 19", "600": "252, 125, 0", "700": "232, 106, 0", "800": "212, 91, 0", "900": "194, 78, 0", "1000": "167, 62, 0", "1100": "144, 51, 0" },
-      dark: { "500": "135, 47, 0", "600": "162, 59, 0", "700": "185, 73, 0", "800": "199, 82, 0", "900": "224, 100, 0", "1000": "243, 117, 0", "1100": "255, 137, 0" }
-    },
-    yellow: {
-      light: { "500": "230, 175, 0", "600": "210, 149, 0", "700": "193, 131, 0", "800": "175, 116, 0", "900": "158, 102, 0", "1000": "134, 85, 0", "1100": "114, 72, 0" },
-      dark: { "500": "107, 67, 0", "600": "130, 82, 0", "700": "151, 97, 0", "800": "164, 106, 0", "900": "186, 124, 0", "1000": "203, 141, 0", "1100": "218, 159, 0" }
-    },
-    chartreuse: {
-      light: { "500": "163, 196, 0", "600": "143, 172, 0", "700": "128, 153, 0", "800": "114, 137, 0", "900": "102, 122, 0", "1000": "86, 103, 0", "1100": "73, 87, 0" },
-      dark: { "500": "68, 82, 0", "600": "83, 100, 0", "700": "97, 116, 0", "800": "106, 127, 0", "900": "122, 147, 0", "1000": "136, 164, 0", "1100": "151, 181, 0" }
-    },
-    celery: {
-      light: { "500": "110, 206, 42", "600": "93, 180, 31", "700": "82, 161, 25", "800": "72, 144, 20", "900": "64, 129, 17", "1000": "52, 109, 12", "1100": "44, 92, 9" },
-      dark: { "500": "41, 86, 8", "600": "50, 105, 11", "700": "60, 122, 15", "800": "66, 134, 18", "900": "78, 154, 23", "1000": "88, 172, 28", "1100": "100, 190, 35" }
-    },
-    green: {
-      light: { "500": "43, 209, 125", "600": "18, 184, 103", "700": "11, 164, 93", "800": "7, 147, 85", "900": "5, 131, 78", "1000": "3, 110, 69", "1100": "2, 93, 60" },
-      dark: { "500": "2, 87, 58", "600": "3, 106, 67", "700": "4, 124, 75", "800": "6, 136, 80", "900": "9, 157, 89", "1000": "14, 175, 98", "1100": "24, 193, 110" }
-    },
-    seafoam: {
-      light: { "500": "16, 207, 169", "600": "13, 181, 149", "700": "11, 162, 134", "800": "9, 144, 120", "900": "7, 129, 109", "1000": "5, 108, 92", "1100": "3, 92, 80" },
-      dark: { "500": "2, 86, 75", "600": "4, 105, 89", "700": "6, 122, 103", "800": "8, 134, 112", "900": "10, 154, 128", "1000": "12, 173, 142", "1100": "14, 190, 156" }
-    },
-    cyan: {
-      light: { "500": "92, 192, 255", "600": "48, 167, 254", "700": "29, 149, 231", "800": "18, 134, 205", "900": "11, 120, 179", "1000": "4, 102, 145", "1100": "0, 87, 121" },
-      dark: { "500": "0, 82, 113", "600": "3, 99, 140", "700": "8, 115, 168", "800": "13, 125, 186", "900": "24, 142, 220", "1000": "38, 159, 244", "1100": "63, 177, 255" }
-    },
-    turquoise: {
-      light: { "500": "39, 202, 216", "600": "15, 177, 192", "700": "12, 158, 171", "800": "10, 141, 153", "900": "8, 126, 137", "1000": "5, 107, 116", "1100": "3, 90, 98" },
-      dark: { "500": "3, 84, 92", "600": "5, 103, 112", "700": "7, 120, 131", "800": "9, 131, 142", "900": "11, 151, 164", "1000": "13, 168, 182", "1100": "16, 186, 202" }
-    },
-    cinnamon: {
-      light: { "500": "229, 170, 136", "600": "212, 145, 108", "700": "198, 126, 88", "800": "184, 109, 70", "900": "170, 94, 56", "1000": "147, 77, 43", "1100": "128, 62, 32" },
-      dark: { "500": "122, 57, 28", "600": "143, 74, 40", "700": "163, 88, 52", "800": "176, 98, 59", "900": "192, 119, 80", "1000": "206, 136, 99", "1100": "220, 154, 118" }
-    },
-    brown: {
-      light: { "500": "214, 177, 123", "600": "190, 155, 104", "700": "171, 138, 90", "800": "154, 123, 77", "900": "139, 109, 66", "1000": "119, 91, 50", "1100": "103, 76, 35" },
-      dark: { "500": "98, 71, 30", "600": "115, 88, 47", "700": "132, 104, 61", "800": "143, 114, 69", "900": "163, 132, 84", "1000": "181, 147, 98", "1100": "199, 163, 112" }
-    },
-    silver: {
-      light: { "500": "183, 183, 183", "600": "160, 160, 160", "700": "143, 143, 143", "800": "128, 128, 128", "900": "114, 114, 114", "1000": "96, 96, 96", "1100": "81, 81, 81" },
-      dark: { "500": "76, 76, 76", "600": "92, 92, 92", "700": "108, 108, 108", "800": "118, 118, 118", "900": "137, 137, 137", "1000": "152, 152, 152", "1100": "169, 169, 169" }
-    },
-    gray: {
-      light: { "500": "143, 143, 143", "600": "113, 113, 113", "700": "80, 80, 80", "800": "41, 41, 41", "900": "19, 19, 19", "1000": "0, 0, 0" },
-      dark: { "500": "109, 109, 109", "600": "138, 138, 138", "700": "175, 175, 175", "800": "219, 219, 219", "900": "242, 242, 242", "1000": "255, 255, 255" }
+  function normalizeHexColor(hexValue) {
+    const raw = String(hexValue || "").trim();
+    const normalized = raw.startsWith("#") ? raw.slice(1) : raw;
+    if (/^[0-9a-f]{6}$/i.test(normalized)) return normalized.toLowerCase();
+    return "0078d4";
+  }
+
+  function hexToRgbArray(hexValue) {
+    const hex = normalizeHexColor(hexValue);
+    return [
+      Number.parseInt(hex.slice(0, 2), 16),
+      Number.parseInt(hex.slice(2, 4), 16),
+      Number.parseInt(hex.slice(4, 6), 16)
+    ];
+  }
+
+  function clampRgbChannel(value) {
+    return Math.max(0, Math.min(255, Math.round(Number(value) || 0)));
+  }
+
+  function mixRgbTriplets(baseTriplet, targetTriplet, ratioToTarget) {
+    const ratio = Math.max(0, Math.min(1, Number(ratioToTarget) || 0));
+    return [
+      clampRgbChannel((baseTriplet[0] * (1 - ratio)) + (targetTriplet[0] * ratio)),
+      clampRgbChannel((baseTriplet[1] * (1 - ratio)) + (targetTriplet[1] * ratio)),
+      clampRgbChannel((baseTriplet[2] * (1 - ratio)) + (targetTriplet[2] * ratio))
+    ];
+  }
+
+  function rgbTripletToString(triplet) {
+    return [
+      clampRgbChannel(triplet[0]),
+      clampRgbChannel(triplet[1]),
+      clampRgbChannel(triplet[2])
+    ].join(", ");
+  }
+
+  function buildTonePalette(baseRgb, paletteSet) {
+    const white = [255, 255, 255];
+    const black = [0, 0, 0];
+    if (paletteSet === "light") {
+      return {
+        "500": rgbTripletToString(mixRgbTriplets(baseRgb, white, 0.34)),
+        "600": rgbTripletToString(mixRgbTriplets(baseRgb, white, 0.22)),
+        "700": rgbTripletToString(mixRgbTriplets(baseRgb, white, 0.11)),
+        "800": rgbTripletToString(baseRgb),
+        "900": rgbTripletToString(mixRgbTriplets(baseRgb, black, 0.1)),
+        "1000": rgbTripletToString(mixRgbTriplets(baseRgb, black, 0.22)),
+        "1100": rgbTripletToString(mixRgbTriplets(baseRgb, black, 0.32))
+      };
     }
-  };
+    return {
+      "500": rgbTripletToString(mixRgbTriplets(baseRgb, black, 0.34)),
+      "600": rgbTripletToString(mixRgbTriplets(baseRgb, black, 0.22)),
+      "700": rgbTripletToString(mixRgbTriplets(baseRgb, black, 0.11)),
+      "800": rgbTripletToString(baseRgb),
+      "900": rgbTripletToString(mixRgbTriplets(baseRgb, white, 0.12)),
+      "1000": rgbTripletToString(mixRgbTriplets(baseRgb, white, 0.24)),
+      "1100": rgbTripletToString(mixRgbTriplets(baseRgb, white, 0.36))
+    };
+  }
+
+  function buildAccentPaletteRgb(swatches) {
+    const map = Object.create(null);
+    (Array.isArray(swatches) ? swatches : []).forEach((accent) => {
+      const accentId = String(accent && accent.id ? accent.id : "").trim().toLowerCase();
+      if (!accentId) return;
+      const baseRgb = hexToRgbArray(accent.hex);
+      map[accentId] = {
+        light: buildTonePalette(baseRgb, "light"),
+        dark: buildTonePalette(baseRgb, "dark")
+      };
+    });
+    return map;
+  }
+
+  function normalizeThemeAccentGroups(rawGroups, swatches) {
+    const accentIds = (Array.isArray(swatches) ? swatches : [])
+      .map((swatch) => String(swatch && swatch.id ? swatch.id : "").trim().toLowerCase())
+      .filter(Boolean);
+    const known = new Set(accentIds);
+    const seen = new Set();
+    const groups = [];
+    (Array.isArray(rawGroups) ? rawGroups : []).forEach((group) => {
+      const ids = (Array.isArray(group && group.colorIds) ? group.colorIds : [])
+        .map((value) => String(value || "").trim().toLowerCase())
+        .filter((id) => known.has(id) && !seen.has(id));
+      if (!ids.length) return;
+      ids.forEach((id) => seen.add(id));
+      groups.push({
+        id: String(group && group.id ? group.id : ("group-" + String(groups.length + 1))).trim().toLowerCase(),
+        name: String(group && group.name ? group.name : "Colors").trim() || "Colors",
+        colorIds: ids
+      });
+    });
+    const remaining = accentIds.filter((id) => !seen.has(id));
+    if (remaining.length) {
+      groups.push({
+        id: "additional-colors",
+        name: "Additional Colors",
+        colorIds: remaining
+      });
+    }
+    if (groups.length) return groups;
+    return [{ id: "all-colors", name: "Colors", colorIds: accentIds }];
+  }
+
+  const ACCENT_PALETTE_RGB = buildAccentPaletteRgb(THEME_ACCENT_SWATCHES);
   const ALL_SPECTRUM_COLORSTOP_CLASSES = ["spectrum--light", "spectrum--dark"];
 
   function isAuthFailureStatus(status) {
@@ -342,6 +397,66 @@
     return preferred.concat(extras);
   }
 
+  function resizeStatusFilterToContent() {
+    if (!els.statusFilter || typeof window === "undefined" || typeof document === "undefined") return;
+    const selectEl = els.statusFilter;
+    const labels = Array.from(selectEl.options || [])
+      .map((option) => String(option.textContent || "").trim())
+      .filter(Boolean);
+    if (!labels.length) {
+      selectEl.style.removeProperty("--zip-status-filter-inline-size");
+      return;
+    }
+
+    let probe = null;
+    try {
+      const computed = window.getComputedStyle(selectEl);
+      probe = document.createElement("span");
+      probe.style.position = "fixed";
+      probe.style.left = "-9999px";
+      probe.style.top = "0";
+      probe.style.visibility = "hidden";
+      probe.style.pointerEvents = "none";
+      probe.style.whiteSpace = "pre";
+      probe.style.font = computed.font;
+      probe.style.fontFamily = computed.fontFamily;
+      probe.style.fontSize = computed.fontSize;
+      probe.style.fontWeight = computed.fontWeight;
+      probe.style.fontVariant = computed.fontVariant;
+      probe.style.letterSpacing = computed.letterSpacing;
+      probe.style.textTransform = computed.textTransform;
+      document.body.appendChild(probe);
+
+      let widestLabelPx = 0;
+      labels.forEach((label) => {
+        probe.textContent = label;
+        const width = probe.getBoundingClientRect().width;
+        if (Number.isFinite(width) && width > widestLabelPx) widestLabelPx = width;
+      });
+
+      const paddingLeftPx = Number.parseFloat(computed.paddingLeft) || 0;
+      const paddingRightPx = Number.parseFloat(computed.paddingRight) || 0;
+      const chromeUiAllowancePx = 10;
+      const safetyPx = 2;
+      const minPx = 56;
+      const viewportMaxPx = Math.max(minPx, Math.floor((window.innerWidth || 320) * 0.5));
+      const maxPx = Math.min(320, viewportMaxPx);
+      const targetPx = Math.max(
+        minPx,
+        Math.min(
+          maxPx,
+          Math.ceil(widestLabelPx + paddingLeftPx + paddingRightPx + chromeUiAllowancePx + safetyPx)
+        )
+      );
+
+      selectEl.style.setProperty("--zip-status-filter-inline-size", targetPx + "px");
+    } catch (_) {
+      selectEl.style.removeProperty("--zip-status-filter-inline-size");
+    } finally {
+      if (probe && probe.parentNode) probe.parentNode.removeChild(probe);
+    }
+  }
+
   function syncStatusFilterOptions() {
     if (!els.statusFilter) return;
     const availableStatuses = getAvailableStatusValuesFromTickets(state.tickets);
@@ -370,13 +485,36 @@
     const next = valid ? current : STATUS_FILTER_ALL_VALUE;
     state.statusFilter = next;
     els.statusFilter.value = next;
+    resizeStatusFilterToContent();
   }
 
   function stopAuthCheckPolling() {
-    if (authCheckIntervalId != null) {
-      clearInterval(authCheckIntervalId);
-      authCheckIntervalId = null;
+    authCheckPollingEnabled = false;
+    if (authCheckTimerId != null) {
+      clearTimeout(authCheckTimerId);
+      authCheckTimerId = null;
     }
+  }
+
+  function getAuthCheckIntervalMs() {
+    if (typeof document !== "undefined" && document.hidden) {
+      return AUTH_CHECK_INTERVAL_HIDDEN_MS;
+    }
+    return state.user ? AUTH_CHECK_INTERVAL_ACTIVE_MS : AUTH_CHECK_INTERVAL_LOGGED_OUT_MS;
+  }
+
+  function scheduleNextAuthCheck(delayMs) {
+    if (!authCheckPollingEnabled) return;
+    if (authCheckTimerId != null) {
+      clearTimeout(authCheckTimerId);
+      authCheckTimerId = null;
+    }
+    const fallbackDelay = getAuthCheckIntervalMs();
+    const nextDelay = Number.isFinite(Number(delayMs)) ? Math.max(0, Number(delayMs)) : fallbackDelay;
+    authCheckTimerId = setTimeout(() => {
+      authCheckTimerId = null;
+      runAuthCheckTick().catch(() => {});
+    }, nextDelay);
   }
 
   function isSessionErrorMessage(message) {
@@ -397,14 +535,20 @@
   }
 
   function handleZendeskLoggedOut() {
-    signout({ manual: false });
+    showLogin();
     setStatus("User is logged out of Zendesk. Please sign in.", true);
   }
 
-  async function runAuthCheckTick() {
+  async function runAuthCheckTick(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const force = !!opts.force;
     if (authCheckInFlight) return;
-    if (!state.user && state.manualZipSignout) return;
+    if (force && Date.now() - authCheckLastRanAt < AUTH_CHECK_FORCE_GAP_MS) {
+      scheduleNextAuthCheck();
+      return;
+    }
     authCheckInFlight = true;
+    authCheckLastRanAt = Date.now();
     try {
       const me = await sendToZendeskTab({ action: "getMe" });
       const hasUser = hasZendeskSessionUser(me);
@@ -414,7 +558,7 @@
         }
         return;
       }
-      if (!state.manualZipSignout && hasUser) {
+      if (hasUser) {
         setStatus("Log-in detected. Loading…", false);
         await refreshAll();
       }
@@ -424,15 +568,17 @@
       }
     } finally {
       authCheckInFlight = false;
+      scheduleNextAuthCheck();
     }
   }
 
   function startAuthCheckPolling() {
+    authCheckPollingEnabled = false;
     stopAuthCheckPolling();
-    authCheckIntervalId = setInterval(() => {
-      runAuthCheckTick().catch(() => {});
-    }, AUTH_CHECK_INTERVAL_MS);
-    runAuthCheckTick().catch(() => {});
+  }
+
+  function triggerAuthCheckNow() {
+    sendBackgroundRequest("ZIP_FORCE_CHECK", { reason: "sidepanel_trigger" }).catch(() => {});
   }
 
   const $ = (id) => document.getElementById(id);
@@ -446,7 +592,6 @@
     appScreen: $("zipAppScreen"),
     loginBtn: $("zipLoginBtn"),
     docsMenu: $("zipDocsMenu"),
-    signoutBtn: $("zipSignoutBtn"),
     appVersionLink: $("zipAppVersionLink"),
     appVersion: $("zipAppVersion"),
     loginAppVersion: $("zipLoginAppVersion"),
@@ -459,8 +604,10 @@
     contextMenuToggleSide: $("zipContextMenuToggleSide"),
     contextMenuAskEric: $("zipContextMenuAskEric"),
     contextMenuGetLatest: $("zipContextMenuGetLatest"),
-    contextMenuThemeLabel: $("zipContextMenuThemeLabel"),
-    contextMenuThemePicker: $("zipContextMenuThemePicker"),
+    contextMenuAppearanceRow: $("zipContextMenuAppearanceRow"),
+    contextMenuThemeStopToggle: $("zipContextMenuThemeStopToggle"),
+    contextMenuThemeColorToggle: $("zipContextMenuThemeColorToggle"),
+    contextMenuToggleZdApiLabel: $("zipContextMenuToggleZdApiLabel"),
     contextMenuThemeFlyout: $("zipContextMenuThemeFlyout"),
     rawTitle: $("zipRawTitle"),
     rawThead: $("zipRawThead"),
@@ -471,6 +618,7 @@
     passAiCtaZone: $("zipPassAiCtaZone"),
     passAiSubmitWrap: $("zipPassAiSubmitWrap"),
     passAiSubmitHint: $("zipPassAiSubmitHint"),
+    passAiToggleBtn: $("zipTogglePassAiBtn"),
     askPassAiBtn: $("zipAskPassAiBtn"),
     passAiSlackAuthStatus: $("zipPassAiSlackAuthStatus"),
     passAiInlineStatus: $("zipPassAiInlineStatus"),
@@ -502,6 +650,71 @@
   function getActiveTabId() {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage({ type: "ZIP_GET_ACTIVE_TAB" }, (r) => resolve(r?.tabId ?? null));
+    });
+  }
+
+  function queryZendeskTabsFromSidepanel() {
+    return new Promise((resolve) => {
+      try {
+        if (!chrome || !chrome.tabs || typeof chrome.tabs.query !== "function") {
+          resolve([]);
+          return;
+        }
+        chrome.tabs.query({ url: ZENDESK_TAB_QUERY }, (tabs) => {
+          void chrome.runtime.lastError;
+          resolve(Array.isArray(tabs) ? tabs : []);
+        });
+      } catch (_) {
+        resolve([]);
+      }
+    });
+  }
+
+  function focusZendeskTabFromSidepanel(tab) {
+    return new Promise((resolve) => {
+      if (!tab || tab.id == null) {
+        resolve({ ok: false });
+        return;
+      }
+      try {
+        chrome.tabs.update(tab.id, { active: true, url: BASE }, () => {
+          void chrome.runtime.lastError;
+          if (tab.windowId != null && chrome.windows && typeof chrome.windows.update === "function") {
+            chrome.windows.update(tab.windowId, { focused: true }, () => {
+              void chrome.runtime.lastError;
+              resolve({ ok: true, tabId: tab.id, openedNewTab: false });
+            });
+            return;
+          }
+          resolve({ ok: true, tabId: tab.id, openedNewTab: false });
+        });
+      } catch (_) {
+        resolve({ ok: false });
+      }
+    });
+  }
+
+  function openZendeskTabFromSidepanel() {
+    return new Promise((resolve) => {
+      try {
+        if (!chrome || !chrome.tabs || typeof chrome.tabs.create !== "function") {
+          resolve({ ok: false });
+          return;
+        }
+        chrome.tabs.create({ url: BASE }, (tab) => {
+          if (chrome.runtime.lastError) {
+            resolve({ ok: false, error: chrome.runtime.lastError.message || "Unable to open Zendesk tab." });
+            return;
+          }
+          resolve({
+            ok: true,
+            tabId: tab && tab.id != null ? tab.id : null,
+            openedNewTab: true
+          });
+        });
+      } catch (err) {
+        resolve({ ok: false, error: err && err.message ? err.message : "Unable to open Zendesk tab." });
+      }
     });
   }
 
@@ -619,7 +832,12 @@
 
   function syncContextMenuZdApiToggleLabel() {
     if (!els.contextMenuToggleZdApi) return;
-    els.contextMenuToggleZdApi.textContent = getZdApiToggleLabel(state.showZdApiContainers);
+    const label = getZdApiToggleLabel(state.showZdApiContainers);
+    if (els.contextMenuToggleZdApiLabel) {
+      els.contextMenuToggleZdApiLabel.textContent = label;
+      return;
+    }
+    els.contextMenuToggleZdApi.textContent = label;
   }
 
   function syncContextMenuAuthVisibility() {
@@ -717,13 +935,17 @@
 
   function normalizeAccentFamily(value) {
     const normalized = String(value || "").trim().toLowerCase();
-    return ACCENT_PALETTE_RGB[normalized] ? normalized : "blue";
+    return ACCENT_PALETTE_RGB[normalized] ? normalized : DEFAULT_THEME_ACCENT_ID;
+  }
+
+  function getAccentFamilyMeta(accentFamily) {
+    const key = normalizeAccentFamily(accentFamily);
+    return THEME_ACCENT_FAMILY_BY_ID[key] || THEME_ACCENT_FAMILY_BY_ID[DEFAULT_THEME_ACCENT_ID] || null;
   }
 
   function getAccentFamilyLabel(accentFamily) {
-    const key = normalizeAccentFamily(accentFamily);
-    const match = THEME_ACCENT_FAMILIES.find((accent) => accent.id === key);
-    return match ? match.label : "Blue";
+    const meta = getAccentFamilyMeta(accentFamily);
+    return meta && meta.name ? String(meta.name) : "Color";
   }
 
   function normalizeThemeId(themeId) {
@@ -786,19 +1008,19 @@
   function getAccentPaletteValue(accentFamily, paletteSet, toneKey) {
     const familyKey = normalizeAccentFamily(accentFamily);
     const setKey = normalizePaletteSet(paletteSet);
-    const paletteByFamily = ACCENT_PALETTE_RGB[familyKey] || ACCENT_PALETTE_RGB.blue;
+    const paletteByFamily = ACCENT_PALETTE_RGB[familyKey] || ACCENT_PALETTE_RGB[DEFAULT_THEME_ACCENT_ID];
     const paletteBySet = (paletteByFamily && paletteByFamily[setKey]) || (paletteByFamily && paletteByFamily.dark) || {};
     const requested = String(toneKey || "").trim();
     if (requested && paletteBySet[requested]) return paletteBySet[requested];
     if (paletteBySet["900"]) return paletteBySet["900"];
-    const blueDark = ACCENT_PALETTE_RGB.blue && ACCENT_PALETTE_RGB.blue.dark;
-    return (blueDark && (blueDark["900"] || blueDark["800"])) || "64, 105, 253";
+    const defaultDark = ACCENT_PALETTE_RGB[DEFAULT_THEME_ACCENT_ID] && ACCENT_PALETTE_RGB[DEFAULT_THEME_ACCENT_ID].dark;
+    return (defaultDark && (defaultDark["900"] || defaultDark["800"])) || "0, 120, 212";
   }
 
   function parseRgbTriplet(value) {
     const parts = String(value || "").split(",").map((part) => Number.parseInt(String(part || "").trim(), 10));
     if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
-      return [64, 105, 253];
+      return [0, 120, 212];
     }
     return parts.map((part) => Math.max(0, Math.min(255, part)));
   }
@@ -888,10 +1110,13 @@
   function applyThemeSwatchStyles(targetEl, themeOption) {
     if (!targetEl) return;
     const option = normalizeThemeOption(themeOption);
+    const accentMeta = getAccentFamilyMeta(option.accentFamily);
+    const recommendedForeground = accentMeta ? String(accentMeta.recommendedForeground || "").trim().toLowerCase() : "";
+    const usesDarkForeground = recommendedForeground === "#111111";
     const swatchRgb = getThemeSwatchRgb(option);
     const paletteSet = normalizePaletteSet(option.paletteSet);
     targetEl.style.setProperty("--zip-theme-swatch", "rgb(" + swatchRgb + ")");
-    if (paletteSet !== "dark" || option.accentFamily === "silver" || option.accentFamily === "gray") {
+    if (paletteSet !== "dark" || usesDarkForeground) {
       targetEl.style.setProperty("--zip-theme-swatch-border", "var(--border-default)");
       targetEl.style.setProperty("--zip-theme-swatch-ring", "var(--zip-theme-swatch-ring-muted)");
       return;
@@ -901,17 +1126,17 @@
   }
 
   function updateThemeFlyoutParentState() {
-    if (!els.contextMenuThemePicker) return;
     const flyoutVisible = !!(els.contextMenuThemeFlyout && !els.contextMenuThemeFlyout.classList.contains("hidden"));
-    const openStop = flyoutVisible ? normalizeThemeColorStop(state.themeFlyoutStop) : "";
-    const parentButtons = els.contextMenuThemePicker.querySelectorAll(".zip-context-menu-theme-parent[data-theme-stop]");
-    parentButtons.forEach((parentBtn) => {
-      const stopId = normalizeThemeColorStop(parentBtn.getAttribute("data-theme-stop"));
-      const isOpen = !!openStop && stopId === openStop;
-      parentBtn.classList.toggle("is-open", isOpen);
-      parentBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
-      parentBtn.title = (isOpen ? "Hide" : "Show") + " Spectrum 2 " + getThemeColorStopMeta(stopId).label + " colors";
-    });
+    const isOpen = flyoutVisible && !!state.themeFlyoutStop;
+    if (els.contextMenuThemeColorToggle) {
+      els.contextMenuThemeColorToggle.classList.toggle("is-open", isOpen);
+      els.contextMenuThemeColorToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      const openStop = isOpen ? getThemeColorStopMeta(state.themeFlyoutStop).label : "";
+      const title = isOpen
+        ? ("Hide Spectrum 2 " + openStop + " colors")
+        : "Show Spectrum 2 color picker";
+      els.contextMenuThemeColorToggle.title = title;
+    }
   }
 
   function hideThemeFlyout(options) {
@@ -921,6 +1146,9 @@
       els.contextMenuThemeFlyout.classList.add("hidden");
       els.contextMenuThemeFlyout.innerHTML = "";
       els.contextMenuThemeFlyout.removeAttribute("data-theme-stop");
+      els.contextMenuThemeFlyout.style.removeProperty("width");
+      els.contextMenuThemeFlyout.style.removeProperty("maxWidth");
+      els.contextMenuThemeFlyout.style.removeProperty("maxHeight");
     }
     updateThemeFlyoutParentState();
   }
@@ -928,18 +1156,22 @@
   function positionThemeFlyout(anchorEl) {
     if (!anchorEl || !els.contextMenuThemeFlyout || els.contextMenuThemeFlyout.classList.contains("hidden")) return;
     const flyout = els.contextMenuThemeFlyout;
-    const pad = 6;
-    const gap = 8;
-    const maxWidth = Math.max(160, window.innerWidth - (pad * 2));
-    const maxHeight = Math.max(160, window.innerHeight - (pad * 2));
-    flyout.style.maxWidth = Math.min(320, maxWidth) + "px";
-    flyout.style.maxHeight = Math.min(520, maxHeight) + "px";
+    const pad = 4;
+    const gap = 6;
+    const viewportWidth = Math.max(240, window.innerWidth || 0);
+    const viewportHeight = Math.max(240, window.innerHeight || 0);
+    const maxWidth = Math.max(220, viewportWidth - (pad * 2));
+    const maxHeight = Math.max(220, viewportHeight - (pad * 2));
+    const targetWidth = Math.min(400, maxWidth);
+    flyout.style.width = targetWidth + "px";
+    flyout.style.maxWidth = targetWidth + "px";
+    flyout.style.maxHeight = Math.min(500, maxHeight) + "px";
     flyout.style.left = pad + "px";
     flyout.style.top = pad + "px";
 
     const anchorRect = anchorEl.getBoundingClientRect();
     const flyoutRect = flyout.getBoundingClientRect();
-    const spaceRight = window.innerWidth - anchorRect.right - gap - pad;
+    const spaceRight = viewportWidth - anchorRect.right - gap - pad;
     const spaceLeft = anchorRect.left - gap - pad;
 
     let left = (spaceRight >= flyoutRect.width || spaceRight >= spaceLeft)
@@ -947,12 +1179,12 @@
       : (anchorRect.left - gap - flyoutRect.width);
     let top = anchorRect.top;
 
-    if (top + flyoutRect.height + pad > window.innerHeight) {
-      top = window.innerHeight - flyoutRect.height - pad;
+    if (top + flyoutRect.height + pad > viewportHeight) {
+      top = viewportHeight - flyoutRect.height - pad;
     }
     if (top < pad) top = pad;
-    if (left + flyoutRect.width + pad > window.innerWidth) {
-      left = window.innerWidth - flyoutRect.width - pad;
+    if (left + flyoutRect.width + pad > viewportWidth) {
+      left = viewportWidth - flyoutRect.width - pad;
     }
     if (left < pad) left = pad;
 
@@ -983,7 +1215,7 @@
     closeBtn.type = "button";
     closeBtn.className = "zip-context-menu-theme-flyout-close";
     closeBtn.setAttribute("aria-label", "Close color picker");
-    closeBtn.textContent = "x";
+    closeBtn.textContent = "\u00D7";
     closeBtn.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -998,8 +1230,36 @@
     list.setAttribute("role", "group");
     list.setAttribute("aria-label", "Spectrum 2 " + stopMeta.label + " accent colors");
 
-    THEME_ACCENT_FAMILIES.forEach((accent) => {
-      const accentTheme = getThemeOptionByStopAndAccent(stopId, accent.id, options);
+    const orderedColorIds = [];
+    const seenColorIds = new Set();
+    const groups = Array.isArray(THEME_ACCENT_GROUPS) && THEME_ACCENT_GROUPS.length
+      ? THEME_ACCENT_GROUPS
+      : [{ id: "all-colors", colorIds: THEME_ACCENT_FAMILIES.map((accent) => accent.id) }];
+    groups.forEach((group) => {
+      const colorIds = Array.isArray(group && group.colorIds) ? group.colorIds : [];
+      colorIds.forEach((colorId) => {
+        const normalizedId = normalizeAccentFamily(colorId);
+        if (!normalizedId || seenColorIds.has(normalizedId)) return;
+        seenColorIds.add(normalizedId);
+        orderedColorIds.push(normalizedId);
+      });
+    });
+    if (!orderedColorIds.length) {
+      THEME_ACCENT_FAMILIES.forEach((accent) => {
+        const accentId = normalizeAccentFamily(accent.id);
+        if (!accentId || seenColorIds.has(accentId)) return;
+        seenColorIds.add(accentId);
+        orderedColorIds.push(accentId);
+      });
+    }
+
+    const grid = document.createElement("div");
+    grid.className = "zip-context-menu-theme-grid";
+    orderedColorIds.forEach((colorId) => {
+      const accentMeta = getAccentFamilyMeta(colorId);
+      if (!accentMeta) return;
+      const accentId = normalizeAccentFamily(accentMeta.id);
+      const accentTheme = getThemeOptionByStopAndAccent(stopId, accentId, options);
       const accentThemeId = normalizeThemeId(accentTheme.id);
       const swatchTheme = {
         id: accentThemeId,
@@ -1007,32 +1267,49 @@
         spectrumColorStop: stopMeta.spectrumColorStop,
         themeColorStop: stopId,
         paletteSet: stopMeta.paletteSet,
-        accentFamily: accent.id
+        accentFamily: accentId
       };
       const colorBtn = document.createElement("button");
       colorBtn.type = "button";
       colorBtn.className = "zip-context-menu-theme-color";
       colorBtn.setAttribute("role", "menuitemradio");
       colorBtn.setAttribute("data-theme-id", accentThemeId);
+      colorBtn.dataset.spectrumToken = String(accentMeta.spectrumToken || "");
+      colorBtn.dataset.recommendedForeground = String(accentMeta.recommendedForeground || "");
+      colorBtn.dataset.themeColorId = accentId;
       const isSelected = accentThemeId === activeThemeId;
       colorBtn.classList.toggle("is-selected", isSelected);
       colorBtn.setAttribute("aria-checked", isSelected ? "true" : "false");
+      const titleParts = [String(accentMeta.name || accentMeta.label || accentId)];
+      if (accentMeta.spectrumToken) titleParts.push(String(accentMeta.spectrumToken));
+      if (accentMeta.notes) titleParts.push(String(accentMeta.notes));
+      colorBtn.title = titleParts.join(" • ");
+      colorBtn.setAttribute(
+        "aria-label",
+        String(accentMeta.name || accentId) + (isSelected ? " (active)" : "")
+      );
       applyThemeSwatchStyles(colorBtn, swatchTheme);
-      colorBtn.innerHTML = ""
-        + "<span class=\"zip-context-menu-theme-dot\" aria-hidden=\"true\"></span>"
-        + "<span class=\"zip-context-menu-theme-color-name\">" + escapeHtml(accent.label) + "</span>"
-        + "<span class=\"zip-context-menu-theme-color-state\" aria-hidden=\"true\">Active</span>";
+
+      const swatchChip = document.createElement("span");
+      swatchChip.className = "zip-context-menu-theme-chip";
+      swatchChip.setAttribute("aria-hidden", "true");
+      const nameEl = document.createElement("span");
+      nameEl.className = "zip-context-menu-theme-color-name";
+      nameEl.textContent = String(accentMeta.name || accentMeta.label || accentId);
+      colorBtn.appendChild(swatchChip);
+      colorBtn.appendChild(nameEl);
+
       colorBtn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         const requestedThemeId = normalizeThemeId(accentThemeId);
-        hideContextMenu();
         setThemeViaBackground(requestedThemeId).catch((err) => {
           setStatus("Theme update failed: " + (err && err.message ? err.message : "Unknown error"), true);
         });
       });
-      list.appendChild(colorBtn);
+      grid.appendChild(colorBtn);
     });
+    list.appendChild(grid);
 
     flyout.appendChild(list);
     flyout.classList.remove("hidden");
@@ -1059,80 +1336,57 @@
   function refreshThemeFlyoutPosition() {
     if (!els.contextMenuThemeFlyout || els.contextMenuThemeFlyout.classList.contains("hidden")) return;
     const stopId = normalizeThemeColorStop(state.themeFlyoutStop);
-    if (!stopId || !els.contextMenuThemePicker) {
+    if (!stopId || !els.contextMenuThemeColorToggle) {
       hideThemeFlyout();
       return;
     }
-    const anchor = els.contextMenuThemePicker.querySelector(".zip-context-menu-theme-parent[data-theme-stop=\"" + stopId + "\"]");
-    if (!anchor) {
-      hideThemeFlyout();
-      return;
-    }
-    positionThemeFlyout(anchor);
+    positionThemeFlyout(els.contextMenuThemeColorToggle);
   }
 
   function renderContextMenuThemePicker() {
-    if (!els.contextMenuThemePicker) return;
     const options = getThemeOptions();
     const activeTheme = getThemeOptionById(state.themeId, options);
-    const activeStop = normalizeThemeColorStop(activeTheme.themeColorStop);
+    const activeStop = getThemeColorStopMeta(activeTheme.themeColorStop);
     const activeAccent = normalizeAccentFamily(activeTheme.accentFamily);
     const openStopRaw = String(state.themeFlyoutStop || "").trim().toLowerCase();
     const openStop = openStopRaw ? normalizeThemeColorStop(openStopRaw) : "";
-    let anchorForOpenStop = null;
 
-    els.contextMenuThemePicker.innerHTML = "";
-    THEME_COLOR_STOPS.forEach((stop) => {
-      const stopId = normalizeThemeColorStop(stop.id);
-      const group = document.createElement("div");
-      group.className = "zip-context-menu-theme-group";
-      group.setAttribute("data-theme-stop", stopId);
+    if (els.contextMenuThemeStopToggle) {
+      els.contextMenuThemeStopToggle.textContent = activeStop.label;
+      els.contextMenuThemeStopToggle.title = "Toggle light/dark theme (currently " + activeStop.label + ")";
+    }
+    if (els.contextMenuThemeColorToggle) {
+      const accentLabel = getAccentFamilyLabel(activeAccent);
+      els.contextMenuThemeColorToggle.textContent = accentLabel;
+      applyThemeSwatchStyles(els.contextMenuThemeColorToggle, activeTheme);
+    }
 
-      const row = document.createElement("div");
-      row.className = "zip-context-menu-theme-row";
-
-      const parentTheme = getThemeOptionByStopAndAccent(stopId, activeAccent, options);
-      const parentBtn = document.createElement("button");
-      parentBtn.type = "button";
-      parentBtn.className = "zip-context-menu-theme-parent";
-      parentBtn.setAttribute("role", "menuitem");
-      parentBtn.setAttribute("data-theme-stop", stopId);
-      parentBtn.setAttribute("aria-haspopup", "true");
-      parentBtn.setAttribute("aria-expanded", openStop === stopId ? "true" : "false");
-      const parentSelected = activeStop === stopId;
-      if (parentSelected) parentBtn.classList.add("is-selected");
-      parentBtn.setAttribute("aria-current", parentSelected ? "true" : "false");
-      if (openStop === stopId) parentBtn.classList.add("is-open");
-      applyThemeSwatchStyles(parentBtn, parentTheme);
-      parentBtn.innerHTML = ""
-        + "<span class=\"zip-context-menu-theme-dot\" aria-hidden=\"true\"></span>"
-        + "<span class=\"zip-context-menu-theme-parent-title\">" + escapeHtml(stop.label) + "</span>"
-        + "<span class=\"zip-context-menu-theme-parent-state\" aria-hidden=\"true\">"
-        + (parentSelected ? "Active" : "")
-        + "</span>";
-      const openThemeStopFlyout = (event) => {
-        if (!event) return;
-        if (event.type === "click" && event.button !== 0) return;
-        if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        event.stopPropagation();
-        toggleThemeFlyout(stopId, parentBtn);
-      };
-      parentBtn.addEventListener("click", openThemeStopFlyout);
-      parentBtn.addEventListener("keydown", openThemeStopFlyout);
-
-      if (openStop === stopId) anchorForOpenStop = parentBtn;
-
-      row.appendChild(parentBtn);
-      group.appendChild(row);
-      els.contextMenuThemePicker.appendChild(group);
-    });
-
-    if (openStop && anchorForOpenStop) {
-      renderThemeFlyout(openStop, anchorForOpenStop);
+    if (openStop && els.contextMenuThemeColorToggle) {
+      renderThemeFlyout(openStop, els.contextMenuThemeColorToggle);
       return;
     }
     hideThemeFlyout();
+  }
+
+  function toggleContextMenuThemeStop() {
+    const options = getThemeOptions();
+    const activeTheme = getThemeOptionById(state.themeId, options);
+    const currentStop = normalizeThemeColorStop(activeTheme.themeColorStop);
+    const nextStop = currentStop === "dark" ? "light" : "dark";
+    const nextTheme = getThemeOptionByStopAndAccent(nextStop, normalizeAccentFamily(activeTheme.accentFamily), options);
+    const keepFlyoutOpen = !!(els.contextMenuThemeFlyout && !els.contextMenuThemeFlyout.classList.contains("hidden"));
+    state.themeFlyoutStop = keepFlyoutOpen ? nextStop : "";
+    setThemeViaBackground(nextTheme.id).catch((err) => {
+      setStatus("Theme update failed: " + (err && err.message ? err.message : "Unknown error"), true);
+    });
+  }
+
+  function toggleContextMenuThemeColorFlyout() {
+    const options = getThemeOptions();
+    const activeTheme = getThemeOptionById(state.themeId, options);
+    const stopId = normalizeThemeColorStop(activeTheme.themeColorStop);
+    if (!els.contextMenuThemeColorToggle) return;
+    toggleThemeFlyout(stopId, els.contextMenuThemeColorToggle);
   }
 
   function applyThemeState(themePayload) {
@@ -1149,11 +1403,6 @@
       document.documentElement.dataset.zipThemeAccent = activeTheme.accentFamily;
     }
     applySpectrumColorStopClass(activeTheme.themeColorStop);
-    if (els.contextMenuThemeLabel) {
-      const activeThemeLabel = getThemeColorStopMeta(activeTheme.themeColorStop).label || "Dark";
-      const activeColorLabel = getAccentFamilyLabel(activeTheme.accentFamily);
-      els.contextMenuThemeLabel.textContent = "Appearance : " + activeThemeLabel + " x " + activeColorLabel;
-    }
     applyThemeAccentVariables(activeTheme);
     renderContextMenuThemePicker();
   }
@@ -1363,10 +1612,12 @@
     return (async () => {
       let lastError = null;
       for (let attempt = 1; attempt <= ZENDESK_TAB_RETRY_MAX_ATTEMPTS; attempt += 1) {
-        const activeTabId = await getActiveTabId();
         const candidateIds = [];
         if (state.zendeskTabId != null) candidateIds.push(state.zendeskTabId);
-        if (activeTabId != null && !candidateIds.includes(activeTabId)) candidateIds.push(activeTabId);
+        if (!candidateIds.length || attempt > 1) {
+          const activeTabId = await getActiveTabId();
+          if (activeTabId != null && !candidateIds.includes(activeTabId)) candidateIds.push(activeTabId);
+        }
         if (!candidateIds.length) {
           throw new Error("No active tab");
         }
@@ -1720,6 +1971,35 @@
     updatePassAiAnswerPlaceholder();
   }
 
+  async function openPassAiPanelForSelectedTicket() {
+    const selectedTicketId = getSelectedPassAiTicketId();
+    if (selectedTicketId == null) {
+      setStatus("Select a ticket first, then open Q and AI.", true);
+      return;
+    }
+    state.passAiPanelVisible = true;
+    updateTicketActionButtons();
+    await refreshPassAiSlackAuth({ silent: true, allowTabBootstrap: false }).catch(() => false);
+    try {
+      await loadLatestQuestionForTicket(selectedTicketId, { silentError: false });
+    } catch (_) {}
+    updateTicketActionButtons();
+  }
+
+  function closePassAiPanel() {
+    state.passAiPanelVisible = false;
+    clearPassAiResultsDisplay();
+    updateTicketActionButtons();
+  }
+
+  async function togglePassAiPanelForSelectedTicket() {
+    if (state.passAiPanelVisible) {
+      closePassAiPanel();
+      return;
+    }
+    await openPassAiPanelForSelectedTicket();
+  }
+
   function updateTicketActionButtons() {
     ensurePassAiActionLayout();
 
@@ -1727,17 +2007,19 @@
     if (els.exportCsvBtn) els.exportCsvBtn.disabled = !hasRows;
     const selectedTicketId = getSelectedPassAiTicketId();
     const hasSelectedTicket = selectedTicketId != null;
-    const passAiActionMode = !hasSelectedTicket
+    const showPassAiForm = hasSelectedTicket && !!state.passAiPanelVisible;
+    const passAiActionMode = !showPassAiForm
       ? "none"
       : (state.passAiSlackReady ? "slack_ready" : "needs_slack_auth");
-    const showPassAiForm = hasSelectedTicket;
-    const showAnswerBlock = hasSelectedTicket && hasPassAiRenderedAnswer();
-    const showSubmitWrap = hasSelectedTicket;
+    const showQuestionEditor = passAiActionMode === "slack_ready";
+    const showAnswerBlock = showQuestionEditor && hasPassAiRenderedAnswer();
+    const showSubmitWrap = showPassAiForm;
     const showAskPassAi = passAiActionMode === "slack_ready";
     const showSlackLogin = passAiActionMode === "needs_slack_auth";
 
     if (!hasSelectedTicket && !state.passAiLoading) {
       state.passAiTicketId = null;
+      state.passAiPanelVisible = false;
       clearPassAiResultsDisplay();
     } else if (
       hasSelectedTicket
@@ -1750,6 +2032,14 @@
       state.passAiTicketId = selectedTicketId;
     }
 
+    if (els.passAiToggleBtn) {
+      els.passAiToggleBtn.classList.toggle("hidden", !hasSelectedTicket);
+      els.passAiToggleBtn.disabled = !hasSelectedTicket || state.passAiLoading;
+      els.passAiToggleBtn.classList.toggle("is-active", showPassAiForm);
+      els.passAiToggleBtn.title = showPassAiForm ? "Close Q and AI panel" : "Open Q and AI panel";
+      els.passAiToggleBtn.setAttribute("aria-label", showPassAiForm ? "Close Q and AI panel" : "Open Q and AI panel");
+    }
+
     if (els.passAiResultsBox) {
       els.passAiResultsBox.classList.toggle("hidden", !showPassAiForm);
     }
@@ -1759,9 +2049,12 @@
 
     if (showPassAiForm) {
       setPassAiQuestionLabel(selectedTicketId);
-      if (els.passAiQuestion) {
-        els.passAiQuestion.classList.remove("hidden");
-      }
+    }
+    if (els.passAiQuestionLabel) {
+      els.passAiQuestionLabel.classList.toggle("hidden", !showQuestionEditor);
+    }
+    if (els.passAiQuestion) {
+      els.passAiQuestion.classList.toggle("hidden", !showQuestionEditor);
     }
 
     if (els.passAiSubmitWrap) {
@@ -1783,7 +2076,7 @@
     }
     renderPassAiSlackAuthStatus();
     if (els.passAiInlineStatus) {
-      const showInline = hasSelectedTicket && state.passAiLoading;
+      const showInline = showQuestionEditor && hasSelectedTicket && state.passAiLoading;
       els.passAiInlineStatus.classList.toggle("hidden", !showInline);
     }
     updatePassAiAnswerPlaceholder();
@@ -1883,6 +2176,12 @@
 
   const MAX_API_VALUE_RENDER_DEPTH = 10;
   const MAX_INLINE_OBJECT_KEYS = 8;
+  const MAX_API_DEPTH_CLASS = 6;
+  const LONG_SCALAR_TEXT_THRESHOLD = 140;
+  const ROOT_KV_KEY_COLUMN_MIN_CH = 18;
+  const ROOT_KV_KEY_COLUMN_MAX_CH = 48;
+  const NESTED_KV_KEY_COLUMN_MIN_CH = 14;
+  const NESTED_KV_KEY_COLUMN_MAX_CH = 36;
 
   function cellDisplayValue(val) {
     if (val === null) return "null";
@@ -1898,9 +2197,12 @@
     return tr;
   }
 
-  function createSpectrumHeadCell(label) {
+  function createSpectrumHeadCell(label, extraClass) {
     const th = document.createElement("th");
-    th.className = "spectrum-Table-headCell";
+    th.className = extraClass
+      ? ("spectrum-Table-headCell " + extraClass)
+      : "spectrum-Table-headCell";
+    th.setAttribute("scope", "col");
     if (label != null) th.textContent = String(label);
     return th;
   }
@@ -1946,6 +2248,7 @@
     removeRawResultTableColgroups();
     table.style.removeProperty("min-width");
     table.style.removeProperty("width");
+    table.style.removeProperty("--zip-api-kv-key-col-ch");
     if (mode === "kv") {
       table.classList.add("raw-table-mode-kv");
       ensureRawResultKvColgroup();
@@ -1964,6 +2267,20 @@
     return Math.min(maxWidth, calculated);
   }
 
+  function computeReadableKeyColumnCh(keys, minCh, maxCh) {
+    const safeMin = Math.max(8, Number(minCh) || 8);
+    const safeMax = Math.max(safeMin, Number(maxCh) || safeMin);
+    const keyList = Array.isArray(keys) ? keys : [];
+    let longest = 0;
+    keyList.forEach((key) => {
+      const text = String(key == null ? "" : key).trim();
+      if (!text) return;
+      longest = Math.max(longest, text.length);
+    });
+    const padded = Math.ceil(longest * 1.05) + 3;
+    return Math.max(safeMin, Math.min(safeMax, padded));
+  }
+
   function applyRawResultGridSizing(columnCount) {
     const table = getRawResultTableEl();
     if (!table) return;
@@ -1972,11 +2289,19 @@
     table.style.width = "max(100%, " + minWidth + "px)";
   }
 
-  function createNestedScrollFrame(kind) {
+  function toApiDepthLevel(depth) {
+    const safeDepth = Number(depth) || 0;
+    return Math.max(1, Math.min(MAX_API_DEPTH_CLASS, safeDepth));
+  }
+
+  function createNestedScrollFrame(kind, depth) {
     const frame = document.createElement("div");
     frame.className = kind
       ? ("raw-nested-scroll raw-nested-scroll-" + kind)
       : "raw-nested-scroll";
+    const depthLevel = toApiDepthLevel(depth);
+    frame.classList.add("raw-depth-" + depthLevel);
+    frame.dataset.rawDepth = String(depthLevel);
     return frame;
   }
 
@@ -2011,6 +2336,12 @@
       span.classList.add("is-empty");
       span.textContent = "\"\"";
       return span;
+    }
+    if (typeof val === "string") {
+      span.classList.add("is-string");
+      if (val.length >= LONG_SCALAR_TEXT_THRESHOLD) span.classList.add("is-long");
+      if (val.indexOf("\n") !== -1) span.classList.add("is-multiline");
+      if (/^https?:\/\/\S+$/i.test(val)) span.classList.add("is-url");
     }
     span.textContent = String(val);
     return span;
@@ -2053,15 +2384,27 @@
   function fillCellWithValue(td, val, depth) {
     const currentDepth = Number(depth) || 0;
     td.textContent = "";
+    td.classList.add("raw-value-cell");
+    td.dataset.rawDepth = String(currentDepth);
+    td.classList.remove(
+      "raw-value-type-scalar",
+      "raw-value-type-array",
+      "raw-value-type-object",
+      "raw-value-type-empty",
+      "raw-value-type-truncated"
+    );
     if (currentDepth > MAX_API_VALUE_RENDER_DEPTH) {
+      td.classList.add("raw-value-type-truncated");
       td.appendChild(createScalarValueNode("[Depth limit reached]"));
       return;
     }
     if (isScalarValue(val)) {
+      td.classList.add(val === undefined || val === null || val === "" ? "raw-value-type-empty" : "raw-value-type-scalar");
       td.appendChild(createScalarValueNode(val));
       return;
     }
     if (Array.isArray(val)) {
+      td.classList.add("raw-value-type-array");
       if (val.length === 0) {
         td.appendChild(createScalarValueNode("[]"));
         return;
@@ -2079,19 +2422,23 @@
           td.appendChild(createScalarValueNode("[Array of empty objects]"));
           return;
         }
-        const minWidth = getReadableGridMinWidth(cols.length, 760, 170, 6400);
+        const minWidth = getReadableGridMinWidth(cols.length + 1, 760, 170, 6400);
         nest.style.minWidth = minWidth + "px";
         nest.style.width = "max-content";
         const thead = document.createElement("thead");
         thead.className = "spectrum-Table-head";
         const headerTr = createSpectrumTableRow();
+        headerTr.appendChild(createSpectrumHeadCell("#", "raw-grid-index-head"));
         cols.forEach((k) => headerTr.appendChild(createSpectrumHeadCell(k)));
         thead.appendChild(headerTr);
         nest.appendChild(thead);
         const tbody = document.createElement("tbody");
         tbody.className = "spectrum-Table-body";
-        val.forEach((row) => {
+        val.forEach((row, rowIndex) => {
           const tr = createSpectrumTableRow();
+          const indexCell = createSpectrumTableCell("raw-grid-index-cell");
+          indexCell.textContent = String(rowIndex + 1);
+          tr.appendChild(indexCell);
           cols.forEach((col) => {
             const cell = createSpectrumTableCell("raw-nested-grid-cell");
             const cellValue = row && Object.prototype.hasOwnProperty.call(row, col) ? row[col] : null;
@@ -2105,7 +2452,7 @@
           tbody.appendChild(tr);
         });
         nest.appendChild(tbody);
-        const frame = createNestedScrollFrame("grid");
+        const frame = createNestedScrollFrame("grid", currentDepth + 1);
         frame.appendChild(nest);
         td.appendChild(frame);
         return;
@@ -2115,8 +2462,8 @@
       const thead = document.createElement("thead");
       thead.className = "spectrum-Table-head";
       const headerRow = createSpectrumTableRow();
-      const th0 = createSpectrumHeadCell("#");
-      const th1 = createSpectrumHeadCell("Value");
+      const th0 = createSpectrumHeadCell("#", "raw-list-index-head");
+      const th1 = createSpectrumHeadCell("Value", "raw-list-value-head");
       headerRow.appendChild(th0);
       headerRow.appendChild(th1);
       thead.appendChild(headerRow);
@@ -2125,9 +2472,9 @@
       tbody.className = "spectrum-Table-body";
       val.forEach((item, i) => {
         const tr = createSpectrumTableRow();
-        const td0 = createSpectrumTableCell();
-        td0.textContent = String(i);
-        const td1 = createSpectrumTableCell();
+        const td0 = createSpectrumTableCell("raw-list-index-cell");
+        td0.textContent = String(i + 1);
+        const td1 = createSpectrumTableCell("raw-list-value-cell");
         if (isInlineObjectCandidate(item)) {
           td1.appendChild(createInlineObjectNode(item));
         } else {
@@ -2138,12 +2485,13 @@
         tbody.appendChild(tr);
       });
       nest.appendChild(tbody);
-      const frame = createNestedScrollFrame("list");
+      const frame = createNestedScrollFrame("list", currentDepth + 1);
       frame.appendChild(nest);
       td.appendChild(frame);
       return;
     }
     if (typeof val === "object") {
+      td.classList.add("raw-value-type-object");
       if (isInlineObjectCandidate(val)) {
         td.appendChild(createInlineObjectNode(val));
         return;
@@ -2155,7 +2503,18 @@
       }
       const nest = document.createElement("table");
       nest.className = "raw-nested-table raw-nested-table-kv spectrum-Table spectrum-Table--sizeS";
-      const minWidth = getReadableGridMinWidth(2, 560, 220, 1800);
+      const nestedKeyColumnCh = computeReadableKeyColumnCh(
+        keys,
+        NESTED_KV_KEY_COLUMN_MIN_CH,
+        NESTED_KV_KEY_COLUMN_MAX_CH
+      );
+      nest.style.setProperty("--zip-nested-kv-key-col-ch", nestedKeyColumnCh + "ch");
+      const minWidth = getReadableGridMinWidth(
+        2,
+        Math.max(560, nestedKeyColumnCh * 18),
+        220,
+        2200
+      );
       nest.style.minWidth = minWidth + "px";
       nest.style.width = "max-content";
       const colgroup = document.createElement("colgroup");
@@ -2167,6 +2526,13 @@
       colgroup.appendChild(keyCol);
       colgroup.appendChild(valueCol);
       nest.appendChild(colgroup);
+      const thead = document.createElement("thead");
+      thead.className = "spectrum-Table-head";
+      const headRow = createSpectrumTableRow();
+      headRow.appendChild(createSpectrumHeadCell("Key", "raw-nested-kv-key-head"));
+      headRow.appendChild(createSpectrumHeadCell("Value", "raw-nested-kv-value-head"));
+      thead.appendChild(headRow);
+      nest.appendChild(thead);
       const tbody = document.createElement("tbody");
       tbody.className = "spectrum-Table-body";
       keys.forEach((k) => {
@@ -2175,6 +2541,7 @@
         const keyLabel = document.createElement("span");
         keyLabel.className = "raw-kv-key-label";
         keyLabel.textContent = k;
+        keyLabel.title = String(k);
         tdK.appendChild(keyLabel);
         const tdV = createSpectrumTableCell("raw-nested-kv-value-cell");
         fillCellWithValue(tdV, val[k], currentDepth + 1);
@@ -2183,7 +2550,7 @@
         tbody.appendChild(tr);
       });
       nest.appendChild(tbody);
-      const frame = createNestedScrollFrame("kv");
+      const frame = createNestedScrollFrame("kv", currentDepth + 1);
       frame.appendChild(nest);
       td.appendChild(frame);
       return;
@@ -2240,12 +2607,16 @@
           els.rawBody.appendChild(tr);
           return;
         }
-        applyRawResultGridSizing(cols.length);
+        applyRawResultGridSizing(cols.length + 1);
+        els.rawThead.appendChild(createSpectrumHeadCell("#", "raw-grid-index-head"));
         cols.forEach((k) => els.rawThead.appendChild(createSpectrumHeadCell(k)));
-        payload.forEach((row) => {
+        payload.forEach((row, rowIndex) => {
           const tr = createSpectrumTableRow();
+          const indexCell = createSpectrumTableCell("raw-grid-index-cell");
+          indexCell.textContent = String(rowIndex + 1);
+          tr.appendChild(indexCell);
           cols.forEach((col) => {
-            const td = createSpectrumTableCell();
+            const td = createSpectrumTableCell("raw-grid-value-cell");
             fillCellWithValue(td, row && row[col], 0);
             tr.appendChild(td);
           });
@@ -2253,13 +2624,17 @@
         });
         return;
       }
-      const th = createSpectrumHeadCell("Value");
-      els.rawThead.appendChild(th);
-      payload.forEach((item) => {
+      applyRawResultGridSizing(2);
+      els.rawThead.appendChild(createSpectrumHeadCell("#", "raw-list-index-head"));
+      els.rawThead.appendChild(createSpectrumHeadCell("Value", "raw-list-value-head"));
+      payload.forEach((item, itemIndex) => {
         const tr = createSpectrumTableRow();
-        const td = createSpectrumTableCell();
-        fillCellWithValue(td, item, 0);
-        tr.appendChild(td);
+        const tdIndex = createSpectrumTableCell("raw-list-index-cell");
+        tdIndex.textContent = String(itemIndex + 1);
+        const tdValue = createSpectrumTableCell("raw-list-value-cell");
+        fillCellWithValue(tdValue, item, 0);
+        tr.appendChild(tdIndex);
+        tr.appendChild(tdValue);
         els.rawBody.appendChild(tr);
       });
       return;
@@ -2274,6 +2649,23 @@
         }
       }
       setRawResultTableMode("kv");
+      const table = getRawResultTableEl();
+      if (table) {
+        const rootKeyColumnCh = computeReadableKeyColumnCh(
+          keys,
+          ROOT_KV_KEY_COLUMN_MIN_CH,
+          ROOT_KV_KEY_COLUMN_MAX_CH
+        );
+        table.style.setProperty("--zip-api-kv-key-col-ch", rootKeyColumnCh + "ch");
+        const rootMinWidth = getReadableGridMinWidth(
+          2,
+          Math.max(860, rootKeyColumnCh * 22),
+          280,
+          2800
+        );
+        table.style.minWidth = rootMinWidth + "px";
+        table.style.width = "max(100%, " + rootMinWidth + "px)";
+      }
       const thKey = createSpectrumHeadCell("Key");
       thKey.classList.add("raw-kv-key-head");
       const thVal = createSpectrumHeadCell("Value");
@@ -2285,6 +2677,7 @@
         const keyLabel = document.createElement("span");
         keyLabel.className = "raw-kv-key-label";
         keyLabel.textContent = key;
+        keyLabel.title = String(key);
         tdKey.appendChild(keyLabel);
         const tdVal = createSpectrumTableCell("raw-kv-value-cell");
         fillCellWithValue(tdVal, payload[key], 0);
@@ -2399,8 +2792,7 @@
     state.user = null;
     state.zendeskTabId = null;
     state.slackTabId = null;
-    if (state.manualZipSignout) stopAuthCheckPolling();
-    else startAuthCheckPolling();
+    stopAuthCheckPolling();
     state.userProfile = null;
     state.mePayload = null;
     state.tickets = [];
@@ -2421,6 +2813,7 @@
     state.passAiSlackTeamId = getExpectedPassAiSlackTeamId() || PASS_AI_SLACK_TEAM_ID;
     state.passAiSlackAuthError = "";
     state.passAiSlackAuthBootstrapCount = 0;
+    state.passAiPanelVisible = false;
     state.ticketEmailUserEmailCacheById = Object.create(null);
     state.ticketEmailRequesterByTicketId = Object.create(null);
     state.ticketEmailCopyCacheByTicketId = Object.create(null);
@@ -2439,12 +2832,11 @@
   }
 
   function showApp() {
-    startAuthCheckPolling();
+    stopAuthCheckPolling();
     document.body.classList.remove("zip-logged-out");
     els.loginScreen.classList.add("hidden");
     els.appScreen.classList.remove("hidden");
     syncContextMenuAuthVisibility();
-    refreshPassAiSlackAuth({ silent: true }).catch(() => {});
   }
 
   function formatDateTime(v) {
@@ -3429,11 +3821,7 @@
 
   async function ensurePassAiSlackSession() {
     if (state.passAiSlackReady) return true;
-    const ready = await refreshPassAiSlackAuth({ silent: true });
-    if (!ready) {
-      throw new Error("Slack sign-in is required. Click Sign in with Slack and complete login in Slack web.");
-    }
-    return true;
+    throw new Error("Slack sign-in is required. Click Sign in with Slack and complete login in Slack web.");
   }
 
   function renderPassAiError(message) {
@@ -4859,9 +5247,11 @@
         if (tabId) chrome.runtime.sendMessage({ type: "ZIP_NAVIGATE", tabId, url: ticketUrl }, () => {});
       });
     }
-    if (id != null) {
+    if (id != null && state.passAiPanelVisible) {
       loadLatestQuestionForTicket(id, { silentError: false }).catch((err) => {
         console.error("Failed to load latest ticket question:", err);
+      }).finally(() => {
+        updateTicketActionButtons();
       });
     }
   }
@@ -4955,7 +5345,16 @@
           copyBtn.title = "Copy requestor + external CC emails";
           const btnLabel = document.createElement("span");
           btnLabel.className = "spectrum-ActionButton-label";
-          btnLabel.textContent = "@";
+          const btnIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          btnIcon.setAttribute("viewBox", "0 0 20 20");
+          btnIcon.setAttribute("aria-hidden", "true");
+          btnIcon.classList.add("ticket-email-copy-icon");
+          const backSheetPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          backSheetPath.setAttribute("d", "M8 2.5h6.5a2 2 0 0 1 2 2V11a.75.75 0 0 1-1.5 0V4.5a.5.5 0 0 0-.5-.5H8a.75.75 0 0 1 0-1.5Z");
+          const envelopePath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          envelopePath.setAttribute("d", "M3.5 6.5A2.5 2.5 0 0 1 6 4h7a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 13 15H6a2.5 2.5 0 0 1-2.5-2.5v-6Zm2.5-1a1 1 0 0 0-1 1v.22l4.03 2.69a.85.85 0 0 0 .94 0L14 6.72V6.5a1 1 0 0 0-1-1H6Zm8 3.02-3.2 2.13a2.35 2.35 0 0 1-2.6 0L5 8.52v3.98a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V8.52Z");
+          btnIcon.append(backSheetPath, envelopePath);
+          btnLabel.appendChild(btnIcon);
           copyBtn.appendChild(btnLabel);
           setTicketEmailCopyButtonBusy(copyBtn, rowId != null && !!state.ticketEmailCopyBusyById[rowId]);
           copyBtn.addEventListener("click", (event) => {
@@ -5917,26 +6316,44 @@
   }
 
   async function startLogin() {
-    state.manualZipSignout = false;
+    setStatus("Opening Zendesk in main browser tab…", false);
     try {
-      const me = await sendToZendeskTab({ action: "getMe" });
-      if (me && me.user) {
-        await applySession(me);
-        setStatus("Session restored.", false);
-        return;
+      // Strict policy: login only in the Zendesk main tab. No popup/OAuth flows in ZIP sidepanel.
+      let result = null;
+      let openedByBackground = false;
+      try {
+        result = await sendBackgroundRequest("LOGIN_CLICKED");
+        openedByBackground = !!(result && result.ok === true);
+      } catch (_) {
+        openedByBackground = false;
       }
-    } catch (_) {}
-    const tabId = await getActiveTabId();
-    if (tabId) {
-      chrome.runtime.sendMessage({ type: "ZIP_NAVIGATE", tabId, url: LOGIN_URL });
-      startAuthCheckPolling();
-      setStatus("Opening login in tab… Sign in there, then switch back and click ZIP to refresh.", false);
-      return;
+
+      if (!openedByBackground) {
+        const tabs = await queryZendeskTabsFromSidepanel();
+        if (tabs && tabs.length > 0) {
+          result = await focusZendeskTabFromSidepanel(tabs[0]);
+        } else {
+          result = await openZendeskTabFromSidepanel();
+        }
+      }
+
+      if (!result || result.ok !== true) {
+        throw new Error((result && result.error) || "Unable to focus or open the Zendesk tab.");
+      }
+      setStatus("Focus moved to Zendesk. Sign in there; ZIP will auto-resume from sidepanel events.", false);
+    } catch (err) {
+      try {
+        const fallbackFn = typeof window !== "undefined" ? window.ZIP_LOGIN_FALLBACK_OPEN : null;
+        if (typeof fallbackFn === "function") {
+          const fallbackResult = await fallbackFn();
+          if (fallbackResult && fallbackResult.ok) {
+            setStatus("Fallback opened Zendesk tab. Sign in there; ZIP will auto-resume.", false);
+            return;
+          }
+        }
+      } catch (_) {}
+      setStatus("Unable to open Zendesk tab: " + (err && err.message ? err.message : "Unknown error"), true);
     }
-    chrome.runtime.sendMessage({ type: "ZIP_OPEN_LOGIN", url: LOGIN_URL }, () => {
-      startAuthCheckPolling();
-      setStatus("Opening login in new tab… Sign in there, then switch back and click ZIP to refresh.", false);
-    });
   }
 
   /** Build a stable profile from GET /api/v2/users/me for API param defaults. */
@@ -5957,7 +6374,6 @@
     const isFirstLogin = !state.user;
     let assignedFilterNavError = null;
     let assignedFilterNavResult = null;
-    state.manualZipSignout = false;
     state.user = me.user;
     state.mePayload = me.payload;
     state.userProfile = parseUserProfile(me.payload);
@@ -6049,22 +6465,91 @@
     }
   }
 
-  function signout(options) {
-    const manual = !(options && options.manual === false);
-    state.manualZipSignout = manual;
-    if (manual) {
-      sendBackgroundRequest("ZIP_SLACK_OAUTH_SIGN_OUT").catch(() => {});
+  function refreshFromAuthenticatedEvent(reason) {
+    if (authRefreshInFlight) return;
+    authRefreshInFlight = true;
+    setStatus("Zendesk session detected. Loading…", false);
+    refreshAll()
+      .catch((err) => {
+        setStatus("Refresh failed: " + (err && err.message ? err.message : "Unknown error"), true);
+      })
+      .finally(() => {
+        authRefreshInFlight = false;
+      });
+  }
+
+  function handleAuthMessage(msg) {
+    if (!msg || typeof msg !== "object") return false;
+    const payload = msg.payload && typeof msg.payload === "object" ? msg.payload : {};
+    if (msg.type === "AUTHENTICATED") {
+      if (!state.user) {
+        refreshFromAuthenticatedEvent(payload.reason || "background_authenticated");
+      }
+      return true;
     }
-    clearFilterCountCaches();
-    showLogin();
+    if (msg.type === "LOGGED_OUT") {
+      showLogin();
+      setStatus("User is logged out of Zendesk. Please sign in.", true);
+      return true;
+    }
+    if (msg.type === "ABOUT_TO_EXPIRE") {
+      if (state.user) {
+        setStatus("Zendesk session is about to expire. Refresh activity in Zendesk to stay signed in.", false);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  async function hydrateAuthStateFromBackground(options) {
+    if (authHydrationInFlight) return;
+    authHydrationInFlight = true;
+    const opts = options && typeof options === "object" ? options : {};
+    try {
+      const auth = await sendBackgroundRequest("ZIP_GET_AUTH_STATE");
+      if (auth && auth.loggedIn) {
+        if (!state.user) {
+          refreshFromAuthenticatedEvent("hydrate_logged_in");
+        }
+        return;
+      }
+      showLogin();
+      if (opts.forceCheck) {
+        const forced = await sendBackgroundRequest("ZIP_FORCE_CHECK", {
+          reason: opts.reason || "sidepanel_hydrate"
+        }).catch(() => {});
+        const forcedPayload = forced && forced.payload && typeof forced.payload === "object"
+          ? forced.payload
+          : null;
+        if ((forced && forced.ok) || (forcedPayload && forcedPayload.loggedIn)) {
+          if (!state.user) {
+            refreshFromAuthenticatedEvent("hydrate_force_check");
+          }
+          return;
+        }
+      }
+      setStatus("Login with Zendesk to continue.", false);
+    } catch (_) {
+      showLogin();
+      setStatus("Login with Zendesk to continue.", false);
+    } finally {
+      authHydrationInFlight = false;
+    }
   }
 
   function wireEvents() {
+    if (eventsWired) return;
+    eventsWired = true;
+    if (typeof window !== "undefined") window.__ZIP_LOGIN_HANDLER_READY__ = true;
     retryCatalogLoadOnSelectFocus();
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage && chrome.runtime.onMessage.addListener) {
       chrome.runtime.onMessage.addListener((msg) => {
-        if (!msg || msg.type !== "ZIP_THEME_CHANGED") return;
-        applyThemeState(msg);
+        if (!msg || typeof msg !== "object") return;
+        if (msg.type === "ZIP_THEME_CHANGED") {
+          applyThemeState(msg);
+          return;
+        }
+        handleAuthMessage(msg);
       });
     }
     if (typeof window !== "undefined") {
@@ -6072,6 +6557,7 @@
         loadSidePanelContext();
         loadContextMenuUpdateState(false).catch(() => {});
         loadThemeState().catch(() => {});
+        triggerAuthCheckNow();
       });
       window.addEventListener("resize", () => {
         refreshThemeFlyoutPosition();
@@ -6082,6 +6568,7 @@
           loadSidePanelContext();
           loadContextMenuUpdateState(false).catch(() => {});
           loadThemeState().catch(() => {});
+          triggerAuthCheckNow();
         }
       });
     }
@@ -6131,6 +6618,20 @@
         runContextMenuAction("getLatest");
       });
     }
+    if (els.contextMenuThemeStopToggle) {
+      els.contextMenuThemeStopToggle.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleContextMenuThemeStop();
+      });
+    }
+    if (els.contextMenuThemeColorToggle) {
+      els.contextMenuThemeColorToggle.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleContextMenuThemeColorFlyout();
+      });
+    }
     if (els.docsMenu) {
       els.docsMenu.addEventListener("change", (e) => {
         const target = e && e.target;
@@ -6158,7 +6659,6 @@
     }
     setContextMenuBuildLabel();
     loadContextMenuUpdateState(false).catch(() => {});
-    if (els.signoutBtn) els.signoutBtn.addEventListener("click", signout);
     if (els.topAvatarWrap) {
       els.topAvatarWrap.addEventListener("click", (e) => {
         if (!state.user) return;
@@ -6191,6 +6691,13 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     });
+    if (els.passAiToggleBtn) {
+      els.passAiToggleBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (state.passAiLoading) return;
+        togglePassAiPanelForSelectedTicket().catch(() => {});
+      });
+    }
     if (els.askPassAiBtn) {
       els.askPassAiBtn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -6361,10 +6868,10 @@
     if (IS_WORKSPACE_MODE) document.body.classList.add("zip-workspace");
     document.body.classList.add("zip-logged-out");
     if (els.status) els.status.title = FOOTER_HINT_TOOLTIP;
-    await loadThemeState();
-    await loadSidePanelContext();
-    initializeZdApiContainerVisibility();
     wireEvents();
+    await loadThemeState().catch(() => {});
+    await loadSidePanelContext().catch(() => {});
+    initializeZdApiContainerVisibility();
     populateAppDescription();
     populateApiPathSelect();
     renderApiParams();
@@ -6372,7 +6879,7 @@
     updateTicketActionButtons();
     resetTopIdentity();
     setStatus("", false);
-    await refreshAll();
+    await hydrateAuthStateFromBackground({ forceCheck: true, reason: "sidepanel_init" });
   }
 
   init();

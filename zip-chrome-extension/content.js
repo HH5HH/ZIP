@@ -6,6 +6,10 @@
 
   const BASE = "https://adobeprimetime.zendesk.com";
   const ME_URL = BASE + "/api/v2/users/me.json";
+  const SESSION_URL = (typeof window !== "undefined" && window.location && window.location.origin
+    ? window.location.origin
+    : BASE) + "/api/v2/users/me/session";
+  const SESSION_PATH = "/api/v2/users/me/session";
   const TICKET_URL_PREFIX = BASE + "/agent/tickets/";
   const JIRA_ENG_TICKET_FIELD_ID = "22790243";
   const JIRA_BROWSE_URL_PREFIX = "https://jira.corp.adobe.com/browse/";
@@ -20,6 +24,18 @@
   let slackTokenBridgeInstalled = false;
   let slackTokenBridgeListenerInstalled = false;
   let slackCapturedToken = "";
+  let zendeskObserversInstalled = false;
+  let zendeskNetworkHooksInstalled = false;
+  let zendeskDomObserverInstalled = false;
+  let zendeskSessionProbeTimerId = null;
+  let zendeskSessionProbeInFlight = false;
+  let lastZendeskSessionSignalKey = "";
+  let lastZendeskSessionSignalAt = 0;
+  let lastZendeskSessionProbeAt = 0;
+  let lastZendeskSessionStatus = 0;
+  const ZENDESK_SESSION_SIGNAL_DEDUPE_MS = 1500;
+  const ZENDESK_PROBE_MIN_INTERVAL_MS = 1500;
+  const ZENDESK_LOGGED_OUT_PROBE_COOLDOWN_MS = 12000;
 
   async function fetchJson(url) {
     const res = await fetch(url, {
@@ -52,6 +68,307 @@
     if (!res.ok) return { user: null, payload: res.payload, status: res.status };
     const user = extractUser(res.payload);
     return { user: user || null, payload: res.payload, status: res.status };
+  }
+
+  function isZendeskHost(hostname) {
+    const normalized = String(hostname || "").trim().toLowerCase();
+    return normalized === "zendesk.com" || normalized.endsWith(".zendesk.com");
+  }
+
+  function isZendeskPage() {
+    return typeof window !== "undefined"
+      && window.location
+      && isZendeskHost(window.location.hostname);
+  }
+
+  function parseUrlPath(input) {
+    const raw = String(input || "").trim();
+    if (!raw) return "";
+    try {
+      const parsed = new URL(raw, window.location && window.location.origin ? window.location.origin : BASE);
+      return String(parsed.pathname || "").toLowerCase();
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function isSessionPath(pathname) {
+    return String(pathname || "").toLowerCase().startsWith(SESSION_PATH);
+  }
+
+  function isLikelyLogoutPath(pathname) {
+    const path = String(pathname || "").toLowerCase();
+    if (!path) return false;
+    return path.includes("/logout")
+      || path.includes("/access/unauthenticated")
+      || path.includes("/access/login")
+      || path.includes("/signin");
+  }
+
+  function shouldEmitZendeskSessionSignal(signalKey) {
+    const now = Date.now();
+    if (!signalKey) return false;
+    if (signalKey !== lastZendeskSessionSignalKey) {
+      lastZendeskSessionSignalKey = signalKey;
+      lastZendeskSessionSignalAt = now;
+      return true;
+    }
+    if (now - lastZendeskSessionSignalAt > ZENDESK_SESSION_SIGNAL_DEDUPE_MS) {
+      lastZendeskSessionSignalAt = now;
+      return true;
+    }
+    return false;
+  }
+
+  function isAuthFailureStatus(status) {
+    const numeric = Number(status) || 0;
+    return numeric === 401 || numeric === 403;
+  }
+
+  function isPriorityZendeskProbeReason(reason) {
+    const text = String(reason || "").toLowerCase();
+    if (!text) return false;
+    return text.includes("zip_session_probe")
+      || text.includes("background")
+      || text.includes("focus")
+      || text.includes("pageshow")
+      || text.includes("visibility")
+      || text.includes("hashchange")
+      || text.includes("popstate")
+      || text.includes("login");
+  }
+
+  function getZendeskProbeDelay(reason, requestedDelayMs) {
+    const now = Date.now();
+    const requested = Math.max(0, Number(requestedDelayMs) || 0);
+    let nextDelay = requested;
+    if (lastZendeskSessionProbeAt > 0) {
+      const minIntervalRemaining = (lastZendeskSessionProbeAt + ZENDESK_PROBE_MIN_INTERVAL_MS) - now;
+      if (minIntervalRemaining > nextDelay) nextDelay = minIntervalRemaining;
+    }
+    if (isAuthFailureStatus(lastZendeskSessionStatus) && !isPriorityZendeskProbeReason(reason)) {
+      const cooldownRemaining = (lastZendeskSessionProbeAt + ZENDESK_LOGGED_OUT_PROBE_COOLDOWN_MS) - now;
+      if (cooldownRemaining > nextDelay) nextDelay = cooldownRemaining;
+    }
+    return Math.max(0, Math.trunc(nextDelay));
+  }
+
+  function emitZendeskSessionOk(payload, reason, status) {
+    if (!isZendeskPage()) return;
+    const responseStatus = Number(status) || 200;
+    const signalKey = "ok:" + String(responseStatus) + ":" + String(reason || "session_ok");
+    if (!shouldEmitZendeskSessionSignal(signalKey)) return;
+    chrome.runtime.sendMessage({
+      type: "ZD_SESSION_OK",
+      status: responseStatus,
+      reason: String(reason || "session_ok"),
+      payload: payload && typeof payload === "object" ? payload : null
+    }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+
+  function emitZendeskLogout(reason, status) {
+    if (!isZendeskPage()) return;
+    const responseStatus = Number(status) || 401;
+    const signalKey = "logout:" + String(responseStatus) + ":" + String(reason || "logout_detected");
+    if (!shouldEmitZendeskSessionSignal(signalKey)) return;
+    chrome.runtime.sendMessage({
+      type: "ZD_LOGOUT",
+      status: responseStatus,
+      reason: String(reason || "logout_detected")
+    }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+
+  async function probeZendeskSession(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    if (!isZendeskPage()) {
+      return { ok: false, status: 0, payload: null, error: "Not a Zendesk tab." };
+    }
+    const url = String(opts.url || SESSION_URL);
+    const result = await fetchJson(url);
+    const status = Number(result.status) || 0;
+    lastZendeskSessionProbeAt = Date.now();
+    lastZendeskSessionStatus = status;
+    if (status === 200) {
+      emitZendeskSessionOk(result.payload, opts.reason || "session_probe_200", status);
+    } else if (status === 401 || status === 403) {
+      emitZendeskLogout(opts.reason || "session_probe_unauthorized", status);
+    }
+    return {
+      ok: status === 200,
+      status,
+      payload: result.payload || null
+    };
+  }
+
+  function scheduleZendeskSessionProbe(reason, delayMs) {
+    if (!isZendeskPage()) return;
+    if (zendeskSessionProbeTimerId != null) {
+      clearTimeout(zendeskSessionProbeTimerId);
+      zendeskSessionProbeTimerId = null;
+    }
+    const delay = getZendeskProbeDelay(reason, delayMs);
+    zendeskSessionProbeTimerId = setTimeout(() => {
+      zendeskSessionProbeTimerId = null;
+      if (zendeskSessionProbeInFlight) return;
+      zendeskSessionProbeInFlight = true;
+      probeZendeskSession({ reason: reason || "scheduled_probe" })
+        .catch(() => {})
+        .finally(() => {
+          zendeskSessionProbeInFlight = false;
+        });
+    }, delay);
+  }
+
+  function inspectZendeskAuthResponse(urlValue, status, payload, reason) {
+    if (!isZendeskPage()) return;
+    const path = parseUrlPath(urlValue);
+    if (!path) return;
+    const normalizedStatus = Number(status) || 0;
+    if (normalizedStatus > 0) {
+      lastZendeskSessionProbeAt = Date.now();
+      lastZendeskSessionStatus = normalizedStatus;
+    }
+    if (isSessionPath(path)) {
+      if (normalizedStatus === 200) {
+        emitZendeskSessionOk(payload && typeof payload === "object" ? payload : null, reason || "session_endpoint_200", normalizedStatus);
+      } else if (normalizedStatus === 401 || normalizedStatus === 403) {
+        emitZendeskLogout(reason || "session_endpoint_unauthorized", normalizedStatus);
+      }
+      return;
+    }
+    if (isLikelyLogoutPath(path)) {
+      if ((normalizedStatus >= 200 && normalizedStatus < 400) || normalizedStatus === 401 || normalizedStatus === 403) {
+        emitZendeskLogout(reason || "logout_path_detected", normalizedStatus || 401);
+      }
+    }
+  }
+
+  function installZendeskNetworkHooks() {
+    if (!isZendeskPage() || zendeskNetworkHooksInstalled) return;
+    zendeskNetworkHooksInstalled = true;
+
+    try {
+      if (typeof window.fetch === "function") {
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = async function patchedZipFetch(input, init) {
+          const response = await originalFetch(input, init);
+          try {
+            const url = typeof input === "string"
+              ? input
+              : input && typeof input === "object" && "url" in input
+                ? input.url
+                : "";
+            const status = Number(response && response.status) || 0;
+            const path = parseUrlPath(url);
+            if (isSessionPath(path) && status === 200) {
+              response.clone().json()
+                .then((jsonPayload) => {
+                  inspectZendeskAuthResponse(url, status, jsonPayload, "fetch_session_200");
+                })
+                .catch(() => {
+                  inspectZendeskAuthResponse(url, status, null, "fetch_session_200");
+                });
+            } else {
+              inspectZendeskAuthResponse(url, status, null, "fetch_observed");
+            }
+          } catch (_) {}
+          return response;
+        };
+      }
+    } catch (_) {}
+
+    try {
+      if (typeof XMLHttpRequest !== "undefined" && XMLHttpRequest.prototype) {
+        const originalOpen = XMLHttpRequest.prototype.open;
+        const originalSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function patchedZipXhrOpen(method, url) {
+          this.__zipAuthUrl = url;
+          this.__zipAuthMethod = method;
+          return originalOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function patchedZipXhrSend(body) {
+          if (!this.__zipAuthListenerInstalled) {
+            this.__zipAuthListenerInstalled = true;
+            this.addEventListener("loadend", () => {
+              try {
+                const status = Number(this.status) || 0;
+                const url = this.__zipAuthUrl || "";
+                let payload = null;
+                const path = parseUrlPath(url);
+                if (isSessionPath(path)) {
+                  payload = parseJsonMaybe(this.responseText || "");
+                }
+                inspectZendeskAuthResponse(url, status, payload, "xhr_observed");
+              } catch (_) {}
+            });
+          }
+          return originalSend.apply(this, [body]);
+        };
+      }
+    } catch (_) {}
+  }
+
+  function hasZendeskLoginDomMarkers() {
+    if (!isZendeskPage() || typeof document === "undefined") return false;
+    const selectors = [
+      "form[action*='/access/login']",
+      "form[action*='/signin']",
+      "input[name='user[email]']",
+      "input[name='user[password]']"
+    ];
+    return selectors.some((selector) => {
+      try {
+        return !!document.querySelector(selector);
+      } catch (_) {
+        return false;
+      }
+    });
+  }
+
+  function installZendeskDomObserver() {
+    if (!isZendeskPage() || zendeskDomObserverInstalled) return;
+    zendeskDomObserverInstalled = true;
+    if (typeof MutationObserver !== "function" || typeof document === "undefined") return;
+    const root = document.documentElement || document.body;
+    if (!root) return;
+    const observer = new MutationObserver(() => {
+      const path = String(window.location && window.location.pathname ? window.location.pathname : "").toLowerCase();
+      if (isLikelyLogoutPath(path) || hasZendeskLoginDomMarkers()) {
+        emitZendeskLogout("dom_logout_marker", 401);
+        return;
+      }
+      scheduleZendeskSessionProbe("dom_observer", 350);
+    });
+    observer.observe(root, { subtree: true, childList: true, attributes: true });
+  }
+
+  function installZendeskSessionObservers() {
+    if (!isZendeskPage() || zendeskObserversInstalled) return;
+    zendeskObserversInstalled = true;
+    installZendeskNetworkHooks();
+    installZendeskDomObserver();
+
+    const probeIfActive = (reason) => {
+      const path = String(window.location && window.location.pathname ? window.location.pathname : "").toLowerCase();
+      if (isLikelyLogoutPath(path) || hasZendeskLoginDomMarkers()) {
+        emitZendeskLogout(reason || "logout_path_detected", 401);
+        return;
+      }
+      scheduleZendeskSessionProbe(reason || "observer_probe", 50);
+    };
+
+    window.addEventListener("focus", () => probeIfActive("focus_probe"));
+    window.addEventListener("pageshow", () => probeIfActive("pageshow_probe"));
+    window.addEventListener("popstate", () => probeIfActive("popstate_probe"));
+    window.addEventListener("hashchange", () => probeIfActive("hashchange_probe"));
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) probeIfActive("visibility_probe");
+    });
+    probeIfActive("bootstrap_probe");
   }
 
   function normalizeCustomFieldValue(value) {
@@ -1573,12 +1890,36 @@
   }
 
   if (isSlackPage()) {
-    ensureSlackTokenBridgeInstalled();
+    // Defer bridge injection until a Slack action requires API access.
     readCapturedSlackToken();
   }
 
+  if (isZendeskPage()) {
+    installZendeskSessionObservers();
+  }
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg.type !== "ZIP_FROM_BACKGROUND") return;
+    if (msg && msg.type === "ZIP_SESSION_PROBE") {
+      // Authoritative Zendesk auth probe used by background/sidepanel coordination.
+      probeZendeskSession({
+        url: msg.url || SESSION_URL,
+        reason: msg.source || "zip_session_probe"
+      })
+        .then((result) => sendResponse({
+          ok: !!(result && result.ok),
+          status: Number(result && result.status) || 0,
+          payload: result && result.payload ? result.payload : null,
+          error: result && result.error ? result.error : ""
+        }))
+        .catch((err) => sendResponse({
+          ok: false,
+          status: 0,
+          payload: null,
+          error: err && err.message ? err.message : "Zendesk session probe failed."
+        }));
+      return true;
+    }
+    if (!msg || msg.type !== "ZIP_FROM_BACKGROUND") return;
     const { requestId, inner } = msg;
     if (!inner || !requestId) {
       sendResponse({ type: "ZIP_RESPONSE", requestId, error: "Invalid message" });

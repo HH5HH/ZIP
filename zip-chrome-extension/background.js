@@ -1,9 +1,16 @@
 "use strict";
 
+try {
+  if (typeof importScripts === "function") {
+    importScripts("theme-palette-data.js");
+  }
+} catch (_) {}
+
 const ZENDESK_ORIGIN = "https://adobeprimetime.zendesk.com";
 const ZENDESK_DASHBOARD_URL = ZENDESK_ORIGIN + "/agent/dashboard?brand_id=2379046";
 const ASSIGNED_FILTER_PATH = "/agent/filters/36464467";
 const ASSIGNED_FILTER_URL = ZENDESK_ORIGIN + ASSIGNED_FILTER_PATH;
+const ZENDESK_SESSION_PATH = "/api/v2/users/me/session";
 const SLACK_WORKSPACE_ORIGIN = "https://adobedx.slack.com";
 const SLACK_URL_PATTERNS = ["https://*.slack.com/*"];
 const SLACK_API_BASE_URL = "https://slack.com/api/";
@@ -25,6 +32,22 @@ const SLACK_OAUTH_REQUIRED_USER_SCOPES = [
 ];
 const SLACK_OAUTH_USER_SCOPE = SLACK_OAUTH_REQUIRED_USER_SCOPES.join(",");
 const ZIP_PANEL_PATH = "sidepanel.html";
+const ZENDESK_SUBDOMAIN = (() => {
+  try {
+    const hostname = new URL(ZENDESK_ORIGIN).hostname;
+    return String(hostname || "").split(".")[0] || "adobeprimetime";
+  } catch (_) {
+    return "adobeprimetime";
+  }
+})();
+const ZENDESK_LOGIN_TAB_URL = "https://" + ZENDESK_SUBDOMAIN + ".zendesk.com";
+const ZENDESK_SESSION_URL = ZENDESK_LOGIN_TAB_URL + ZENDESK_SESSION_PATH;
+const ZENDESK_TAB_QUERY_PATTERN = "*://" + ZENDESK_SUBDOMAIN + ".zendesk.com/*";
+const config = { subdomain: ZENDESK_SUBDOMAIN };
+const AUTH_POLL_MIN_MS = 5 * 1000;
+const AUTH_POLL_MAX_MS = 120 * 1000;
+const AUTH_POLL_LOGGED_OUT_MS = 30 * 1000;
+const AUTH_ABOUT_TO_EXPIRE_MS = 5 * 60 * 1000;
 const MENU_ROOT = "zip_root";
 const MENU_TOGGLE_SIDE = "zip_toggle_side";
 const MENU_ASK_ERIC = "zip_ask_eric";
@@ -41,59 +64,71 @@ const ZIP_LATEST_PACKAGE_URL = "https://raw.githubusercontent.com/" + GITHUB_OWN
 const CHROME_EXTENSIONS_URL = "chrome://extensions";
 const UPDATE_CHECK_TTL_MS = 10 * 60 * 1000;
 const CHROME_SIDEPANEL_SETTINGS_URL = "chrome://settings/?search=side%20panel";
-const MENU_SIDEPANEL_POSITION_LABEL = "⚙ > Side panel position";
+const MENU_SIDEPANEL_POSITION_LABEL = "⚙ Side panel position";
+const MENU_ASK_ERIC_LABEL = "✉ Ask Eric";
+const MENU_APPEARANCE_LABEL = "👁 Appearance";
 const THEME_STORAGE_KEY = "zip.ui.theme.v1";
+const THEME_PALETTE_DATA = (
+  typeof globalThis !== "undefined"
+  && globalThis.ZIP_THEME_PALETTE_V2
+  && typeof globalThis.ZIP_THEME_PALETTE_V2 === "object"
+)
+  ? globalThis.ZIP_THEME_PALETTE_V2
+  : null;
 const THEME_COLOR_STOPS = [
   { id: "dark", label: "Dark", spectrumColorStop: "dark", paletteSet: "dark" },
   { id: "light", label: "Light", spectrumColorStop: "light", paletteSet: "light" }
 ];
-const THEME_ACCENT_FAMILIES = [
-  { id: "blue", label: "Blue" },
-  { id: "indigo", label: "Indigo" },
-  { id: "purple", label: "Purple" },
-  { id: "fuchsia", label: "Fuchsia" },
-  { id: "magenta", label: "Magenta" },
-  { id: "pink", label: "Pink" },
-  { id: "red", label: "Red" },
-  { id: "orange", label: "Orange" },
-  { id: "yellow", label: "Yellow" },
-  { id: "chartreuse", label: "Chartreuse" },
-  { id: "celery", label: "Celery" },
-  { id: "green", label: "Green" },
-  { id: "seafoam", label: "Seafoam" },
-  { id: "cyan", label: "Cyan" },
-  { id: "turquoise", label: "Turquoise" },
-  { id: "cinnamon", label: "Cinnamon" },
-  { id: "brown", label: "Brown" },
-  { id: "silver", label: "Silver" },
-  { id: "gray", label: "Gray" }
-];
+const THEME_ACCENT_SWATCHES = (
+  THEME_PALETTE_DATA
+  && Array.isArray(THEME_PALETTE_DATA.colors)
+  && THEME_PALETTE_DATA.colors.length
+)
+  ? THEME_PALETTE_DATA.colors.map((entry) => ({ ...entry }))
+  : [{ id: "azure-blue", name: "Azure Blue" }];
+const THEME_ACCENT_FAMILIES = THEME_ACCENT_SWATCHES.map((accent) => ({
+  id: String(accent.id || "").trim().toLowerCase(),
+  label: String(accent.name || accent.label || accent.id || "Color").trim() || "Color"
+}));
+const THEME_ACCENT_IDS = new Set(THEME_ACCENT_FAMILIES.map((accent) => accent.id));
+const DEFAULT_THEME_ACCENT_ID = (
+  THEME_PALETTE_DATA
+  && THEME_ACCENT_IDS.has(String(THEME_PALETTE_DATA.defaultAccentId || "").trim().toLowerCase())
+)
+  ? String(THEME_PALETTE_DATA.defaultAccentId).trim().toLowerCase()
+  : (THEME_ACCENT_FAMILIES[0] ? THEME_ACCENT_FAMILIES[0].id : "azure-blue");
+const DEFAULT_THEME_ID = "s2-dark-" + DEFAULT_THEME_ACCENT_ID;
+const LEGACY_ACCENT_ID_MAP = (
+  THEME_PALETTE_DATA
+  && THEME_PALETTE_DATA.legacyAccentMap
+  && typeof THEME_PALETTE_DATA.legacyAccentMap === "object"
+)
+  ? { ...THEME_PALETTE_DATA.legacyAccentMap }
+  : {};
+
+function buildLegacyThemeAliases() {
+  const aliases = {
+    "s2-darkest": DEFAULT_THEME_ID,
+    "s2-dark": DEFAULT_THEME_ID,
+    "s2-light": "s2-light-" + DEFAULT_THEME_ACCENT_ID,
+    "s2-wireframe": "s2-light-" + DEFAULT_THEME_ACCENT_ID
+  };
+  Object.keys(LEGACY_ACCENT_ID_MAP).forEach((legacyAccentId) => {
+    const nextAccentId = String(LEGACY_ACCENT_ID_MAP[legacyAccentId] || "").trim().toLowerCase();
+    if (!nextAccentId || !THEME_ACCENT_IDS.has(nextAccentId)) return;
+    const legacyId = String(legacyAccentId || "").trim().toLowerCase();
+    if (!legacyId) return;
+    aliases["s2-" + legacyId] = "s2-dark-" + nextAccentId;
+    aliases["s2-dark-" + legacyId] = "s2-dark-" + nextAccentId;
+    aliases["s2-light-" + legacyId] = "s2-light-" + nextAccentId;
+    aliases["s2-darkest-" + legacyId] = "s2-dark-" + nextAccentId;
+    aliases["s2-wireframe-" + legacyId] = "s2-light-" + nextAccentId;
+  });
+  return aliases;
+}
+
 // Legacy IDs are migrated to supported Spectrum 2 light/dark themes.
-const LEGACY_THEME_ALIASES = {
-  "s2-darkest": "s2-dark-blue",
-  "s2-dark": "s2-dark-blue",
-  "s2-light": "s2-light-blue",
-  "s2-wireframe": "s2-light-blue",
-  "s2-blue": "s2-dark-blue",
-  "s2-indigo": "s2-dark-indigo",
-  "s2-purple": "s2-dark-purple",
-  "s2-fuchsia": "s2-dark-fuchsia",
-  "s2-magenta": "s2-dark-magenta",
-  "s2-pink": "s2-dark-pink",
-  "s2-red": "s2-dark-red",
-  "s2-orange": "s2-dark-orange",
-  "s2-yellow": "s2-dark-yellow",
-  "s2-chartreuse": "s2-dark-chartreuse",
-  "s2-celery": "s2-dark-celery",
-  "s2-green": "s2-dark-green",
-  "s2-seafoam": "s2-dark-seafoam",
-  "s2-cyan": "s2-dark-cyan",
-  "s2-turquoise": "s2-dark-turquoise",
-  "s2-cinnamon": "s2-dark-cinnamon",
-  "s2-brown": "s2-dark-brown",
-  "s2-silver": "s2-dark-silver",
-  "s2-gray": "s2-dark-gray"
-};
+const LEGACY_THEME_ALIASES = buildLegacyThemeAliases();
 
 function buildThemeOptions() {
   const options = [];
@@ -114,7 +149,6 @@ function buildThemeOptions() {
 
 const ZIP_THEME_OPTIONS = buildThemeOptions();
 const ZIP_THEME_OPTION_BY_ID = Object.fromEntries(ZIP_THEME_OPTIONS.map((option) => [option.id, option]));
-const DEFAULT_THEME_ID = "s2-dark-blue";
 const MENU_CONTEXTS = ["action"];
 const contextMenuState = {
   grouped: true
@@ -135,6 +169,469 @@ const themeState = {
   loaded: false,
   inFlight: null
 };
+
+const zendeskAuthState = {
+  loggedIn: false,
+  session: null,
+  lastSeenAt: 0,
+  orgTimeoutMinutes: 0,
+  expiresAt: 0,
+  timeLeftMs: null,
+  source: "init",
+  reason: "init",
+  checkedAt: 0
+};
+let sessionPollTimerId = null;
+let sessionCheckInFlight = false;
+let sessionAboutToExpireSentForDeadline = 0;
+
+function clearSessionPollTimer() {
+  if (sessionPollTimerId != null) {
+    clearTimeout(sessionPollTimerId);
+    sessionPollTimerId = null;
+  }
+}
+
+function parseDateToMs(value) {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 1e12 ? value : value * 1000;
+  }
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function normalizeSessionEnvelope(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  if (payload.session && typeof payload.session === "object") return payload.session;
+  return payload;
+}
+
+function deriveSessionDeadline(session) {
+  const expiresAtMs = parseDateToMs(
+    session && (
+      session.expires_at
+      || session.expire_at
+      || session.expiration_at
+      || session.end_time
+    )
+  );
+  if (expiresAtMs > 0) return expiresAtMs;
+
+  const lastSeenAtMs = parseDateToMs(
+    session && (
+      session.last_seen_at
+      || session.last_seen
+      || session.updated_at
+      || session.authenticated_at
+      || session.created_at
+    )
+  );
+  const orgTimeoutMinutes = parseNumber(
+    session && (
+      session.org_timeout_minutes
+      || session.organization_timeout_minutes
+      || session.timeout_minutes
+      || session.idle_timeout_minutes
+      || (session.organization && (
+        session.organization.org_timeout_minutes
+        || session.organization.timeout_minutes
+        || session.organization.idle_timeout_minutes
+      ))
+    )
+  );
+  if (lastSeenAtMs > 0 && orgTimeoutMinutes > 0) {
+    return lastSeenAtMs + Math.trunc(orgTimeoutMinutes * 60 * 1000);
+  }
+  return 0;
+}
+
+function getAuthStatePayload(extra) {
+  return {
+    loggedIn: !!zendeskAuthState.loggedIn,
+    idleUntilUserInitiatesLogin: false,
+    session: zendeskAuthState.session,
+    lastSeenAt: zendeskAuthState.lastSeenAt || 0,
+    orgTimeoutMinutes: zendeskAuthState.orgTimeoutMinutes || 0,
+    expiresAt: zendeskAuthState.expiresAt || 0,
+    timeLeftMs: Number.isFinite(zendeskAuthState.timeLeftMs) ? zendeskAuthState.timeLeftMs : null,
+    source: zendeskAuthState.source || "",
+    reason: zendeskAuthState.reason || "",
+    checkedAt: zendeskAuthState.checkedAt || 0,
+    ...(extra && typeof extra === "object" ? extra : {})
+  };
+}
+
+function broadcastAuthEvent(type, payload) {
+  try {
+    chrome.runtime.sendMessage({ type, payload }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch (_) {}
+}
+
+function computeAdaptivePollDelayMs(timeLeftMs, loggedIn) {
+  if (!loggedIn) return AUTH_POLL_LOGGED_OUT_MS;
+  if (!Number.isFinite(timeLeftMs)) return Math.max(AUTH_POLL_MIN_MS, 60 * 1000);
+  const next = Math.trunc(Math.max(0, timeLeftMs) / 4);
+  return Math.max(AUTH_POLL_MIN_MS, Math.min(AUTH_POLL_MAX_MS, next));
+}
+
+function scheduleSessionCheck(delayMs) {
+  clearSessionPollTimer();
+  const nextDelay = Number.isFinite(Number(delayMs))
+    ? Math.max(AUTH_POLL_MIN_MS, Number(delayMs))
+    : AUTH_POLL_LOGGED_OUT_MS;
+  sessionPollTimerId = setTimeout(() => {
+    sessionPollTimerId = null;
+    forceCheck({ reason: "poll" }).catch(() => {});
+  }, nextDelay);
+}
+
+function setAuthenticatedState(result, options) {
+  const source = options && options.source ? String(options.source) : "unknown";
+  const reason = options && options.reason ? String(options.reason) : "session_ok";
+  const session = normalizeSessionEnvelope(result && result.payload) || {};
+  const lastSeenAt = parseDateToMs(
+    session.last_seen_at
+    || session.last_seen
+    || session.updated_at
+    || session.authenticated_at
+    || session.created_at
+  );
+  const orgTimeoutMinutes = parseNumber(
+    session.org_timeout_minutes
+    || session.organization_timeout_minutes
+    || session.timeout_minutes
+    || session.idle_timeout_minutes
+    || (session.organization && (
+      session.organization.org_timeout_minutes
+      || session.organization.timeout_minutes
+      || session.organization.idle_timeout_minutes
+    ))
+  );
+  const expiresAt = deriveSessionDeadline(session);
+  const timeLeftMs = expiresAt > 0 ? (expiresAt - Date.now()) : null;
+
+  zendeskAuthState.loggedIn = true;
+  zendeskAuthState.session = session;
+  zendeskAuthState.lastSeenAt = lastSeenAt;
+  zendeskAuthState.orgTimeoutMinutes = orgTimeoutMinutes;
+  zendeskAuthState.expiresAt = expiresAt;
+  zendeskAuthState.timeLeftMs = Number.isFinite(timeLeftMs) ? timeLeftMs : null;
+  zendeskAuthState.source = source;
+  zendeskAuthState.reason = reason;
+  zendeskAuthState.checkedAt = Date.now();
+
+  const payload = getAuthStatePayload({
+    status: Number(result && result.status) || 200
+  });
+  broadcastAuthEvent("AUTHENTICATED", payload);
+
+  if (expiresAt > 0) {
+    const nextTimeLeftMs = expiresAt - Date.now();
+    if (nextTimeLeftMs <= AUTH_ABOUT_TO_EXPIRE_MS) {
+      if (sessionAboutToExpireSentForDeadline !== expiresAt) {
+        sessionAboutToExpireSentForDeadline = expiresAt;
+        broadcastAuthEvent("ABOUT_TO_EXPIRE", payload);
+      }
+    } else {
+      sessionAboutToExpireSentForDeadline = 0;
+    }
+  } else {
+    sessionAboutToExpireSentForDeadline = 0;
+  }
+
+  if (Number.isFinite(zendeskAuthState.timeLeftMs) && zendeskAuthState.timeLeftMs <= 0) {
+    scheduleSessionCheck(AUTH_POLL_MIN_MS);
+    return;
+  }
+  scheduleSessionCheck(computeAdaptivePollDelayMs(zendeskAuthState.timeLeftMs, true));
+}
+
+function setLoggedOutState(reason, details) {
+  const source = details && details.source ? String(details.source) : "unknown";
+  const status = Number(details && details.status) || 0;
+  zendeskAuthState.loggedIn = false;
+  zendeskAuthState.session = null;
+  zendeskAuthState.lastSeenAt = 0;
+  zendeskAuthState.orgTimeoutMinutes = 0;
+  zendeskAuthState.expiresAt = 0;
+  zendeskAuthState.timeLeftMs = null;
+  zendeskAuthState.source = source;
+  zendeskAuthState.reason = String(reason || "logged_out");
+  zendeskAuthState.checkedAt = Date.now();
+  sessionAboutToExpireSentForDeadline = 0;
+
+  const payload = getAuthStatePayload({ status });
+  broadcastAuthEvent("LOGGED_OUT", payload);
+  scheduleSessionCheck(AUTH_POLL_LOGGED_OUT_MS);
+}
+
+function isSessionSuccess(result) {
+  return Number(result && result.status) === 200;
+}
+
+function isSessionLoggedOut(result) {
+  const status = Number(result && result.status);
+  return status === 401 || status === 403;
+}
+
+function isContentScriptUnavailableError(errorMessage) {
+  const text = String(errorMessage || "").toLowerCase();
+  if (!text) return false;
+  return text.includes("receiving end does not exist")
+    || text.includes("could not establish connection")
+    || text.includes("message port closed");
+}
+
+async function queryZendeskTabs() {
+  try {
+    const tabs = await chrome.tabs.query({ url: ZENDESK_TAB_QUERY_PATTERN });
+    return Array.isArray(tabs) ? tabs : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function pickPreferredZendeskTab(tabs) {
+  const candidates = Array.isArray(tabs) ? tabs : [];
+  if (!candidates.length) return null;
+  const activeCurrentWindow = candidates.find((tab) => tab && tab.active && tab.highlighted);
+  if (activeCurrentWindow) return activeCurrentWindow;
+  const currentWindowTab = candidates.find((tab) => tab && tab.windowId != null);
+  return currentWindowTab || candidates[0];
+}
+
+function checkZendeskSessionViaTab(tabId) {
+  return new Promise((resolve, reject) => {
+    if (tabId == null) {
+      reject(new Error("Zendesk tab unavailable"));
+      return;
+    }
+    chrome.tabs.sendMessage(
+      tabId,
+      {
+        type: "ZIP_SESSION_PROBE",
+        url: ZENDESK_SESSION_URL,
+        source: "background"
+      },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message || "Zendesk content script unavailable"));
+          return;
+        }
+        if (!response || typeof response !== "object") {
+          reject(new Error("Zendesk content script did not return a session response"));
+          return;
+        }
+        resolve({
+          ok: !!response.ok,
+          status: Number(response.status) || 0,
+          payload: response.payload || null,
+          source: "content",
+          tabId
+        });
+      }
+    );
+  });
+}
+
+async function checkZendeskSessionViaContentScript() {
+  const tabs = await queryZendeskTabs();
+  if (!tabs.length) {
+    throw new Error("No Zendesk tab found for content-script session check.");
+  }
+  const preferred = pickPreferredZendeskTab(tabs);
+  const ordered = preferred
+    ? [preferred].concat(tabs.filter((tab) => tab && preferred && tab.id !== preferred.id))
+    : tabs.slice();
+  let lastError = null;
+  for (let i = 0; i < ordered.length; i += 1) {
+    const tab = ordered[i];
+    if (!tab || tab.id == null) continue;
+    try {
+      return await checkZendeskSessionViaTab(tab.id);
+    } catch (err) {
+      lastError = err || new Error("Session probe failed");
+    }
+  }
+  throw lastError || new Error("Unable to probe Zendesk session via content script.");
+}
+
+async function checkZendeskSessionViaBackgroundFetch() {
+  let payload = null;
+  let status = 0;
+  try {
+    const response = await fetch(ZENDESK_SESSION_URL, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "include",
+      headers: { Accept: "application/json" }
+    });
+    status = Number(response.status) || 0;
+    try {
+      payload = await response.json();
+    } catch (_) {
+      payload = null;
+    }
+    return {
+      ok: status === 200,
+      status,
+      payload,
+      source: "background_fetch"
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      payload: null,
+      source: "background_fetch",
+      error: err && err.message ? err.message : "Background session fetch failed"
+    };
+  }
+}
+
+async function forceCheck(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const reason = String(opts.reason || "force_check");
+  if (sessionCheckInFlight) {
+    return { ok: false, inFlight: true };
+  }
+
+  sessionCheckInFlight = true;
+  try {
+    let result = null;
+    try {
+      result = await checkZendeskSessionViaContentScript();
+    } catch (err) {
+      if (isContentScriptUnavailableError(err && err.message)) {
+        result = await checkZendeskSessionViaBackgroundFetch();
+      } else {
+        result = await checkZendeskSessionViaBackgroundFetch();
+      }
+    }
+
+    if (isSessionSuccess(result)) {
+      setAuthenticatedState(result, { source: result.source, reason });
+      return { ok: true, checkedVia: result.source, status: result.status };
+    }
+    if (isSessionLoggedOut(result)) {
+      setLoggedOutState("zendesk_logged_out", {
+        source: result.source,
+        status: result.status
+      });
+      return { ok: false, checkedVia: result.source, status: result.status };
+    }
+
+    scheduleSessionCheck(computeAdaptivePollDelayMs(zendeskAuthState.timeLeftMs, zendeskAuthState.loggedIn));
+    return {
+      ok: false,
+      checkedVia: result && result.source ? result.source : "unknown",
+      status: Number(result && result.status) || 0
+    };
+  } finally {
+    sessionCheckInFlight = false;
+  }
+}
+
+function handleZendeskContentSessionOk(message) {
+  const payload = message && typeof message === "object" ? message : {};
+  const status = Number(payload.status) || 200;
+  const result = {
+    ok: true,
+    status: status === 200 ? 200 : status,
+    payload: payload.payload || payload.session || {},
+    source: "content_event"
+  };
+  setAuthenticatedState(result, {
+    source: "content_event",
+    reason: payload.reason || "content_reported_session_ok"
+  });
+}
+
+function handleZendeskContentLogout(message) {
+  const payload = message && typeof message === "object" ? message : {};
+  setLoggedOutState(payload.reason || "content_reported_logout", {
+    source: "content_event",
+    status: Number(payload.status) || 401
+  });
+}
+
+async function handleLoginClicked() {
+  clearSessionPollTimer();
+  const q = "*://" + config.subdomain + ".zendesk.com/*";
+  const tabs = await new Promise((resolve) => {
+    try {
+      chrome.tabs.query({ url: q }, (rows) => {
+        void chrome.runtime.lastError;
+        resolve(Array.isArray(rows) ? rows : []);
+      });
+    } catch (_) {
+      resolve([]);
+    }
+  });
+  let targetTabId = null;
+  let openedNewTab = false;
+  if (tabs && tabs.length > 0) {
+    if (tabs[0] && tabs[0].id != null) {
+      targetTabId = tabs[0].id;
+      const shouldNavigateToRoot = !zendeskAuthState.loggedIn;
+      const updatePayload = shouldNavigateToRoot
+        ? { active: true, url: ZENDESK_LOGIN_TAB_URL }
+        : { active: true };
+      await new Promise((resolve) => {
+        try {
+          chrome.tabs.update(tabs[0].id, updatePayload, () => {
+            void chrome.runtime.lastError;
+            resolve();
+          });
+        } catch (_) {
+          resolve();
+        }
+      });
+      if (tabs[0].windowId != null) {
+        await new Promise((resolve) => {
+          try {
+            chrome.windows.update(tabs[0].windowId, { focused: true }, () => {
+              void chrome.runtime.lastError;
+              resolve();
+            });
+          } catch (_) {
+            resolve();
+          }
+        });
+      }
+    }
+  } else {
+    const created = await new Promise((resolve) => {
+      try {
+        chrome.tabs.create({ url: "https://" + config.subdomain + ".zendesk.com" }, (tab) => {
+          void chrome.runtime.lastError;
+          resolve(tab || null);
+        });
+      } catch (_) {
+        resolve(null);
+      }
+    });
+    targetTabId = created && created.id != null ? created.id : null;
+    openedNewTab = true;
+  }
+  // Do not authenticate inside extension context. Zendesk main tab remains authoritative.
+  setTimeout(() => {
+    forceCheck({ reason: "login_clicked" }).catch(() => {});
+  }, 1500);
+  return {
+    ok: true,
+    tabId: targetTabId,
+    openedNewTab
+  };
+}
 
 function getThemeOption(themeId) {
   const normalized = String(themeId || "").trim().toLowerCase();
@@ -264,8 +761,8 @@ function getToggleMenuItemTitle(currentSide) {
 }
 
 function getAskEricMenuTitle() {
-  if (contextMenuState.grouped) return "Ask Eric";
-  return getZipRootMenuTitle() + " | Ask Eric";
+  if (contextMenuState.grouped) return MENU_ASK_ERIC_LABEL;
+  return getZipRootMenuTitle() + " | " + MENU_ASK_ERIC_LABEL;
 }
 
 function parseVersionPart(value) {
@@ -429,6 +926,22 @@ function isZendeskUrl(urlString) {
   try {
     const url = new URL(urlString);
     return url.origin === ZENDESK_ORIGIN;
+  } catch (_) {
+    return false;
+  }
+}
+
+function isTrustedZendeskContentSender(sender) {
+  const rawUrl = String(
+    (sender && sender.url)
+    || (sender && sender.tab && sender.tab.url)
+    || ""
+  ).trim();
+  if (!rawUrl) return false;
+  try {
+    const url = new URL(rawUrl);
+    const host = String(url.hostname || "").toLowerCase();
+    return host === (config.subdomain + ".zendesk.com");
   } catch (_) {
     return false;
   }
@@ -2085,7 +2598,7 @@ async function createThemeContextMenuItems(parentId) {
     await createContextMenuItem({
       id: MENU_THEME_PARENT,
       parentId,
-      title: "Appearance",
+      title: MENU_APPEARANCE_LABEL,
       contexts: MENU_CONTEXTS
     });
   }
@@ -2108,16 +2621,17 @@ async function createGroupedContextMenus(currentSide, shouldShowGetLatest) {
     title: getZipRootMenuTitle(),
     contexts: MENU_CONTEXTS
   });
-  await createContextMenuItem({
-    id: MENU_TOGGLE_SIDE,
-    parentId: MENU_ROOT,
-    title: getToggleMenuItemTitle(currentSide),
-    contexts: MENU_CONTEXTS
-  });
+  await createThemeContextMenuItems(MENU_ROOT);
   await createContextMenuItem({
     id: MENU_ASK_ERIC,
     parentId: MENU_ROOT,
     title: getAskEricMenuTitle(),
+    contexts: MENU_CONTEXTS
+  });
+  await createContextMenuItem({
+    id: MENU_TOGGLE_SIDE,
+    parentId: MENU_ROOT,
+    title: getToggleMenuItemTitle(currentSide),
     contexts: MENU_CONTEXTS
   });
   if (shouldShowGetLatest) {
@@ -2128,18 +2642,18 @@ async function createGroupedContextMenus(currentSide, shouldShowGetLatest) {
       contexts: MENU_CONTEXTS
     });
   }
-  await createThemeContextMenuItems(MENU_ROOT);
 }
 
 async function createFlatContextMenus(currentSide, shouldShowGetLatest) {
-  await createContextMenuItem({
-    id: MENU_TOGGLE_SIDE,
-    title: getToggleMenuItemTitle(currentSide),
-    contexts: MENU_CONTEXTS
-  });
+  await createThemeContextMenuItems(null);
   await createContextMenuItem({
     id: MENU_ASK_ERIC,
     title: getAskEricMenuTitle(),
+    contexts: MENU_CONTEXTS
+  });
+  await createContextMenuItem({
+    id: MENU_TOGGLE_SIDE,
+    title: getToggleMenuItemTitle(currentSide),
     contexts: MENU_CONTEXTS
   });
   if (shouldShowGetLatest) {
@@ -2149,7 +2663,6 @@ async function createFlatContextMenus(currentSide, shouldShowGetLatest) {
       contexts: MENU_CONTEXTS
     });
   }
-  await createThemeContextMenuItems(null);
 }
 
 async function createContextMenus() {
@@ -2473,6 +2986,7 @@ async function bootstrap() {
   await refreshUpdateState({ force: true }).catch(() => {});
   await createContextMenus();
   await updateToggleMenuTitle(sidePanelState.layout);
+  forceCheck({ reason: "bootstrap" }).catch(() => {});
 }
 
 wireLifecycleEvents();
@@ -2531,7 +3045,51 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || typeof msg !== "object") return;
+  if (msg.type === "LOGIN_CLICKED") {
+    handleLoginClicked()
+      .then((result) => sendResponse(result || { ok: true }))
+      .catch((err) => sendResponse({
+        ok: false,
+        error: err && err.message ? err.message : "Unable to focus or open Zendesk login tab."
+      }));
+    return true;
+  }
+  if (msg.type === "ZIP_GET_AUTH_STATE") {
+    sendResponse(getAuthStatePayload());
+    return true;
+  }
+  if (msg.type === "ZIP_FORCE_CHECK") {
+    forceCheck({
+      reason: msg.reason || "zip_force_check"
+    })
+      .then((result) => sendResponse({ ...(result || {}), payload: getAuthStatePayload() }))
+      .catch((err) => sendResponse({
+        ok: false,
+        error: err && err.message ? err.message : "Session check failed.",
+        payload: getAuthStatePayload()
+      }));
+    return true;
+  }
+  if (msg.type === "ZD_SESSION_OK") {
+    if (!isTrustedZendeskContentSender(sender)) {
+      sendResponse({ ok: false, error: "Ignoring untrusted session source." });
+      return true;
+    }
+    handleZendeskContentSessionOk(msg);
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.type === "ZD_LOGOUT") {
+    if (!isTrustedZendeskContentSender(sender)) {
+      sendResponse({ ok: false, error: "Ignoring untrusted session source." });
+      return true;
+    }
+    handleZendeskContentLogout(msg);
+    sendResponse({ ok: true });
+    return true;
+  }
   if (msg.type === "ZIP_REQUEST") {
     const { requestId, tabId, inner } = msg;
     chrome.tabs.sendMessage(tabId, { type: "ZIP_FROM_BACKGROUND", requestId, inner }, (response) => {
@@ -2703,10 +3261,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg.type === "ZIP_OPEN_LOGIN") {
-    const url = msg.url || ZENDESK_ORIGIN + "/auth/v3/signin?return_to=" + encodeURIComponent(ZENDESK_ORIGIN + "/agent/filters/36464467");
-    chrome.tabs.create({ url }, (tab) => {
-      sendResponse({ tabId: tab?.id ?? null, error: chrome.runtime.lastError?.message });
-    });
+    // Backward-compatible alias: still enforce the same strict main-tab Zendesk login behavior.
+    handleLoginClicked()
+      .then((result) => sendResponse(result || { ok: true }))
+      .catch((err) => sendResponse({
+        ok: false,
+        error: err && err.message ? err.message : "Unable to focus or open Zendesk login tab."
+      }));
     return true;
   }
   if (msg.type === "ZIP_OPEN_SLACK_LOGIN") {

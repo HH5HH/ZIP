@@ -14,7 +14,7 @@
         <span id="zipTopAvatarFallback" class="top-avatar-fallback">?</span>
       </div>
     </div>
-    <select id="zipDocsMenu" class="docs-menu zip-select-control spectrum-Textfield-input" title="Open Adobe Pass resources" aria-label="Open Adobe Pass resources">
+    <select id="zipDocsMenu" class="docs-menu zip-select-control" title="Open Adobe Pass resources" aria-label="Open Adobe Pass resources">
       <option value="">Links</option>
       <option value="https://status.adobe.com/products/503478">status.adobe</option>
       <option value="https://experienceleague.adobe.com/en/docs/pass">pass docs</option>
@@ -27,9 +27,6 @@
       <option value="https://sp.auth-staging.adobe.com/apitest/api.html">apitest</option>
       <option value="https://tve.zendesk.com/hc/en-us">pt hub</option>
     </select>
-    <button id="zipSignoutBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS">
-      <span class="spectrum-Button-label">Sign out</span>
-    </button>
   </header>
   <div class="body">
     <div id="zipLoginScreen" class="login-wrap">
@@ -70,17 +67,20 @@
           </div>
           <div class="ticket-section-filters">
             <div class="ticket-section-by-group">
-              <select id="zipGroupMemberSelect" class="org-select group-member-select zip-select-control spectrum-Textfield-input" aria-label="By Group or Agent">
+              <label class="spectrum-FieldLabel spectrum-FieldLabel--sizeS zip-filter-label" for="zipGroupMemberSelect">By Group / Agent</label>
+              <select id="zipGroupMemberSelect" class="org-select group-member-select zip-select-control" aria-label="By Group or Agent">
                 <option value="">By Group / Agent</option>
               </select>
             </div>
             <div class="ticket-section-by-view">
-              <select id="zipViewSelect" class="org-select view-select zip-select-control spectrum-Textfield-input" aria-label="By View">
+              <label class="spectrum-FieldLabel spectrum-FieldLabel--sizeS zip-filter-label" for="zipViewSelect">By View</label>
+              <select id="zipViewSelect" class="org-select view-select zip-select-control" aria-label="By View">
                 <option value="">By View</option>
               </select>
             </div>
             <div class="ticket-section-by-org">
-              <select id="zipOrgSelect" class="org-select org-count-select zip-select-control spectrum-Textfield-input" aria-label="By Organization">
+              <label class="spectrum-FieldLabel spectrum-FieldLabel--sizeS zip-filter-label" for="zipOrgSelect">By Organization</label>
+              <select id="zipOrgSelect" class="org-select org-count-select zip-select-control" aria-label="By Organization">
                 <option value="">By Organization</option>
               </select>
             </div>
@@ -93,8 +93,13 @@
           </table>
         </div>
         <div class="ticket-table-footer control-row">
-          <input id="zipTicketSearch" class="zip-text-input spectrum-Textfield-input" type="text" placeholder="search" />
-          <select id="zipStatusFilter" class="zip-select-control spectrum-Textfield-input">
+          <button id="zipTogglePassAiBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS hidden" title="Open Q and AI panel" aria-label="Open Q and AI panel" disabled>
+            <img class="zip-pass-ai-toggle-icon" src="https://avatars.slack-edge.com/2023-11-15/6196448729237_750b72455b05b8c81a1c_512.jpg" alt="" />
+          </button>
+          <label class="zip-visually-hidden" for="zipTicketSearch">Search assigned tickets</label>
+          <input id="zipTicketSearch" class="zip-text-input spectrum-Textfield-input" type="text" placeholder="search" aria-label="Search assigned tickets" />
+          <label class="zip-visually-hidden" for="zipStatusFilter">Filter tickets by status</label>
+          <select id="zipStatusFilter" class="zip-select-control" aria-label="Filter tickets by status">
             <option value="all">all</option>
           </select>
           <button id="zipReloadTicketsBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Refresh" aria-label="Refresh tickets">
@@ -107,6 +112,9 @@
           </button>
         </div>
         <div id="zipPassAiResultsBox" class="zip-pass-ai-results-box hidden" aria-live="polite">
+          <div class="zip-pass-ai-panel-header">
+            <span class="zip-pass-ai-panel-title">Q and AI</span>
+          </div>
           <div id="zipPassAiError" class="zip-pass-ai-error hidden" role="alert"></div>
           <section id="zipPassAiQuestionBlock" class="zip-pass-ai-block zip-pass-ai-question-block">
             <label id="zipPassAiQuestionLabel" for="zipPassAiQuestion" class="zip-pass-ai-label hidden">ZD #{ticket_id} says:</label>
@@ -140,7 +148,8 @@
         <h3>ZD API – GET</h3>
         <div class="api-form">
           <div class="control-row">
-            <select id="zipApiPathSelect" class="zip-select-control spectrum-Textfield-input"></select>
+            <label class="spectrum-FieldLabel spectrum-FieldLabel--sizeS zip-filter-label zip-api-path-label" for="zipApiPathSelect">API Path</label>
+            <select id="zipApiPathSelect" class="zip-select-control" aria-label="Zendesk API path"></select>
           </div>
           <div id="zipApiParams" class="api-form"></div>
           <div class="control-row api-run-row">
@@ -194,16 +203,52 @@
       <span id="zipContextMenuBuild" class="zip-context-menu-build">ZIP</span>
     </div>
     <div class="zip-context-menu-divider" role="separator"></div>
-    <div id="zipContextMenuThemeLabel" class="zip-context-menu-section-title">Appearance : Dark x Blue</div>
-    <div id="zipContextMenuThemePicker" class="zip-context-menu-theme-picker" role="group" aria-labelledby="zipContextMenuThemeLabel"></div>
+    <div id="zipContextMenuAppearanceRow" class="zip-context-menu-item zip-context-menu-theme-entry" role="group" aria-label="Appearance settings">
+      <span class="zip-context-menu-item-icon" aria-hidden="true">
+        <svg class="zip-context-menu-item-icon-svg" viewBox="0 0 20 20" focusable="false">
+          <path d="M10 4c4.3 0 7.8 3 9 6-1.2 3-4.7 6-9 6s-7.8-3-9-6c1.2-3 4.7-6 9-6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+          <circle cx="10" cy="10" r="2.6" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+        </svg>
+      </span>
+      <span class="zip-context-menu-item-label">Appearance :</span>
+      <button id="zipContextMenuThemeStopToggle" class="zip-context-menu-chip" type="button" aria-label="Toggle between dark and light themes">Dark</button>
+      <span class="zip-context-menu-theme-entry-separator" aria-hidden="true">x</span>
+      <button id="zipContextMenuThemeColorToggle" class="zip-context-menu-chip zip-context-menu-color-chip" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Open theme color picker">Blue</button>
+    </div>
     <div class="zip-context-menu-divider" role="separator"></div>
-    <button id="zipContextMenuAskEric" class="zip-context-menu-item" type="button" role="menuitem">Ask Eric</button>
-    <button id="zipContextMenuToggleSide" class="zip-context-menu-item" type="button" role="menuitem">⚙ > Side panel position</button>
+    <button id="zipContextMenuAskEric" class="zip-context-menu-item" type="button" role="menuitem">
+      <span class="zip-context-menu-item-icon" aria-hidden="true">
+        <svg class="zip-context-menu-item-icon-svg" viewBox="0 0 20 20" focusable="false">
+          <rect x="2.5" y="4.5" width="15" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+          <path d="M3 6l7 5 7-5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </span>
+      <span class="zip-context-menu-item-label">Ask Eric</span>
+    </button>
+    <button id="zipContextMenuToggleSide" class="zip-context-menu-item" type="button" role="menuitem">
+      <span class="zip-context-menu-item-icon" aria-hidden="true">
+        <svg class="zip-context-menu-item-icon-svg" viewBox="0 0 20 20" focusable="false">
+          <path d="M8.2 2.5h3.6l.4 2.2c.4.1.8.3 1.1.5l2-1 2.5 2.5-1 2c.2.3.4.7.5 1.1l2.2.4v3.6l-2.2.4c-.1.4-.3.8-.5 1.1l1 2-2.5 2.5-2-1c-.3.2-.7.4-1.1.5l-.4 2.2H8.2l-.4-2.2c-.4-.1-.8-.3-1.1-.5l-2 1-2.5-2.5 1-2c-.2-.3-.4-.7-.5-1.1l-2.2-.4V8.8l2.2-.4c.1-.4.3-.8.5-1.1l-1-2 2.5-2.5 2 1c.3-.2.7-.4 1.1-.5l.4-2.2z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"></path>
+          <circle cx="10" cy="10.6" r="2.4" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+        </svg>
+      </span>
+      <span class="zip-context-menu-item-label">Side panel position</span>
+    </button>
     <button id="zipContextMenuGetLatest" class="zip-context-menu-item hidden" type="button" role="menuitem">Get Latest</button>
-    <button id="zipContextMenuToggleZdApi" class="zip-context-menu-item" type="button" role="menuitem">Show ZD API</button>
+    <button id="zipContextMenuToggleZdApi" class="zip-context-menu-item" type="button" role="menuitem">
+      <span class="zip-context-menu-item-icon" aria-hidden="true">
+        <svg class="zip-context-menu-item-icon-svg" viewBox="0 0 20 20" focusable="false">
+          <path d="M6.2 15.5h8.6a3.2 3.2 0 0 0 .3-6.4A4.9 4.9 0 0 0 5.6 8a3.8 3.8 0 0 0 .6 7.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+          <path d="M10 7.3v6.6M7.6 9.7l2.4-2.4 2.4 2.4M7.6 13.3h4.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </span>
+      <span id="zipContextMenuToggleZdApiLabel" class="zip-context-menu-item-label">Show ZD API</span>
+    </button>
   </div>
   <div id="zipContextMenuThemeFlyout" class="zip-context-menu-theme-flyout hidden" role="menu" aria-label="Spectrum 2 accent colors"></div>
   <script src="paths.js"></script>
+  <script src="theme-palette-data.js"></script>
+  <script src="sidepanel-login-fallback.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

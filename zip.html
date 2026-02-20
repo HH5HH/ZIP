@@ -48,7 +48,7 @@
     </ol>
 
     <div class="btn-row">
-      <button type="button" class="install-btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" id="open-extensions-btn" title="Chrome blocks direct links to chrome:// — this copies the URL so you can paste it in the address bar">
+      <button type="button" class="install-btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" id="open-extensions-btn" data-copy-url="chrome://extensions" title="Chrome blocks direct links to chrome:// — this copies the URL so you can paste it in the address bar">
         <span class="spectrum-Button-label">Copy chrome://extensions link</span>
       </button>
       <span id="extensions-feedback" class="btn-feedback" aria-live="polite"></span>
@@ -73,46 +73,6 @@
       If your team cannot use "Load unpacked", your Chrome admin can deploy this extension centrally via enterprise policy.
     </div>
   </main>
-  <script>
-    (function () {
-      var EXTENSIONS_URL = 'chrome://extensions';
-      var btn = document.getElementById('open-extensions-btn');
-      var feedback = document.getElementById('extensions-feedback');
-      var hint = document.getElementById('extensions-hint');
-
-      function showFeedback(msg) {
-        if (feedback) feedback.textContent = msg;
-        if (hint) hint.classList.add('visible');
-        if (feedback && msg) setTimeout(function () { feedback.textContent = ''; }, 4000);
-      }
-
-      if (btn) {
-        btn.addEventListener('click', function () {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(EXTENSIONS_URL).then(function () {
-              showFeedback('Copied! ');
-            }).catch(function () {
-              showFeedback('Select and copy: ' + EXTENSIONS_URL);
-            });
-          } else {
-            try {
-              var ta = document.createElement('textarea');
-              ta.value = EXTENSIONS_URL;
-              ta.setAttribute('readonly', '');
-              ta.style.position = 'absolute';
-              ta.style.left = '-9999px';
-              document.body.appendChild(ta);
-              ta.select();
-              document.execCommand('copy');
-              document.body.removeChild(ta);
-              showFeedback('Copied! ');
-            } catch (e) {
-              showFeedback('Copy this: ' + EXTENSIONS_URL);
-            }
-          }
-        });
-      }
-    })();
-  </script>
+  <script src="./zip-chrome-extension/install-hub.js"></script>
 </body>
 </html>

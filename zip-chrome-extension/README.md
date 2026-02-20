@@ -2,6 +2,16 @@
 
 **ZIP = Zeek Info Peek** — ZIP into INFO from the Zendesk API.
 
+## NO POPUPS OR NEW AUTH FLOWS
+
+**Critical policy:** ZIP does not introduce popup login, OAuth login, token exchange, or any alternate Zendesk auth UX.
+
+- `Login with Zendesk` in the sidepanel only does one of two things:
+- Focus an existing Zendesk tab (`https://{subdomain}.zendesk.com/*`) in the main browser context.
+- Open a normal browser tab to `https://{subdomain}.zendesk.com` when no Zendesk tab exists.
+- ZIP has no local `Sign out` control. Session state is fully synchronized to Zendesk session state.
+- Session authority is `GET /api/v2/users/me/session` from the Zendesk content script, with background fallback only when the content script is unavailable.
+
 ## Quick Start (Urgent Line Paged)
 
 If the urgent line just paged, do this now:
@@ -30,6 +40,24 @@ ZIP is now distributed as a pure Chrome Manifest V3 extension.
 - One-time setup (already run in this repo): `scripts/install_git_hooks.sh`
 
 Result: every ZIP code/content commit bumps patch version (`x.y.z` -> `x.y.(z+1)`) automatically.
+
+## Spectrum 2 MCP Power Tools
+
+Use these commands when you want ZIP work to stay tightly aligned with official Spectrum 2 data.
+
+1. Patch cached `spectrum-design-data-mcp` loader paths (stops empty token/schema responses caused by bad fallback paths):
+   - `scripts/patch_spectrum_mcp_paths.sh`
+2. Sync MCP data sources (refreshes docs and fallback mirrors):
+   - `scripts/sync_spectrum_mcp_data.sh`
+3. Recommend closest Spectrum color tokens for a use case:
+   - `node scripts/recommend_spectrum_token.js "primary button blue"`
+4. Enforce palette token drift guardrails in tests:
+   - `node --test tests/spectrum-token.guardrails.test.js`
+
+Notes:
+- The sync script mirrors token/schema data into the current npx MCP cache and refreshes `~/Spectrum/spectrum-design-data/docs/s2-docs`.
+- This does not modify ZIP auth/session behavior.
+- If your assistant reports MCP `Transport closed`, restart the assistant session after running the patch/sync commands.
 
 After one-time install, runtime flow is:
 
@@ -83,12 +111,26 @@ Also available:
 
 Runs only on:
 
-- `https://adobeprimetime.zendesk.com/*`
+- `https://*.zendesk.com/*`
 
 Uses active logged-in Zendesk browser session to call:
 
 - `/api/v2/users/me.json`
 - `/api/v2/search.json?query=type:ticket assignee:{email} status:open status:pending status:hold`
+
+## Auth QA Checklist (Sidepanel)
+
+- Open ZIP sidepanel with a valid Zendesk tab/session:
+- Sidepanel should transition to authenticated UI quickly (content script auth event first, fallback check second).
+- No popup windows should appear.
+- Open ZIP sidepanel while logged out:
+- Sidepanel shows login UI.
+- Clicking `Login with Zendesk` must focus/open a standard Zendesk tab only.
+- No `window.open`, no `chrome.windows.create({ type: "popup" })`, and no OAuth/token-exchange login endpoints for Zendesk should be invoked.
+- Trigger Zendesk logout in a Zendesk tab:
+- Content script should emit immediate logout and sidepanel should return to login UI.
+- Confirm no local `Sign out` control exists in the sidepanel UI.
+- Confirm no `DELETE /api/v2/users/me/logout` request is sent by ZIP.
 
 ## Side Panel Controls
 
