@@ -1,0 +1,25 @@
+{
+  "name": "zip",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test zip-chrome-extension/tests/*.test.js",
+    "test:smoke": "node --test zip-chrome-extension/tests/*playwright*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HH5HH/ZIP.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/HH5HH/ZIP/issues"
+  },
+  "homepage": "https://github.com/HH5HH/ZIP#readme",
+  "devDependencies": {
+    "playwright": "^1.58.2"
+  }
+}
