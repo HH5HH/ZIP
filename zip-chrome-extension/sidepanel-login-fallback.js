@@ -5,6 +5,10 @@
   window.__ZIP_LOGIN_FALLBACK_LOADED__ = true;
 
   const ZENDESK_BASE_URL = "https://adobeprimetime.zendesk.com";
+  const ZENDESK_DASHBOARD_URL = ZENDESK_BASE_URL + "/agent/dashboard";
+  const ZENDESK_LOGIN_WITH_RETURN_URL = ZENDESK_BASE_URL
+    + "/access/login?return_to="
+    + encodeURIComponent(ZENDESK_DASHBOARD_URL);
   const ZENDESK_TAB_QUERY = "*://adobeprimetime.zendesk.com/*";
 
   function queryZendeskTabs() {
@@ -31,7 +35,7 @@ function focusZendeskTab(tab) {
       return;
     }
     try {
-      chrome.tabs.update(tab.id, { active: true, url: ZENDESK_BASE_URL }, () => {
+      chrome.tabs.update(tab.id, { active: true, url: ZENDESK_LOGIN_WITH_RETURN_URL }, () => {
         void chrome.runtime.lastError;
         if (tab.windowId != null && chrome.windows && typeof chrome.windows.update === "function") {
           chrome.windows.update(tab.windowId, { focused: true }, () => {
@@ -55,7 +59,7 @@ function focusZendeskTab(tab) {
           resolve({ ok: false, error: "tabs API unavailable" });
           return;
         }
-        chrome.tabs.create({ url: ZENDESK_BASE_URL }, (tab) => {
+        chrome.tabs.create({ url: ZENDESK_LOGIN_WITH_RETURN_URL }, (tab) => {
           if (chrome.runtime.lastError) {
             resolve({ ok: false, error: chrome.runtime.lastError.message || "Unable to open Zendesk tab." });
             return;

@@ -5,6 +5,9 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
 const BACKGROUND_PATH = path.join(ROOT, "background.js");
+const ZENDESK_DASHBOARD_URL = "https://adobeprimetime.zendesk.com/agent/dashboard";
+const ZENDESK_LOGIN_WITH_RETURN_URL = "https://adobeprimetime.zendesk.com/access/login?return_to="
+  + encodeURIComponent(ZENDESK_DASHBOARD_URL);
 
 async function loadPlaywrightOrSkip(t) {
   try {
@@ -271,6 +274,11 @@ test("Playwright smoke: LOGIN_CLICKED does not create popup windows", async (t) 
   const existingTabCalls = await page.evaluate(() => window.__zipPlaywrightHarness.callsSnapshot());
   assert.equal(existingTabResponse && existingTabResponse.ok, true);
   assert.equal(existingTabCalls.tabsUpdate.length, 1, "expected existing Zendesk tab to be focused");
+  assert.equal(
+    String(existingTabCalls.tabsUpdate[0] && existingTabCalls.tabsUpdate[0].updateInfo && existingTabCalls.tabsUpdate[0].updateInfo.url || ""),
+    ZENDESK_LOGIN_WITH_RETURN_URL,
+    "existing Zendesk tab should navigate to login with encoded dashboard return URL"
+  );
   assert.equal(existingTabCalls.windowsUpdate.length, 1, "expected existing Zendesk window to be focused");
   assert.equal(existingTabCalls.tabsCreate.length, 0, "should not create new tab when Zendesk tab exists");
   assert.equal(existingTabCalls.windowsCreate.length, 0, "must never create popup windows for Zendesk login");
@@ -287,5 +295,5 @@ test("Playwright smoke: LOGIN_CLICKED does not create popup windows", async (t) 
   assert.equal(createTabResponse && createTabResponse.ok, true);
   assert.equal(createTabCalls.tabsCreate.length, 1, "expected a normal Zendesk tab create when none exists");
   assert.equal(createTabCalls.windowsCreate.length, 0, "must never create popup windows for Zendesk login");
-  assert.match(String(createTabCalls.tabsCreate[0].url || ""), /^https:\/\/adobeprimetime\.zendesk\.com\/?$/);
+  assert.equal(String(createTabCalls.tabsCreate[0].url || ""), ZENDESK_LOGIN_WITH_RETURN_URL);
 });

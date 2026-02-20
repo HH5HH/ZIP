@@ -9,6 +9,9 @@ const BACKGROUND_PATH = path.join(ROOT, "background.js");
 const SIDEPANEL_PATH = path.join(ROOT, "sidepanel.js");
 const CONTENT_PATH = path.join(ROOT, "content.js");
 const SIDEPANEL_FALLBACK_PATH = path.join(ROOT, "sidepanel-login-fallback.js");
+const ZENDESK_DASHBOARD_URL = "https://adobeprimetime.zendesk.com/agent/dashboard";
+const ZENDESK_LOGIN_WITH_RETURN_URL = "https://adobeprimetime.zendesk.com/access/login?return_to="
+  + encodeURIComponent(ZENDESK_DASHBOARD_URL);
 
 function createStorageArea(seed) {
   const store = { ...(seed || {}) };
@@ -288,7 +291,7 @@ function createChromeHarness(options) {
 
 test("LOGIN_CLICKED focuses existing Zendesk tab and never opens popup windows", async () => {
   const harness = createChromeHarness({
-    zendeskTabs: [{ id: 42, windowId: 7, url: "https://adobeprimetime.zendesk.com/agent/dashboard" }]
+    zendeskTabs: [{ id: 42, windowId: 7, url: ZENDESK_DASHBOARD_URL }]
   });
   harness.resetCalls();
 
@@ -296,6 +299,11 @@ test("LOGIN_CLICKED focuses existing Zendesk tab and never opens popup windows",
 
   assert.equal(response && response.ok, true);
   assert.equal(harness.calls.tabsUpdate.length, 1, "existing Zendesk tab should be focused");
+  assert.equal(
+    String(harness.calls.tabsUpdate[0] && harness.calls.tabsUpdate[0].updateInfo && harness.calls.tabsUpdate[0].updateInfo.url || ""),
+    ZENDESK_LOGIN_WITH_RETURN_URL,
+    "existing Zendesk tab should navigate to login with encoded dashboard return URL"
+  );
   assert.equal(harness.calls.windowsUpdate.length, 1, "window should be focused for existing tab");
   assert.equal(harness.calls.tabsCreate.length, 0, "no new tab should be created when Zendesk tab exists");
   assert.equal(harness.calls.windowsCreate.length, 0, "Zendesk login must not use popup windows");
@@ -310,7 +318,7 @@ test("LOGIN_CLICKED opens a normal Zendesk tab when none exists", async () => {
   assert.equal(response && response.ok, true);
   assert.equal(harness.calls.tabsUpdate.length, 0);
   assert.equal(harness.calls.tabsCreate.length, 1, "a regular tab should be created");
-  assert.match(String(harness.calls.tabsCreate[0].url || ""), /^https:\/\/adobeprimetime\.zendesk\.com\/?$/);
+  assert.equal(String(harness.calls.tabsCreate[0].url || ""), ZENDESK_LOGIN_WITH_RETURN_URL);
   assert.equal(harness.calls.windowsCreate.length, 0, "Zendesk login must not open popup windows");
 });
 
@@ -351,6 +359,25 @@ test("sidepanel login wiring uses LOGIN_CLICKED with no ZIP local sign-out path"
   assert.match(source, /msg\.type === "ABOUT_TO_EXPIRE"/);
 });
 
+test("startup status waits for filter catalogs before announcing Ready", () => {
+  const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
+  const applySessionMatch = source.match(/async function applySession\(me\)\s*\{[\s\S]*?\n  \}/);
+  assert.ok(applySessionMatch, "applySession function not found");
+  const applySessionBody = applySessionMatch[0];
+
+  const loadingMenusIndex = applySessionBody.indexOf("Loading filter menus");
+  const catalogsIndex = applySessionBody.indexOf("loadFilterCatalogWithRetry(\"By Organization\", loadOrganizations)");
+  const firstReadyIndex = applySessionBody.indexOf("setStatus(\"Ready. ");
+
+  assert.notEqual(loadingMenusIndex, -1, "startup should show non-ready status while filter catalogs load");
+  assert.notEqual(catalogsIndex, -1, "filter catalog loading block should exist");
+  assert.notEqual(firstReadyIndex, -1, "ready status should exist");
+  assert.ok(
+    firstReadyIndex > catalogsIndex,
+    "first Ready status must occur only after filter catalog loading starts"
+  );
+});
+
 test("content script supports authoritative session probe and logout/session events", () => {
   const source = fs.readFileSync(CONTENT_PATH, "utf8");
   assert.match(source, /type === "ZIP_SESSION_PROBE"/);
@@ -364,6 +391,8 @@ test("sidepanel fallback script exists and opens Zendesk via tabs APIs", () => {
   assert.match(source, /ZIP_LOGIN_FALLBACK_OPEN/);
   assert.match(source, /chrome\.tabs\.query/);
   assert.match(source, /chrome\.tabs\.create/);
+  assert.match(source, /\/access\/login\?return_to=/);
+  assert.match(source, /encodeURIComponent\(ZENDESK_DASHBOARD_URL\)/);
   assert.doesNotMatch(source, /window\.open/);
 });
 

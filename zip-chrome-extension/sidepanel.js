@@ -2,29 +2,46 @@
   "use strict";
 
   const BASE = "https://adobeprimetime.zendesk.com";
+  const ZENDESK_DASHBOARD_URL = BASE + "/agent/dashboard";
+  const ZENDESK_LOGIN_WITH_RETURN_URL = BASE
+    + "/access/login?return_to="
+    + encodeURIComponent(ZENDESK_DASHBOARD_URL);
   const ASSIGNED_FILTER_PATH = "/agent/filters/36464467";
   const ASSIGNED_FILTER_URL = BASE + ASSIGNED_FILTER_PATH;
   const ZENDESK_TAB_QUERY = BASE.replace(/^https?:\/\//, "*://") + "/*";
+  const SLACK_TAB_QUERY = "*://*.slack.com/*";
   const TICKET_URL_PREFIX = BASE + "/agent/tickets/";
   const SHOW_TICKET_API_PATH = "/api/v2/tickets/{ticket_id}";
   const PASS_AI_SLACK_WORKSPACE_ORIGIN = "https://adobedx.slack.com";
   const PASS_AI_SLACK_API_ENDPOINT = PASS_AI_SLACK_WORKSPACE_ORIGIN + "/api";
   const PASS_AI_SLACK_APP_ID = "A0AGPACM3UG";
   const PASS_AI_SLACK_SINGULARITY_USER_ID = "U05PQCUFN0H";
-  const PASS_AI_SLACK_TEAM_ID = "T02CAQ0B2";
+  // Keep empty by default; only enforce a team when explicitly configured.
+  const PASS_AI_SLACK_TEAM_ID = "";
   const PASS_AI_SLACK_TEAM_STORAGE_KEY = "zip.passAi.expectedSlackTeamId";
-  const PASS_AI_SLACK_LOGIN_URL = PASS_AI_SLACK_WORKSPACE_ORIGIN + "/signin";
+  const PASS_AI_SLACK_OIDC_CLIENT_ID_STORAGE_KEY = "zip.passAi.slackOidc.clientId";
+  const PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY = "zip.passAi.slackOidc.clientSecret";
+  const PASS_AI_SLACK_OIDC_SCOPE_STORAGE_KEY = "zip.passAi.slackOidc.scope";
+  const PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY = "zip.passAi.slackOidc.redirectPath";
+  const PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.botToken";
+  const PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.userToken";
+  const PASS_AI_SLACK_OIDC_DEFAULT_SCOPE = "openid profile email";
+  const PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH = "slack-openid";
   const PASS_AI_SLACK_CHANNEL_STORAGE_KEY = "zip.passAi.singularityChannelId";
   const PASS_AI_SLACK_CHANNEL_DEFAULT = "C08SX9ZR891";
   const PASS_AI_SINGULARITY_MENTION_STORAGE_KEY = "zip.passAi.singularityMention";
   const PASS_AI_SINGULARITY_MENTION_DEFAULT = "@Singularity";
   const PASS_AI_SINGULARITY_NAME_PATTERN = "singularity";
+  const SLACKTIVATED_PENDING_ICON_URL = "icons/icon128.png";
+  const SLACKTIVATED_LOGIN_TOOLTIP = "ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/";
   const PASS_AI_POLL_INTERVAL_MS = 1500;
   const PASS_AI_POLL_MAX_ATTEMPTS = 48;
   const PASS_AI_INACTIVITY_FINAL_MS = 6000;
   const PASS_AI_MIN_SINGULARITY_REPLIES = 2;
   const PASS_AI_SLACK_AUTH_POLL_INTERVAL_MS = 2500;
   const PASS_AI_SLACK_AUTH_POLL_MAX_ATTEMPTS = 36;
+  const SLACK_IT_TO_ME_MAX_ROWS = 120;
+  const SLACK_IT_TO_ME_MAX_MESSAGE_CHARS = 36000;
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
   const DEFAULT_FOOTER_HINT = "Tip: Click your avatar for ZIP menu actions";
   const FOOTER_HINT_TOOLTIP = "Click your avatar to open the ZIP context menu.";
@@ -81,20 +98,21 @@
     sidePanelLayout: "unknown",
     zendeskTabId: null,
     slackTabId: null,
-    slackLoginWindowId: null,
-    slackAuthTabBootstrapAt: 0,
     passAiLoading: false,
+    passAiConversationInFlight: false,
     passAiTicketId: null,
     passAiActiveClientId: "",
     passAiSlackReady: false,
     passAiSlackAuthPolling: false,
     passAiSlackUserId: "",
-    passAiSlackTeamId: getExpectedPassAiSlackTeamId() || PASS_AI_SLACK_TEAM_ID,
+    passAiSlackUserName: "",
+    passAiSlackAvatarUrl: "",
+    passAiSlackWebReady: false,
     passAiSlackAuthError: "",
-    passAiSlackAuthBootstrapCount: 0,
     passAiLastThreadContext: null,
     passAiDeleteInFlight: false,
     passAiPanelVisible: false,
+    slackItToMeLoading: false,
     ticketEmailCopyBusyById: Object.create(null),
     ticketEmailUserEmailCacheById: Object.create(null),
     ticketEmailRequesterByTicketId: Object.create(null),
@@ -113,11 +131,16 @@
   let toastHideTimerId = null;
   let authHydrationInFlight = false;
   let authRefreshInFlight = false;
+  let slackAuthCheckInFlight = false;
+  let slackAuthCheckLastAt = 0;
+  let slackOpenIdSilentProbeLastAt = 0;
   let eventsWired = false;
   const AUTH_CHECK_INTERVAL_ACTIVE_MS = 60 * 1000;
   const AUTH_CHECK_INTERVAL_LOGGED_OUT_MS = 15 * 1000;
   const AUTH_CHECK_INTERVAL_HIDDEN_MS = 120 * 1000;
   const AUTH_CHECK_FORCE_GAP_MS = 1500;
+  const SLACK_AUTH_AUTO_REFRESH_MIN_GAP_MS = 8000;
+  const SLACK_OPENID_SILENT_PROBE_MIN_GAP_MS = 60 * 1000;
   const VIEW_COUNT_CACHE_KEY = "zip.filter.viewCounts.v1";
   const ORG_COUNT_CACHE_KEY = "zip.filter.orgCounts.v1";
   const GROUP_COUNT_CACHE_KEY = "zip.filter.groupCounts.v1";
@@ -266,6 +289,50 @@
       clampRgbChannel(triplet[1]),
       clampRgbChannel(triplet[2])
     ].join(", ");
+  }
+
+  function clampNumber(value, minValue, maxValue) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return minValue;
+    return Math.max(minValue, Math.min(maxValue, numeric));
+  }
+
+  function rgbTripletToHsl(triplet) {
+    const r = clampRgbChannel(triplet[0]) / 255;
+    const g = clampRgbChannel(triplet[1]) / 255;
+    const b = clampRgbChannel(triplet[2]) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    let hue = 0;
+    if (delta > 0) {
+      if (max === r) hue = ((g - b) / delta) % 6;
+      else if (max === g) hue = ((b - r) / delta) + 2;
+      else hue = ((r - g) / delta) + 4;
+      hue *= 60;
+      if (hue < 0) hue += 360;
+    }
+    const lightness = (max + min) / 2;
+    const saturation = delta === 0
+      ? 0
+      : (delta / (1 - Math.abs((2 * lightness) - 1)));
+    return [hue, saturation, lightness];
+  }
+
+  function degreesToRadians(value) {
+    return (Math.PI * Number(value || 0)) / 180;
+  }
+
+  function formatCssNumber(value, digits) {
+    return clampNumber(value, -999, 999).toFixed(digits).replace(/(?:\.0+|(\.\d+?)0+)$/, "$1");
+  }
+
+  function formatCssPercent(value) {
+    return formatCssNumber(clampNumber(value, 0, 100), 2) + "%";
+  }
+
+  function formatCssAlpha(value) {
+    return formatCssNumber(clampNumber(value, 0, 1), 3);
   }
 
   function buildTonePalette(baseRgb, paletteSet) {
@@ -614,13 +681,14 @@
     rawBody: $("zipRawBody"),
     rawDownload: $("zipRawDownload"),
     toast: $("zipToast"),
-    slackLoginBtn: $("zipSlackLoginBtn"),
     passAiCtaZone: $("zipPassAiCtaZone"),
     passAiSubmitWrap: $("zipPassAiSubmitWrap"),
     passAiSubmitHint: $("zipPassAiSubmitHint"),
+    slacktivatedBtn: $("zipSlacktivatedBtn"),
+    slacktivatedIcon: $("zipSlacktivatedIcon"),
     passAiToggleBtn: $("zipTogglePassAiBtn"),
+    passAiToggleIcon: $("zipTogglePassAiIcon"),
     askPassAiBtn: $("zipAskPassAiBtn"),
-    passAiSlackAuthStatus: $("zipPassAiSlackAuthStatus"),
     passAiInlineStatus: $("zipPassAiInlineStatus"),
     passAiResultsBox: $("zipPassAiResultsBox"),
     passAiError: $("zipPassAiError"),
@@ -632,6 +700,7 @@
     ticketSearch: $("zipTicketSearch"),
     statusFilter: $("zipStatusFilter"),
     reloadTicketsBtn: $("zipReloadTicketsBtn"),
+    slackItToMeBtn: $("zipSlackItToMeBtn"),
     exportCsvBtn: $("zipExportCsvBtn"),
     ticketHead: $("zipTicketHead"),
     ticketBody: $("zipTicketBody"),
@@ -677,7 +746,7 @@
         return;
       }
       try {
-        chrome.tabs.update(tab.id, { active: true, url: BASE }, () => {
+        chrome.tabs.update(tab.id, { active: true, url: ZENDESK_LOGIN_WITH_RETURN_URL }, () => {
           void chrome.runtime.lastError;
           if (tab.windowId != null && chrome.windows && typeof chrome.windows.update === "function") {
             chrome.windows.update(tab.windowId, { focused: true }, () => {
@@ -701,7 +770,7 @@
           resolve({ ok: false });
           return;
         }
-        chrome.tabs.create({ url: BASE }, (tab) => {
+        chrome.tabs.create({ url: ZENDESK_LOGIN_WITH_RETURN_URL }, (tab) => {
           if (chrome.runtime.lastError) {
             resolve({ ok: false, error: chrome.runtime.lastError.message || "Unable to open Zendesk tab." });
             return;
@@ -720,8 +789,195 @@
 
   function getSlackTabId() {
     return new Promise((resolve) => {
+      if (!chrome || !chrome.runtime || typeof chrome.runtime.sendMessage !== "function") {
+        resolve(null);
+        return;
+      }
       chrome.runtime.sendMessage({ type: "ZIP_GET_SLACK_TAB" }, (r) => resolve(r?.tabId ?? null));
     });
+  }
+
+  function parseSlackTabUrl(urlValue) {
+    try {
+      return new URL(String(urlValue || ""));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function isSlackWorkspaceTabUrl(urlValue) {
+    const parsed = parseSlackTabUrl(urlValue);
+    if (!parsed) return false;
+    const host = String(parsed.hostname || "").toLowerCase();
+    return host.endsWith(".slack.com");
+  }
+
+  function normalizeSlackWorkspaceOriginForTabs(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return PASS_AI_SLACK_WORKSPACE_ORIGIN;
+    try {
+      const parsed = new URL(raw);
+      const host = String(parsed.hostname || "").toLowerCase();
+      if (!host.endsWith(".slack.com")) return PASS_AI_SLACK_WORKSPACE_ORIGIN;
+      return parsed.origin;
+    } catch (_) {
+      return PASS_AI_SLACK_WORKSPACE_ORIGIN;
+    }
+  }
+
+  function getSlackWorkspaceHostForTabs(value) {
+    const origin = normalizeSlackWorkspaceOriginForTabs(value);
+    try {
+      return String(new URL(origin).hostname || "").toLowerCase();
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function isSlackAuthLikePathname(pathname) {
+    const path = String(pathname || "").toLowerCase();
+    if (!path) return false;
+    return (
+      path.startsWith("/signin")
+      || path.startsWith("/openid/")
+      || path.startsWith("/oauth/")
+      || path.includes("/ssb/redirect")
+    );
+  }
+
+  function isInjectableSlackTabUrl(urlValue) {
+    const parsed = parseSlackTabUrl(urlValue);
+    if (!parsed) return false;
+    if (!isSlackWorkspaceTabUrl(parsed.toString())) return false;
+    if (isSlackAuthLikePathname(parsed.pathname || "")) return false;
+    return true;
+  }
+
+  function scoreSlackTabCandidateForPanel(tab, currentWindowId, injectableOnly, workspaceHost) {
+    if (!tab || tab.id == null) return Number.NEGATIVE_INFINITY;
+    const parsed = parseSlackTabUrl(tab.url);
+    if (!parsed || !isSlackWorkspaceTabUrl(parsed.toString())) return Number.NEGATIVE_INFINITY;
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (workspaceHost && host && host !== workspaceHost) return Number.NEGATIVE_INFINITY;
+    if (injectableOnly && !isInjectableSlackTabUrl(parsed.toString())) return Number.NEGATIVE_INFINITY;
+
+    const full = parsed.toString();
+    const path = String(parsed.pathname || "").toLowerCase();
+    const expectedTeamId = getExpectedPassAiSlackTeamId();
+    let score = 0;
+
+    if (tab.active) score += 2200;
+    if (currentWindowId != null && tab.windowId === currentWindowId) score += 1100;
+
+    if (host === "adobedx.slack.com") score += 1200;
+    if (full.startsWith(PASS_AI_SLACK_WORKSPACE_ORIGIN + "/client/")) score += 1400;
+    else if (full.startsWith("https://app.slack.com/client/")) score += 1300;
+    else if (full.startsWith(PASS_AI_SLACK_WORKSPACE_ORIGIN + "/")) score += 900;
+    else score += 600;
+
+    if (expectedTeamId && full.includes("/client/" + expectedTeamId + "/")) score += 900;
+    if (isSlackAuthLikePathname(path)) score -= 5000;
+    if (path.includes("/signout")) score -= 800;
+
+    const lastAccessed = Number(tab.lastAccessed || 0);
+    if (Number.isFinite(lastAccessed) && lastAccessed > 0) {
+      score += Math.min(Math.trunc(lastAccessed / 1000), 400);
+    }
+    return score;
+  }
+
+  function querySlackTabsFromSidepanel(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const injectableOnly = opts.injectableOnly !== false;
+    const workspaceHost = getSlackWorkspaceHostForTabs(opts.workspaceOrigin || PASS_AI_SLACK_WORKSPACE_ORIGIN);
+    return new Promise((resolve) => {
+      if (!chrome || !chrome.tabs || typeof chrome.tabs.query !== "function") {
+        resolve([]);
+        return;
+      }
+      chrome.tabs.query({ active: true, currentWindow: true }, (activeTabs) => {
+        void chrome.runtime.lastError;
+        const activeTab = Array.isArray(activeTabs) && activeTabs[0] ? activeTabs[0] : null;
+        const currentWindowId = activeTab && activeTab.windowId != null ? activeTab.windowId : null;
+
+        chrome.tabs.query({ url: SLACK_TAB_QUERY }, (tabs) => {
+          void chrome.runtime.lastError;
+          const pool = Array.isArray(tabs) ? tabs : [];
+          const ranked = pool
+            .map((tab) => ({
+              tab,
+              score: scoreSlackTabCandidateForPanel(tab, currentWindowId, injectableOnly, workspaceHost)
+            }))
+            .filter((entry) => Number.isFinite(entry.score))
+            .sort((a, b) => b.score - a.score)
+            .map((entry) => entry.tab);
+          resolve(ranked);
+        });
+      });
+    });
+  }
+
+  function getTabById(tabId) {
+    const numericTabId = Number(tabId);
+    if (!Number.isFinite(numericTabId) || numericTabId <= 0) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      if (!chrome || !chrome.tabs || typeof chrome.tabs.get !== "function") {
+        resolve(null);
+        return;
+      }
+      chrome.tabs.get(numericTabId, (tab) => {
+        if (chrome.runtime.lastError) {
+          resolve(null);
+          return;
+        }
+        resolve(tab && typeof tab === "object" ? tab : null);
+      });
+    });
+  }
+
+  async function filterSlackTabIdsByWorkspace(tabIds, workspaceOrigin, injectableOnly) {
+    const ids = Array.isArray(tabIds) ? tabIds : [];
+    if (!ids.length) return [];
+    const workspaceHost = getSlackWorkspaceHostForTabs(workspaceOrigin || PASS_AI_SLACK_WORKSPACE_ORIGIN);
+    const filtered = [];
+    for (let i = 0; i < ids.length; i += 1) {
+      const numericId = Number(ids[i]);
+      if (!Number.isFinite(numericId) || numericId <= 0) continue;
+      const tab = await getTabById(numericId);
+      if (!tab || !tab.url) continue;
+      const parsed = parseSlackTabUrl(tab.url);
+      if (!parsed) continue;
+      const host = String(parsed.hostname || "").toLowerCase();
+      if (!host.endsWith(".slack.com")) continue;
+      if (workspaceHost && host !== workspaceHost) continue;
+      if (injectableOnly && !isInjectableSlackTabUrl(parsed.toString())) continue;
+      if (!filtered.includes(numericId)) filtered.push(numericId);
+    }
+    return filtered;
+  }
+
+  async function getSlackTabCandidates(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const injectableOnly = opts.injectableOnly !== false;
+    const includeBackground = opts.includeBackground !== false;
+    const workspaceOrigin = normalizeSlackWorkspaceOriginForTabs(opts.workspaceOrigin || PASS_AI_SLACK_WORKSPACE_ORIGIN);
+    const orderedIds = [];
+    const pushId = (value) => {
+      const numericId = Number(value);
+      if (!Number.isFinite(numericId) || numericId <= 0) return;
+      if (!orderedIds.includes(numericId)) orderedIds.push(numericId);
+    };
+
+    if (state.slackTabId != null) pushId(state.slackTabId);
+    if (includeBackground) {
+      const backgroundSlackTabId = await getSlackTabId().catch(() => null);
+      pushId(backgroundSlackTabId);
+    }
+    const localSlackTabs = await querySlackTabsFromSidepanel({ injectableOnly, workspaceOrigin }).catch(() => []);
+    for (let i = 0; i < localSlackTabs.length; i += 1) {
+      pushId(localSlackTabs[i] && localSlackTabs[i].id);
+    }
+    return filterSlackTabIdsByWorkspace(orderedIds, workspaceOrigin, injectableOnly);
   }
 
   function openExternalUrl(url) {
@@ -751,26 +1007,6 @@
     });
   }
 
-  function openSlackLoginDialog(url) {
-    const safeUrl = String(url || "").trim();
-    if (!safeUrl) {
-      return Promise.reject(new Error("Slack login URL is missing."));
-    }
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ type: "ZIP_OPEN_SLACK_LOGIN", url: safeUrl }, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message || "Unable to open Slack login dialog."));
-          return;
-        }
-        if (response && response.error) {
-          reject(new Error(response.error));
-          return;
-        }
-        resolve(response || { windowId: null, tabId: null });
-      });
-    });
-  }
-
   function openSlackWorkspaceTab(url, options) {
     const safeUrl = String(url || "").trim();
     if (!safeUrl) {
@@ -795,18 +1031,59 @@
     });
   }
 
-  function closeSlackLoginDialog(windowId) {
-    const numericId = Number(windowId);
-    if (!Number.isFinite(numericId) || numericId <= 0) {
-      return Promise.resolve({ ok: false, error: "Invalid Slack login window id." });
+  function closeSlackWorkspaceTab(tabId) {
+    const numericTabId = Number(tabId);
+    if (!Number.isFinite(numericTabId) || numericTabId <= 0) {
+      return Promise.resolve(false);
     }
     return new Promise((resolve) => {
-      chrome.runtime.sendMessage({ type: "ZIP_CLOSE_WINDOW", windowId: numericId }, (response) => {
+      if (!chrome || !chrome.tabs || typeof chrome.tabs.remove !== "function") {
+        resolve(false);
+        return;
+      }
+      chrome.tabs.remove(numericTabId, () => {
+        void chrome.runtime.lastError;
+        resolve(true);
+      });
+    });
+  }
+
+  function focusSlackWorkspaceTab(tabId, url) {
+    const numericTabId = Number(tabId);
+    if (!Number.isFinite(numericTabId) || numericTabId <= 0) {
+      return Promise.reject(new Error("Slack tab id is invalid."));
+    }
+    const safeUrl = String(url || "").trim();
+    return new Promise((resolve, reject) => {
+      if (!chrome || !chrome.tabs || typeof chrome.tabs.update !== "function") {
+        reject(new Error("Unable to focus Slack tab in this browser context."));
+        return;
+      }
+      const updateInfo = { active: true };
+      if (safeUrl) updateInfo.url = safeUrl;
+      chrome.tabs.update(numericTabId, updateInfo, (tab) => {
         if (chrome.runtime.lastError) {
-          resolve({ ok: false, error: chrome.runtime.lastError.message || "Unable to close Slack login dialog." });
+          reject(new Error(chrome.runtime.lastError.message || "Unable to focus Slack tab."));
           return;
         }
-        resolve(response || { ok: true });
+        const resolvedTabId = tab && tab.id != null ? tab.id : numericTabId;
+        const windowId = tab && tab.windowId != null ? tab.windowId : null;
+        if (windowId != null && chrome.windows && typeof chrome.windows.update === "function") {
+          chrome.windows.update(windowId, { focused: true }, () => {
+            void chrome.runtime.lastError;
+            resolve({
+              tabId: resolvedTabId,
+              windowId,
+              openedNewTab: false
+            });
+          });
+          return;
+        }
+        resolve({
+          tabId: resolvedTabId,
+          windowId,
+          openedNewTab: false
+        });
       });
     });
   }
@@ -1044,6 +1321,155 @@
     return THEME_TONE_BY_COLOR_STOP[stop] || THEME_TONE_BY_COLOR_STOP.dark;
   }
 
+  function buildThemeVibeDefinition(accentFamily, themeColorStop) {
+    const stop = normalizeThemeColorStop(themeColorStop);
+    const baseRgb = parseRgbTriplet(getAccentPaletteValue(accentFamily, "dark", "800"));
+    const [hue, saturation, lightness] = rgbTripletToHsl(baseRgb);
+    const chroma = saturation * (1 - Math.abs((2 * lightness) - 1));
+    const neutrality = clampNumber(1 - saturation, 0, 1);
+    const hueWaveA = (Math.sin(degreesToRadians(hue + 22)) + 1) / 2;
+    const hueWaveB = (Math.cos(degreesToRadians(hue - 33)) + 1) / 2;
+    const hueWaveC = (Math.sin(degreesToRadians((hue * 2) + 11)) + 1) / 2;
+    const warmth = (Math.cos(degreesToRadians(hue - 38)) + 1) / 2;
+    const coolness = (Math.cos(degreesToRadians(hue - 218)) + 1) / 2;
+    const thermalShift = (warmth - coolness) * 0.5;
+    const vivid = clampNumber(0.74 + (saturation * 0.54) + (chroma * 0.30), 0.72, 1.4);
+    const distinction = clampNumber(0.88 + (hueWaveA * 0.22) + (hueWaveB * 0.14) + (hueWaveC * 0.08), 0.84, 1.32);
+    const neutralAttenuation = 1 - (neutrality * 0.34);
+    const energy = clampNumber(vivid * distinction * neutralAttenuation, 0.72, 1.42);
+
+    if (stop === "light") {
+      const shellMix = clampNumber(23 + (energy * 8.5) + (hueWaveA * 6.5) - (neutrality * 4.5), 22, 43);
+      const bodyStartMix = clampNumber(shellMix + 5 + (hueWaveB * 6), 26, 50);
+      const bodyEndMix = clampNumber((shellMix * 0.68) + 5 + (hueWaveC * 3.5), 16, 34);
+      const borderMix = clampNumber(31 + (energy * 10) + (hueWaveB * 5.5), 30, 52);
+      const topbarAAlpha = clampNumber(0.11 + (energy * 0.05), 0.11, 0.24);
+      const topbarBAlpha = clampNumber((topbarAAlpha * 0.57) + (hueWaveA * 0.018), 0.06, 0.15);
+      const footerAAlpha = clampNumber((topbarAAlpha * 0.74) + (hueWaveC * 0.012), 0.07, 0.20);
+      const topbarCMix = clampNumber(18 + (energy * 8.5) + (hueWaveC * 5) + (thermalShift * 3.5), 16, 39);
+      const footerBMix = clampNumber(15 + (energy * 7.5) + (hueWaveA * 4) + (thermalShift * 2.8), 14, 34);
+      const menuAMix = clampNumber(12 + (energy * 6) + (hueWaveB * 4), 11, 28);
+      const menuBMix = clampNumber(8 + (energy * 4.5) + (hueWaveC * 3), 7, 21);
+      const loginAAlpha = clampNumber(0.11 + (energy * 0.045), 0.11, 0.23);
+      const loginCAlpha = clampNumber(0.08 + (energy * 0.032), 0.08, 0.18);
+      const sectionAMix = clampNumber(15 + (energy * 7.5) + (hueWaveA * 4) + (thermalShift * 2.5), 14, 34);
+      const sectionBMix = clampNumber(20 + (energy * 9.5) + (hueWaveB * 5) + (thermalShift * 3.2), 20, 41);
+      const headerAAlpha = clampNumber(topbarAAlpha + 0.012, 0.12, 0.26);
+      const selectionAAlpha = clampNumber(0.17 + (energy * 0.045), 0.17, 0.28);
+      const selectionBAlpha = clampNumber(0.11 + (energy * 0.03), 0.11, 0.19);
+      const focusAlpha = clampNumber(0.17 + (energy * 0.05), 0.17, 0.29);
+      const surfaceSoftAlpha = clampNumber(0.075 + (energy * 0.027), 0.07, 0.17);
+      const surfaceMidAlpha = clampNumber(surfaceSoftAlpha + 0.042 + (hueWaveB * 0.012), 0.11, 0.22);
+      const surfaceStrongAlpha = clampNumber(surfaceMidAlpha + 0.065 + (hueWaveC * 0.02), 0.18, 0.34);
+      const menuSurfaceMix = clampNumber(11 + (energy * 5) + (hueWaveA * 3), 10, 24);
+      const glowAlpha = clampNumber(0.14 + (energy * 0.045), 0.14, 0.24);
+      const feedbackBgAlpha = clampNumber(0.12 + (energy * 0.032), 0.12, 0.21);
+      const feedbackBorderAlpha = clampNumber(0.30 + (energy * 0.065), 0.30, 0.48);
+      const zebraContrast = clampNumber(12 + (energy * 2.6) + (hueWaveA * 1.2) - (neutrality * 1.4), 11.5, 18.5);
+      const zebraHoverBoost = clampNumber(7 + (energy * 1) + (hueWaveC * 0.8), 7, 10.8);
+      return {
+        "--zip-theme-vibe-body-radial-alpha": formatCssAlpha(topbarAAlpha + 0.01),
+        "--zip-theme-vibe-body-start-mix": formatCssPercent(bodyStartMix),
+        "--zip-theme-vibe-body-end-mix": formatCssPercent(bodyEndMix),
+        "--zip-theme-vibe-shell-mix": formatCssPercent(shellMix),
+        "--zip-theme-vibe-border-mix": formatCssPercent(borderMix),
+        "--zip-theme-vibe-topbar-a-alpha": formatCssAlpha(topbarAAlpha),
+        "--zip-theme-vibe-topbar-b-alpha": formatCssAlpha(topbarBAlpha),
+        "--zip-theme-vibe-topbar-c-mix": formatCssPercent(topbarCMix),
+        "--zip-theme-vibe-footer-a-alpha": formatCssAlpha(footerAAlpha),
+        "--zip-theme-vibe-footer-b-mix": formatCssPercent(footerBMix),
+        "--zip-theme-vibe-menu-a-mix": formatCssPercent(menuAMix),
+        "--zip-theme-vibe-menu-b-mix": formatCssPercent(menuBMix),
+        "--zip-theme-vibe-login-a-alpha": formatCssAlpha(loginAAlpha),
+        "--zip-theme-vibe-login-c-alpha": formatCssAlpha(loginCAlpha),
+        "--zip-theme-vibe-section-a-mix": formatCssPercent(sectionAMix),
+        "--zip-theme-vibe-section-b-mix": formatCssPercent(sectionBMix),
+        "--zip-theme-vibe-header-a-alpha": formatCssAlpha(headerAAlpha),
+        "--zip-theme-vibe-selection-a-alpha": formatCssAlpha(selectionAAlpha),
+        "--zip-theme-vibe-selection-b-alpha": formatCssAlpha(selectionBAlpha),
+        "--zip-theme-vibe-focus-alpha": formatCssAlpha(focusAlpha),
+        "--zip-theme-vibe-surface-soft-alpha": formatCssAlpha(surfaceSoftAlpha),
+        "--zip-theme-vibe-surface-mid-alpha": formatCssAlpha(surfaceMidAlpha),
+        "--zip-theme-vibe-surface-strong-alpha": formatCssAlpha(surfaceStrongAlpha),
+        "--zip-theme-vibe-menu-surface-mix": formatCssPercent(menuSurfaceMix),
+        "--zip-theme-vibe-glow-alpha": formatCssAlpha(glowAlpha),
+        "--zip-theme-vibe-feedback-bg-alpha": formatCssAlpha(feedbackBgAlpha),
+        "--zip-theme-vibe-feedback-border-alpha": formatCssAlpha(feedbackBorderAlpha),
+        "--zip-theme-vibe-zebra-contrast": formatCssPercent(zebraContrast),
+        "--zip-theme-vibe-zebra-hover": formatCssPercent(zebraHoverBoost)
+      };
+    }
+
+    const shellMix = clampNumber(30 + (energy * 10) + (hueWaveA * 7) - (neutrality * 2.5), 29, 58);
+    const bodyStartMix = clampNumber(shellMix + 8 + (hueWaveB * 6) + (thermalShift * 3), 34, 62);
+    const bodyEndMix = clampNumber((shellMix * 0.76) + 7 + (hueWaveC * 4) + (thermalShift * 2.5), 30, 50);
+    const borderMix = clampNumber(34 + (energy * 11) + (hueWaveB * 6), 34, 58);
+    const topbarAAlpha = clampNumber(0.19 + (energy * 0.07), 0.19, 0.33);
+    const topbarBAlpha = clampNumber((topbarAAlpha * 0.58) + (hueWaveA * 0.02), 0.11, 0.2);
+    const footerAAlpha = clampNumber((topbarAAlpha * 0.8) + (hueWaveC * 0.015), 0.15, 0.27);
+    const topbarCMix = clampNumber(21 + (energy * 8) + (hueWaveC * 5) + (thermalShift * 3.5), 20, 44);
+    const footerBMix = clampNumber(18 + (energy * 8) + (hueWaveA * 5) + (thermalShift * 3.2), 17, 40);
+    const menuAMix = clampNumber(14 + (energy * 7) + (hueWaveB * 4), 14, 30);
+    const menuBMix = clampNumber(10 + (energy * 6) + (hueWaveC * 3), 10, 24);
+    const loginAAlpha = clampNumber(0.16 + (energy * 0.055), 0.16, 0.29);
+    const loginCAlpha = clampNumber(0.11 + (energy * 0.04), 0.11, 0.21);
+    const sectionAMix = clampNumber(22 + (energy * 10) + (hueWaveA * 4) + (thermalShift * 3.5), 22, 48);
+    const sectionBMix = clampNumber(26 + (energy * 11) + (hueWaveB * 5) + (thermalShift * 3.8), 26, 52);
+    const headerAAlpha = clampNumber(0.19 + (energy * 0.055), 0.19, 0.31);
+    const selectionAAlpha = clampNumber(0.24 + (energy * 0.06), 0.24, 0.36);
+    const selectionBAlpha = clampNumber(0.14 + (energy * 0.04), 0.14, 0.24);
+    const focusAlpha = clampNumber(0.22 + (energy * 0.055), 0.22, 0.34);
+    const surfaceSoftAlpha = clampNumber(0.14 + (energy * 0.05), 0.14, 0.27);
+    const surfaceMidAlpha = clampNumber(surfaceSoftAlpha + 0.085 + (hueWaveB * 0.015), 0.23, 0.36);
+    const surfaceStrongAlpha = clampNumber(surfaceMidAlpha + 0.11 + (hueWaveC * 0.025), 0.34, 0.52);
+    const menuSurfaceMix = clampNumber(13 + (energy * 6) + (hueWaveA * 3), 13, 29);
+    const glowAlpha = clampNumber(0.20 + (energy * 0.06), 0.20, 0.34);
+    const feedbackBgAlpha = clampNumber(0.16 + (energy * 0.04), 0.16, 0.27);
+    const feedbackBorderAlpha = clampNumber(0.36 + (energy * 0.07), 0.36, 0.58);
+    const zebraContrast = clampNumber(13.5 + (energy * 2.8) + (hueWaveA * 1.4) - (neutrality * 1.2), 13, 20);
+    const zebraHoverBoost = clampNumber(8 + (energy * 1.2) + (hueWaveC * 0.8), 8, 12);
+    return {
+      "--zip-theme-vibe-body-radial-alpha": formatCssAlpha(topbarAAlpha + 0.03),
+      "--zip-theme-vibe-body-start-mix": formatCssPercent(bodyStartMix),
+      "--zip-theme-vibe-body-end-mix": formatCssPercent(bodyEndMix),
+      "--zip-theme-vibe-shell-mix": formatCssPercent(shellMix),
+      "--zip-theme-vibe-border-mix": formatCssPercent(borderMix),
+      "--zip-theme-vibe-topbar-a-alpha": formatCssAlpha(topbarAAlpha),
+      "--zip-theme-vibe-topbar-b-alpha": formatCssAlpha(topbarBAlpha),
+      "--zip-theme-vibe-topbar-c-mix": formatCssPercent(topbarCMix),
+      "--zip-theme-vibe-footer-a-alpha": formatCssAlpha(footerAAlpha),
+      "--zip-theme-vibe-footer-b-mix": formatCssPercent(footerBMix),
+      "--zip-theme-vibe-menu-a-mix": formatCssPercent(menuAMix),
+      "--zip-theme-vibe-menu-b-mix": formatCssPercent(menuBMix),
+      "--zip-theme-vibe-login-a-alpha": formatCssAlpha(loginAAlpha),
+      "--zip-theme-vibe-login-c-alpha": formatCssAlpha(loginCAlpha),
+      "--zip-theme-vibe-section-a-mix": formatCssPercent(sectionAMix),
+      "--zip-theme-vibe-section-b-mix": formatCssPercent(sectionBMix),
+      "--zip-theme-vibe-header-a-alpha": formatCssAlpha(headerAAlpha),
+      "--zip-theme-vibe-selection-a-alpha": formatCssAlpha(selectionAAlpha),
+      "--zip-theme-vibe-selection-b-alpha": formatCssAlpha(selectionBAlpha),
+      "--zip-theme-vibe-focus-alpha": formatCssAlpha(focusAlpha),
+      "--zip-theme-vibe-surface-soft-alpha": formatCssAlpha(surfaceSoftAlpha),
+      "--zip-theme-vibe-surface-mid-alpha": formatCssAlpha(surfaceMidAlpha),
+      "--zip-theme-vibe-surface-strong-alpha": formatCssAlpha(surfaceStrongAlpha),
+      "--zip-theme-vibe-menu-surface-mix": formatCssPercent(menuSurfaceMix),
+      "--zip-theme-vibe-glow-alpha": formatCssAlpha(glowAlpha),
+      "--zip-theme-vibe-feedback-bg-alpha": formatCssAlpha(feedbackBgAlpha),
+      "--zip-theme-vibe-feedback-border-alpha": formatCssAlpha(feedbackBorderAlpha),
+      "--zip-theme-vibe-zebra-contrast": formatCssPercent(zebraContrast),
+      "--zip-theme-vibe-zebra-hover": formatCssPercent(zebraHoverBoost)
+    };
+  }
+
+  function applyThemeVibeVariables(themeOption) {
+    if (!document.body || !document.body.style) return;
+    const option = normalizeThemeOption(themeOption || getThemeOptionById(state.themeId));
+    const vibeVars = buildThemeVibeDefinition(option.accentFamily, option.themeColorStop);
+    Object.entries(vibeVars).forEach(([name, value]) => {
+      document.body.style.setProperty(name, String(value));
+    });
+  }
+
   function applyThemeAccentVariables(themeOption) {
     const option = normalizeThemeOption(themeOption || getThemeOptionById(state.themeId));
     const tone = getThemeToneDefinition(option.themeColorStop);
@@ -1066,6 +1492,7 @@
     document.body.style.setProperty("--zip-accent-1100", tone1100);
     document.body.style.setProperty("--zip-accent-focus", focusRgb);
     document.body.style.setProperty("--zip-accent-on-primary", onPrimaryRgb);
+    applyThemeVibeVariables(option);
 
     /* Feed official Spectrum accent and focus tokens from the ZIP accent picker. */
     document.body.style.setProperty("--spectrum-accent-color-500", "rgb(" + tone500 + ")");
@@ -1659,6 +2086,8 @@
       return false;
     };
 
+    const workspaceOrigin = normalizeSlackWorkspaceOriginForTabs(inner && inner.workspaceOrigin);
+
     const sendOnce = (tabId) => new Promise((resolve, reject) => {
       if (!tabId) {
         reject(new Error("No Slack tab available"));
@@ -1686,19 +2115,28 @@
     return (async () => {
       let lastError = null;
       for (let attempt = 1; attempt <= SLACK_TAB_RETRY_MAX_ATTEMPTS; attempt += 1) {
-        const slackTabId = await getSlackTabId();
-        const candidateIds = [];
-        if (state.slackTabId != null) candidateIds.push(state.slackTabId);
-        if (slackTabId != null && !candidateIds.includes(slackTabId)) candidateIds.push(slackTabId);
+        let candidateIds = await getSlackTabCandidates({
+          injectableOnly: true,
+          includeBackground: true,
+          workspaceOrigin
+        }).catch(() => []);
+        if (!candidateIds.length && String(inner && inner.action || "") === "slackAuthTest") {
+          candidateIds = await getSlackTabCandidates({
+            injectableOnly: false,
+            includeBackground: true,
+            workspaceOrigin
+          }).catch(() => []);
+        }
         if (!candidateIds.length) {
-          throw new Error("No Slack tab available. Click Sign in with Slack first.");
+          throw new Error("No Slack tab available. Click the Slack indicator to sign in first.");
         }
 
         for (const candidateId of candidateIds) {
           try {
             const result = await sendOnce(candidateId);
             if (shouldTryNextSlackTabCandidate(result)) {
-              lastError = new Error(result.error || "Slack tab is not ready yet.");
+              const retryMessage = String(result.error || result.message || "").trim();
+              lastError = new Error(retryMessage || "Slack tab is not ready yet.");
               if (state.slackTabId === candidateId) state.slackTabId = null;
               continue;
             }
@@ -1715,6 +2153,120 @@
       }
       throw lastError || new Error("Unable to reach Slack tab.");
     })();
+  }
+
+  function isSlackWebBootstrapErrorMessage(message) {
+    const text = String(message || "").toLowerCase();
+    if (!text) return false;
+    if (text.includes("no slack tab available")) return true;
+    if (text.includes("not a slack tab")) return true;
+    if (text.includes("session token not found")) return true;
+    if (text.includes("no slack web session token")) return true;
+    if (text.includes("slack session unavailable")) return true;
+    if (text.includes("complete login first")) return true;
+    if (text.includes("login first")) return true;
+    return false;
+  }
+
+  async function bootstrapSlackWorkspaceForMessaging() {
+    const workspaceOrigin = normalizeSlackWorkspaceOriginForTabs(PASS_AI_SLACK_WORKSPACE_ORIGIN);
+    const landingUrl = workspaceOrigin + "/";
+    const findInjectableTab = async () => {
+      const injectableTabs = await querySlackTabsFromSidepanel({
+        injectableOnly: true,
+        workspaceOrigin
+      }).catch(() => []);
+      if (!Array.isArray(injectableTabs) || !injectableTabs.length) return null;
+      const candidateId = Number(injectableTabs[0] && injectableTabs[0].id);
+      if (!Number.isFinite(candidateId) || candidateId <= 0) return null;
+      return candidateId;
+    };
+
+    const existingInjectableId = await findInjectableTab();
+    if (existingInjectableId != null) {
+      state.slackTabId = existingInjectableId;
+      return true;
+    }
+
+    let candidateTabId = null;
+    const workspaceTabs = await querySlackTabsFromSidepanel({
+      injectableOnly: false,
+      workspaceOrigin
+    }).catch(() => []);
+    if (Array.isArray(workspaceTabs) && workspaceTabs.length > 0 && workspaceTabs[0] && workspaceTabs[0].id != null) {
+      candidateTabId = Number(workspaceTabs[0].id);
+      if (Number.isFinite(candidateTabId) && candidateTabId > 0) {
+        try {
+          await new Promise((resolve) => {
+            if (!chrome || !chrome.tabs || typeof chrome.tabs.update !== "function") {
+              resolve();
+              return;
+            }
+            chrome.tabs.update(candidateTabId, { url: landingUrl, active: false }, () => {
+              void chrome.runtime.lastError;
+              resolve();
+            });
+          });
+        } catch (_) {}
+      }
+    } else {
+      const opened = await openSlackWorkspaceTab(landingUrl, { active: false }).catch(() => null);
+      const openedTabId = Number(opened && opened.tabId);
+      if (Number.isFinite(openedTabId) && openedTabId > 0) {
+        candidateTabId = openedTabId;
+      }
+    }
+
+    if (!Number.isFinite(candidateTabId) || candidateTabId <= 0) {
+      return false;
+    }
+    state.slackTabId = candidateTabId;
+
+    const deadlineMs = Date.now() + 8000;
+    while (Date.now() < deadlineMs) {
+      await wait(350);
+      const readyTabId = await findInjectableTab();
+      if (readyTabId != null) {
+        state.slackTabId = readyTabId;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async function sendToSlackTabWithAutoBootstrap(inner, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const canBootstrap = opts.bootstrap !== false;
+    const onBootstrap = typeof opts.onBootstrap === "function" ? opts.onBootstrap : null;
+    let bootstrapAttempted = false;
+    const tryBootstrap = async () => {
+      if (!canBootstrap || bootstrapAttempted) return false;
+      bootstrapAttempted = true;
+      if (onBootstrap) {
+        try { onBootstrap(); } catch (_) {}
+      }
+      return bootstrapSlackWorkspaceForMessaging();
+    };
+
+    let response = null;
+    try {
+      response = await sendToSlackTab(inner);
+    } catch (err) {
+      const message = normalizePassAiCommentBody(err && err.message);
+      if (!isSlackWebBootstrapErrorMessage(message) || !(await tryBootstrap())) {
+        throw err;
+      }
+      response = await sendToSlackTab(inner);
+    }
+
+    const responseMessage = normalizePassAiCommentBody(response && (response.error || response.message));
+    if ((!response || response.ok !== true) && isSlackWebBootstrapErrorMessage(responseMessage)) {
+      const bootstrapped = await tryBootstrap();
+      if (bootstrapped) {
+        response = await sendToSlackTab(inner);
+      }
+    }
+    return response;
   }
 
   function ensureAssignedFilterTabOpen() {
@@ -1754,11 +2306,51 @@
     }
   }
 
+  function isZendeskActivityLoading() {
+    return !!(
+      state.busy
+      || state.ticketTableLoading
+      || state.orgSelectLoading
+      || state.viewSelectLoading
+      || state.groupSelectLoading
+    );
+  }
+
+  function isSlackActivityLoading() {
+    return !!(
+      state.passAiLoading
+      || state.passAiConversationInFlight
+      || state.passAiSlackAuthPolling
+      || state.passAiDeleteInFlight
+      || state.slackItToMeLoading
+      || slackAuthCheckInFlight
+    );
+  }
+
+  function isUiActionLoading() {
+    return !!(
+      isZendeskActivityLoading()
+      || isSlackActivityLoading()
+    );
+  }
+
   function applyGlobalBusyUi() {
-    const isLoading = !!(state.busy || state.ticketTableLoading || state.orgSelectLoading || state.viewSelectLoading || state.groupSelectLoading);
+    const isLoading = isUiActionLoading();
+    const zendeskLoading = isZendeskActivityLoading();
+    const slackLoading = isSlackActivityLoading();
+    if (document && document.body && document.body.classList) {
+      document.body.classList.toggle("zip-busy-cursor", isLoading);
+    }
     if (els.topAvatarWrap) {
-      els.topAvatarWrap.classList.toggle("loading", isLoading);
-      els.topAvatarWrap.title = isLoading ? "Loading…" : (els.topAvatarWrap.dataset.idleTitle || "Not logged in");
+      els.topAvatarWrap.classList.toggle("loading", zendeskLoading);
+      els.topAvatarWrap.title = zendeskLoading
+        ? "Zendesk activity in progress…"
+        : (els.topAvatarWrap.dataset.idleTitle || "Not logged in");
+    }
+    if (els.slacktivatedBtn) {
+      const showSlackSpinner = !!(state.user && slackLoading);
+      els.slacktivatedBtn.classList.toggle("is-network-loading", showSlackSpinner);
+      els.slacktivatedBtn.setAttribute("aria-busy", showSlackSpinner ? "true" : "false");
     }
     if (els.status) {
       const shouldShowLoading = isLoading && !els.status.classList.contains("error");
@@ -1908,11 +2500,7 @@
   }
 
   function renderPassAiSlackAuthStatus() {
-    if (!els.passAiSlackAuthStatus) return;
-    els.passAiSlackAuthStatus.textContent = "";
-    els.passAiSlackAuthStatus.classList.add("hidden");
-    els.passAiSlackAuthStatus.classList.remove("ready");
-    els.passAiSlackAuthStatus.classList.remove("error");
+    // Legacy no-op: old in-panel Slack login status UI was removed in favor of SLACKTIVATED.
   }
 
   function hasPassAiRenderedAnswer() {
@@ -1934,9 +2522,7 @@
   function ensurePassAiActionLayout() {
     if (!els.passAiResultsBox || !els.passAiQuestion) return;
 
-    if (!els.slackLoginBtn) els.slackLoginBtn = $("zipSlackLoginBtn");
     if (!els.askPassAiBtn) els.askPassAiBtn = $("zipAskPassAiBtn");
-    if (!els.passAiSlackAuthStatus) els.passAiSlackAuthStatus = $("zipPassAiSlackAuthStatus");
     if (!els.passAiSubmitHint) els.passAiSubmitHint = $("zipPassAiSubmitHint");
     if (!els.passAiCtaZone) els.passAiCtaZone = $("zipPassAiCtaZone");
     if (!els.passAiSubmitWrap) els.passAiSubmitWrap = $("zipPassAiSubmitWrap");
@@ -1947,17 +2533,11 @@
     if (!els.passAiDynamicReplyHost) els.passAiDynamicReplyHost = $("zipPassAiDynamicReplyHost");
     if (!els.passAiInlineStatus) els.passAiInlineStatus = $("zipPassAiInlineStatus");
 
-    if (els.passAiSubmitWrap && els.slackLoginBtn && els.slackLoginBtn.parentElement !== els.passAiSubmitWrap) {
-      els.passAiSubmitWrap.appendChild(els.slackLoginBtn);
-    }
     if (els.passAiSubmitWrap && els.askPassAiBtn && els.askPassAiBtn.parentElement !== els.passAiSubmitWrap) {
       els.passAiSubmitWrap.appendChild(els.askPassAiBtn);
     }
     if (els.passAiCtaZone && els.passAiSubmitHint && els.passAiSubmitHint.parentElement !== els.passAiCtaZone) {
       els.passAiCtaZone.appendChild(els.passAiSubmitHint);
-    }
-    if (els.passAiCtaZone && els.passAiSlackAuthStatus && els.passAiSlackAuthStatus.parentElement !== els.passAiCtaZone) {
-      els.passAiCtaZone.appendChild(els.passAiSlackAuthStatus);
     }
 
     if (els.passAiAnswerBlock && els.passAiDynamicReplyHost && els.passAiDynamicReplyHost.parentElement !== els.passAiAnswerBlock) {
@@ -1971,7 +2551,16 @@
     updatePassAiAnswerPlaceholder();
   }
 
+  function isPassAiSlacktivated() {
+    return !!(state.passAiSlackReady && state.passAiSlackWebReady);
+  }
+
   async function openPassAiPanelForSelectedTicket() {
+    if (!isPassAiSlacktivated()) {
+      setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+      updateTicketActionButtons();
+      return;
+    }
     const selectedTicketId = getSelectedPassAiTicketId();
     if (selectedTicketId == null) {
       setStatus("Select a ticket first, then open Q and AI.", true);
@@ -1979,7 +2568,6 @@
     }
     state.passAiPanelVisible = true;
     updateTicketActionButtons();
-    await refreshPassAiSlackAuth({ silent: true, allowTabBootstrap: false }).catch(() => false);
     try {
       await loadLatestQuestionForTicket(selectedTicketId, { silentError: false });
     } catch (_) {}
@@ -1997,7 +2585,48 @@
       closePassAiPanel();
       return;
     }
+    if (!isPassAiSlacktivated()) {
+      setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+      updateTicketActionButtons();
+      return;
+    }
     await openPassAiPanelForSelectedTicket();
+  }
+
+  function getSlacktivatedDisplayName() {
+    const bySlack = String(state.passAiSlackUserName || "").trim();
+    if (bySlack) return bySlack;
+    const byZendesk = String(state.user && state.user.name || "").trim();
+    if (byZendesk) return byZendesk;
+    const byEmail = String(state.user && state.user.email || "").trim();
+    return byEmail || "there";
+  }
+
+  function syncSlacktivatedIndicator() {
+    if (els.slacktivatedIcon) {
+      const defaultSrc = String(
+        (els.slacktivatedIcon.dataset && els.slacktivatedIcon.dataset.defaultSrc)
+        || els.slacktivatedIcon.getAttribute("src")
+        || SLACKTIVATED_PENDING_ICON_URL
+      ).trim() || SLACKTIVATED_PENDING_ICON_URL;
+      const avatar = String(state.passAiSlackAvatarUrl || "").trim();
+      const useAvatar = !!(isPassAiSlacktivated() && avatar);
+      els.slacktivatedIcon.src = useAvatar ? avatar : defaultSrc;
+      els.slacktivatedIcon.alt = useAvatar
+        ? ("Slack avatar for " + getSlacktivatedDisplayName())
+        : "ZIP Slack app status";
+    }
+    if (els.slacktivatedBtn) {
+      const ready = isPassAiSlacktivated();
+      els.slacktivatedBtn.classList.toggle("is-slacktivated", ready);
+      els.slacktivatedBtn.classList.toggle("is-slack-pending", !ready);
+      const title = ready
+        ? ("Hey " + getSlacktivatedDisplayName() + ", ZIP is SLACKTIVATED!!!")
+        : SLACKTIVATED_LOGIN_TOOLTIP;
+      els.slacktivatedBtn.title = title;
+      els.slacktivatedBtn.setAttribute("aria-label", title);
+      els.slacktivatedBtn.disabled = !state.user;
+    }
   }
 
   function updateTicketActionButtons() {
@@ -2007,15 +2636,30 @@
     if (els.exportCsvBtn) els.exportCsvBtn.disabled = !hasRows;
     const selectedTicketId = getSelectedPassAiTicketId();
     const hasSelectedTicket = selectedTicketId != null;
-    const showPassAiForm = hasSelectedTicket && !!state.passAiPanelVisible;
-    const passAiActionMode = !showPassAiForm
-      ? "none"
-      : (state.passAiSlackReady ? "slack_ready" : "needs_slack_auth");
-    const showQuestionEditor = passAiActionMode === "slack_ready";
+    const slackReady = isPassAiSlacktivated();
+    syncSlacktivatedIndicator();
+
+    if (els.slackItToMeBtn) {
+      const canUseSlackItToMe = slackReady
+        && !state.passAiSlackAuthPolling
+        && !state.slackItToMeLoading;
+      const slackItToMeTitle = slackReady ? "SLACK IT TO ME" : SLACKTIVATED_LOGIN_TOOLTIP;
+      els.slackItToMeBtn.classList.remove("hidden");
+      els.slackItToMeBtn.disabled = !canUseSlackItToMe;
+      els.slackItToMeBtn.title = slackItToMeTitle;
+      els.slackItToMeBtn.setAttribute("aria-label", slackItToMeTitle);
+    }
+
+    if (!slackReady && state.passAiPanelVisible && !state.passAiLoading) {
+      state.passAiPanelVisible = false;
+      clearPassAiResultsDisplay();
+    }
+
+    const showPassAiForm = slackReady && hasSelectedTicket && !!state.passAiPanelVisible;
+    const showQuestionEditor = showPassAiForm;
     const showAnswerBlock = showQuestionEditor && hasPassAiRenderedAnswer();
     const showSubmitWrap = showPassAiForm;
-    const showAskPassAi = passAiActionMode === "slack_ready";
-    const showSlackLogin = passAiActionMode === "needs_slack_auth";
+    const showAskPassAi = showPassAiForm;
 
     if (!hasSelectedTicket && !state.passAiLoading) {
       state.passAiTicketId = null;
@@ -2033,11 +2677,23 @@
     }
 
     if (els.passAiToggleBtn) {
+      const canUsePassAiToggle = hasSelectedTicket
+        && slackReady
+        && !state.passAiLoading
+        && !state.passAiSlackAuthPolling
+        && !state.slackItToMeLoading;
+      const passAiTitle = showPassAiForm
+        ? "Close Q and AI panel"
+        : (
+          !slackReady
+            ? SLACKTIVATED_LOGIN_TOOLTIP
+            : (hasSelectedTicket ? "Open Q and AI panel" : "Select a ticket row to open Q and AI.")
+        );
       els.passAiToggleBtn.classList.toggle("hidden", !hasSelectedTicket);
-      els.passAiToggleBtn.disabled = !hasSelectedTicket || state.passAiLoading;
+      els.passAiToggleBtn.disabled = !canUsePassAiToggle;
       els.passAiToggleBtn.classList.toggle("is-active", showPassAiForm);
-      els.passAiToggleBtn.title = showPassAiForm ? "Close Q and AI panel" : "Open Q and AI panel";
-      els.passAiToggleBtn.setAttribute("aria-label", showPassAiForm ? "Close Q and AI panel" : "Open Q and AI panel");
+      els.passAiToggleBtn.title = passAiTitle;
+      els.passAiToggleBtn.setAttribute("aria-label", passAiTitle);
     }
 
     if (els.passAiResultsBox) {
@@ -2070,16 +2726,13 @@
       els.askPassAiBtn.classList.toggle("hidden", !showAskPassAi);
       els.askPassAiBtn.disabled = !showAskPassAi || state.passAiLoading;
     }
-    if (els.slackLoginBtn) {
-      els.slackLoginBtn.classList.toggle("hidden", !showSlackLogin);
-      els.slackLoginBtn.disabled = !showSlackLogin || state.passAiLoading || state.passAiSlackAuthPolling;
-    }
     renderPassAiSlackAuthStatus();
     if (els.passAiInlineStatus) {
       const showInline = showQuestionEditor && hasSelectedTicket && state.passAiLoading;
       els.passAiInlineStatus.classList.toggle("hidden", !showInline);
     }
     updatePassAiAnswerPlaceholder();
+    applyGlobalBusyUi();
   }
 
   function sanitizeFilenamePart(value, maxLength) {
@@ -2098,17 +2751,78 @@
     return String(selectEl.selectedOptions[0].textContent || "").trim();
   }
 
+  function normalizeTicketSourceLabel(label, fallback) {
+    const fallbackLabel = String(fallback || "").trim();
+    const raw = String(label || "").replace(/\s+/g, " ").trim();
+    if (!raw) return fallbackLabel;
+    if (/^by\s+(view|organization|group\s*\/\s*agent)$/i.test(raw)) return fallbackLabel;
+    if (/^(active|inactive)\s*\(/i.test(raw)) return fallbackLabel;
+    if (/^[\s\-─]+$/.test(raw)) return fallbackLabel;
+    const trimmedCount = raw.replace(/\s+\[\s*\d+\s*\]\s*$/g, "").trim();
+    return trimmedCount || fallbackLabel;
+  }
+
+  function getActiveTicketSourceContext() {
+    const selectedViewId = String(state.selectedViewId || "").trim();
+    const selectedOrgId = String(state.selectedOrgId || "").trim();
+    const selectedByGroupValue = String(state.selectedByGroupValue || "").trim();
+    const currentSource = String(state.ticketSource || "").trim();
+
+    const buildViewContext = () => ({
+      kind: "view",
+      id: selectedViewId,
+      label: normalizeTicketSourceLabel(getSelectedText(els.viewSelect), "View " + selectedViewId),
+      filenamePrefix: "view"
+    });
+    const buildOrgContext = () => ({
+      kind: "org",
+      id: selectedOrgId,
+      label: normalizeTicketSourceLabel(getSelectedText(els.orgSelect), "Organization " + selectedOrgId),
+      filenamePrefix: "org"
+    });
+    const buildGroupContext = () => {
+      const parsed = parseGroupFilterValue(selectedByGroupValue);
+      const fallbackId = parsed.kind === "group"
+        ? parsed.groupId
+        : (parsed.kind === "agent" ? parsed.userId : selectedByGroupValue);
+      const fallbackLabel = parsed.kind === "group"
+        ? ("Group " + (parsed.groupId || selectedByGroupValue))
+        : (parsed.kind === "agent" ? ("Agent " + (parsed.userId || selectedByGroupValue)) : selectedByGroupValue);
+      return {
+        kind: "groupMember",
+        id: selectedByGroupValue,
+        label: normalizeTicketSourceLabel(getSelectedText(els.groupMemberSelect), fallbackLabel),
+        filenamePrefix: parsed.kind === "group" ? "group" : "agent",
+        fallbackId
+      };
+    };
+
+    if (currentSource === "view" && selectedViewId) return buildViewContext();
+    if (currentSource === "org" && selectedOrgId) return buildOrgContext();
+    if (currentSource === "groupMember" && selectedByGroupValue) return buildGroupContext();
+    if (selectedViewId) return buildViewContext();
+    if (selectedOrgId) return buildOrgContext();
+    if (selectedByGroupValue) return buildGroupContext();
+    return {
+      kind: "assigned",
+      id: "",
+      label: "Assigned Tickets",
+      filenamePrefix: "assigned"
+    };
+  }
+
   function getTicketSourceFilenamePart() {
-    if (state.ticketSource === "view" && state.selectedViewId) {
-      return "view-" + (sanitizeFilenamePart(getSelectedText(els.viewSelect)) || sanitizeFilenamePart(state.selectedViewId));
+    const source = getActiveTicketSourceContext();
+    if (source.kind === "view") {
+      return "view-" + (sanitizeFilenamePart(source.label) || sanitizeFilenamePart(source.id) || "view");
     }
-    if (state.ticketSource === "org" && state.selectedOrgId) {
-      return "org-" + (sanitizeFilenamePart(getSelectedText(els.orgSelect)) || sanitizeFilenamePart(state.selectedOrgId));
+    if (source.kind === "org") {
+      return "org-" + (sanitizeFilenamePart(source.label) || sanitizeFilenamePart(source.id) || "organization");
     }
-    if (state.ticketSource === "groupMember" && state.selectedByGroupValue) {
-      const raw = String(state.selectedByGroupValue);
-      const prefix = raw.startsWith("g-") ? "group" : "agent";
-      return prefix + "-" + (sanitizeFilenamePart(getSelectedText(els.groupMemberSelect)) || sanitizeFilenamePart(raw));
+    if (source.kind === "groupMember") {
+      const prefix = sanitizeFilenamePart(source.filenamePrefix || "agent") || "agent";
+      const sourceId = sanitizeFilenamePart(source.id || source.fallbackId || "");
+      return prefix + "-" + (sanitizeFilenamePart(source.label) || sourceId || prefix);
     }
     if (state.user && state.user.email) {
       return "assigned-" + sanitizeFilenamePart(state.user.email.split("@")[0] || state.user.email);
@@ -2140,12 +2854,8 @@
     return /[",\r\n]/.test(s) ? "\"" + s.replace(/"/g, "\"\"") + "\"" : s;
   }
 
-  function exportVisibleTicketsToCsv() {
-    const rows = state.filteredTickets || [];
-    if (!rows.length) {
-      setStatus("No tickets are currently visible to export.", false);
-      return;
-    }
+  function buildVisibleTicketsCsvExportData() {
+    const rows = Array.isArray(state.filteredTickets) ? state.filteredTickets.slice() : [];
     const header = ["Ticket", "Ticket URL", "Subject", "Status", "Priority", "Created", "Updated"];
     const csvRows = rows.map((row) => {
       const rowId = row && row.id != null ? row.id : "";
@@ -2161,17 +2871,259 @@
       ];
     });
     const csvString = [header, ...csvRows].map((cols) => cols.map(csvEscape).join(",")).join("\r\n");
+    return {
+      rows,
+      csvString,
+      filename: getTicketCsvFilename()
+    };
+  }
+
+  function exportVisibleTicketsToCsv() {
+    const exportData = buildVisibleTicketsCsvExportData();
+    const rows = exportData.rows;
+    if (!rows.length) {
+      setStatus("No tickets are currently visible to export.", false);
+      return;
+    }
+    const csvString = exportData.csvString;
     const blob = new Blob([csvString], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = getTicketCsvFilename();
+    a.download = exportData.filename;
     a.style.display = "none";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     setStatus("CSV exported. " + rows.length + " rows downloaded.", false);
+  }
+
+  function escapeSlackMrkdwn(value) {
+    return String(value == null ? "" : value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  function sanitizeSlackLinkTarget(value) {
+    return String(value == null ? "" : value)
+      .trim()
+      .replaceAll("<", "%3C")
+      .replaceAll(">", "%3E")
+      .replaceAll("|", "%7C")
+      .replaceAll(" ", "%20");
+  }
+
+  function getSlackTicketSourceLabel() {
+    const source = getActiveTicketSourceContext();
+    return String(source && source.label || "").trim() || "Assigned Tickets";
+  }
+
+  function shortenSlackSubject(value, maxLen) {
+    const normalized = String(value == null ? "" : value).replace(/\s+/g, " ").trim();
+    const limit = Number(maxLen) > 0 ? Number(maxLen) : 120;
+    if (!normalized) return "(no subject)";
+    if (normalized.length <= limit) return normalized;
+    return normalized.slice(0, Math.max(8, limit - 1)).trimEnd() + "…";
+  }
+
+  function getSlackTicketOwnerLabel(row) {
+    const source = row && typeof row === "object" ? row : {};
+    const nestedAssignee = source.assignee && typeof source.assignee === "object" ? source.assignee : null;
+    const candidates = [
+      source.assignee_name,
+      source.assigneeName,
+      source.owner_name,
+      source.ownerName,
+      nestedAssignee && nestedAssignee.name,
+      nestedAssignee && nestedAssignee.display_name
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      const value = String(candidates[i] == null ? "" : candidates[i]).replace(/\s+/g, " ").trim();
+      if (value) return value;
+    }
+    return "";
+  }
+
+  function getSlackTicketEmailAddress(row) {
+    const source = row && typeof row === "object" ? row : {};
+    const ticketId = source && source.id != null ? String(source.id).trim() : "";
+    const cachedEmailResult = ticketId ? getCachedTicketEmailCopyResult(ticketId) : null;
+    if (cachedEmailResult && Array.isArray(cachedEmailResult.emails) && cachedEmailResult.emails.length) {
+      const cachedExternal = cachedEmailResult.emails.find((entry) => !isAdobeEmailAddress(entry));
+      const cachedPrimary = normalizeEmailAddress(cachedExternal || cachedEmailResult.emails[0] || "");
+      if (cachedPrimary) return cachedPrimary;
+    }
+    const nestedRequester = source.requester && typeof source.requester === "object" ? source.requester : null;
+    const nestedVia = source.via && typeof source.via === "object" ? source.via : null;
+    const viaSource = nestedVia && nestedVia.source && typeof nestedVia.source === "object" ? nestedVia.source : null;
+    const viaFrom = viaSource && viaSource.from && typeof viaSource.from === "object" ? viaSource.from : null;
+    const candidates = [
+      source.requester_email,
+      source.requesterEmail,
+      source.email,
+      source.email_address,
+      source.recipient_email,
+      source.recipient,
+      source.via_email,
+      nestedRequester && nestedRequester.email,
+      nestedRequester && nestedRequester.primary_email,
+      viaFrom && viaFrom.address,
+      viaFrom && viaFrom.email
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      const value = normalizeEmailAddress(candidates[i]);
+      if (value) return value;
+    }
+    return "";
+  }
+
+  function formatSlackStatusIndicator(value) {
+    const normalized = String(value == null ? "" : value).trim().toLowerCase() || "none";
+    return "`[" + escapeSlackMrkdwn(normalized) + "]`";
+  }
+
+  function buildSlackItToMeMarkdown(rows) {
+    const ticketRows = Array.isArray(rows) ? rows : [];
+    const cappedRows = ticketRows.slice(0, SLACK_IT_TO_ME_MAX_ROWS);
+    const sourceLabel = getSlackTicketSourceLabel();
+    const statusLabel = (state.statusFilter && state.statusFilter !== STATUS_FILTER_ALL_VALUE)
+      ? state.statusFilter
+      : STATUS_FILTER_ALL_LABEL;
+    const heading = statusLabel !== STATUS_FILTER_ALL_LABEL
+      ? (sourceLabel + " CASES (" + statusLabel + ")")
+      : (sourceLabel + " CASES");
+    const headerLines = [
+      "*" + escapeSlackMrkdwn(heading) + "*",
+      ""
+    ];
+    const signatureLine = "// <https://tve.zendesk.com/hc/en-us/articles/46503360732436-ZIP-TOOL-beta|via ZipTool>";
+
+    const rowLines = cappedRows.map((row) => {
+      const ticketId = row && row.id != null ? String(row.id).trim() : "";
+      const ticketUrl = (row && row.url && String(row.url).trim()) || (ticketId ? (TICKET_URL_PREFIX + ticketId) : "");
+      const ticketLabel = ticketId ? ("#" + ticketId) : "#ticket";
+      const safeTicketUrl = sanitizeSlackLinkTarget(ticketUrl);
+      const ticketRef = (ticketId && safeTicketUrl)
+        ? ("<" + safeTicketUrl + "|" + escapeSlackMrkdwn(ticketLabel) + ">")
+        : escapeSlackMrkdwn(ticketLabel);
+      const subject = escapeSlackMrkdwn(shortenSlackSubject(row && row.subject, 120));
+      const status = formatSlackStatusIndicator(row && row.status);
+      const requesterEmail = getSlackTicketEmailAddress(row);
+      const emailRef = requesterEmail
+        ? ("<" + sanitizeSlackLinkTarget("mailto:" + requesterEmail) + "|" + escapeSlackMrkdwn(requesterEmail) + ">")
+        : "";
+      const owner = escapeSlackMrkdwn(getSlackTicketOwnerLabel(row));
+      const parts = [ticketRef, subject, status];
+      if (emailRef) parts.push(emailRef);
+      if (owner) parts.push("[" + owner + "]");
+      return "• " + parts.join(" ");
+    });
+
+    if (ticketRows.length > cappedRows.length) {
+      rowLines.push("_" + String(ticketRows.length - cappedRows.length) + " additional visible tickets omitted (ZIP cap " + String(SLACK_IT_TO_ME_MAX_ROWS) + ")._");
+    }
+
+    if (!rowLines.length) {
+      rowLines.push("_No visible tickets._");
+    }
+
+    const allLines = headerLines.concat(rowLines, ["", signatureLine]);
+    let markdownText = allLines.join("\n").trim();
+    if (markdownText.length <= SLACK_IT_TO_ME_MAX_MESSAGE_CHARS) {
+      return markdownText;
+    }
+
+    const trimmedLines = rowLines.slice();
+    while (trimmedLines.length > 1) {
+      trimmedLines.pop();
+      const candidate = headerLines.concat(trimmedLines, ["", signatureLine]);
+      candidate.push("_Output truncated to fit Slack message length limits._");
+      const nextText = candidate.join("\n").trim();
+      if (nextText.length <= SLACK_IT_TO_ME_MAX_MESSAGE_CHARS) {
+        return nextText;
+      }
+    }
+
+    const fallback = headerLines.concat([
+      "_Visible ticket list is too large for one message._",
+      "_Apply filters and retry SLACK_IT_TO_ME._"
+    ]).join("\n").trim();
+    return fallback.slice(0, SLACK_IT_TO_ME_MAX_MESSAGE_CHARS);
+  }
+
+  async function slackVisibleTicketsToMe() {
+    if (state.slackItToMeLoading) return;
+    const exportData = buildVisibleTicketsCsvExportData();
+    const rows = exportData.rows;
+    if (!rows.length) {
+      setStatus("No tickets are currently visible to send.", false);
+      return;
+    }
+
+    const ready = await refreshSlacktivatedState({ force: true, silent: true, allowOpenIdSilentProbe: false }).catch(() => false);
+    if (!ready || !isPassAiSlacktivated()) {
+      setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+      updateTicketActionButtons();
+      return;
+    }
+
+    state.slackItToMeLoading = true;
+    applyGlobalBusyUi();
+    updateTicketActionButtons();
+    setStatus("Sending visible ticket list to @ME in Slack…", false);
+    try {
+      const markdownText = buildSlackItToMeMarkdown(rows);
+      const expectedTeamId = getExpectedPassAiSlackTeamId();
+      const slackApiTokens = getPassAiSlackApiTokenConfig();
+      await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
+      const sendPayload = {
+        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+        expectedTeamId,
+        userId: state.passAiSlackUserId || "",
+        userName: state.passAiSlackUserName || "",
+        avatarUrl: state.passAiSlackAvatarUrl || "",
+        markdownText,
+        allowBotDelivery: false,
+        botToken: slackApiTokens.botToken || "",
+        userToken: slackApiTokens.userToken || ""
+      };
+
+      setStatus("Sending visible ticket list to @ME via Slack API…", false);
+      const response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", sendPayload);
+
+      if (!response || response.ok !== true) {
+        const responseMessage = normalizePassAiCommentBody(response && (response.error || response.message)) || "Slack send failed.";
+        throw new Error(responseMessage);
+      }
+
+      setPassAiSlackAuthState({
+        ready: true,
+        mode: "api",
+        webReady: true,
+        userId: response.user_id || response.userId || state.passAiSlackUserId || "",
+        userName: response.user_name || response.userName || state.passAiSlackUserName || "",
+        avatarUrl: response.avatar_url || response.avatarUrl || state.passAiSlackAvatarUrl || "",
+        teamId: response.team_id || response.teamId || "",
+        enterpriseId: response.enterprise_id || response.enterpriseId || ""
+      });
+
+      const sentRows = Math.min(rows.length, SLACK_IT_TO_ME_MAX_ROWS);
+      const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
+      setStatus("SLACK_IT_TO_ME delivered to @" + getSlacktivatedDisplayName() + summarySuffix + ".", false);
+    } catch (err) {
+      const message = normalizePassAiCommentBody(err && err.message) || "Unable to send visible ticket list.";
+      const lowered = message.toLowerCase();
+      if (lowered.includes("workspace mismatch") || lowered.includes("connected team")) {
+        setPassAiSlackAuthState({ ready: false, error: message });
+      }
+      setStatus("SLACK_IT_TO_ME failed: " + message, true);
+    } finally {
+      state.slackItToMeLoading = false;
+      applyGlobalBusyUi();
+      updateTicketActionButtons();
+    }
   }
 
   const MAX_API_VALUE_RENDER_DEPTH = 10;
@@ -2729,7 +3681,7 @@
     }
     if (els.topAvatarWrap) {
       const idleTitle = name + (email ? " · " + email : "");
-      els.topAvatarWrap.title = state.busy ? "Loading…" : idleTitle;
+      els.topAvatarWrap.title = isZendeskActivityLoading() ? "Zendesk activity in progress…" : idleTitle;
       els.topAvatarWrap.dataset.idleTitle = idleTitle;
     }
   }
@@ -2785,10 +3737,6 @@
   function showLogin() {
     stopPassAiSlackAuthPolling();
     hideToast();
-    if (state.slackLoginWindowId != null) {
-      closeSlackLoginDialog(state.slackLoginWindowId).catch(() => {});
-      state.slackLoginWindowId = null;
-    }
     state.user = null;
     state.zendeskTabId = null;
     state.slackTabId = null;
@@ -2806,14 +3754,17 @@
     state.lastApiPayloadString = "";
     state.lastApiRequest = null;
     state.passAiLoading = false;
+    state.passAiConversationInFlight = false;
     state.passAiTicketId = null;
     state.passAiActiveClientId = "";
     state.passAiSlackReady = false;
     state.passAiSlackUserId = "";
-    state.passAiSlackTeamId = getExpectedPassAiSlackTeamId() || PASS_AI_SLACK_TEAM_ID;
+    state.passAiSlackUserName = "";
+    state.passAiSlackAvatarUrl = "";
+    state.passAiSlackWebReady = false;
     state.passAiSlackAuthError = "";
-    state.passAiSlackAuthBootstrapCount = 0;
     state.passAiPanelVisible = false;
+    state.slackItToMeLoading = false;
     state.ticketEmailUserEmailCacheById = Object.create(null);
     state.ticketEmailRequesterByTicketId = Object.create(null);
     state.ticketEmailCopyCacheByTicketId = Object.create(null);
@@ -3393,6 +4344,24 @@
     return /^[TE][A-Z0-9]{8,}$/.test(teamId) ? teamId : "";
   }
 
+  function normalizePassAiSlackAvatarUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+      const parsed = new URL(raw);
+      const hostname = String(parsed.hostname || "").toLowerCase();
+      if (
+        hostname === "slack-edge.com"
+        || hostname.endsWith(".slack-edge.com")
+        || hostname === "slack.com"
+        || hostname.endsWith(".slack.com")
+      ) {
+        return parsed.toString();
+      }
+    } catch (_) {}
+    return "";
+  }
+
   function normalizePassAiSlackChannelId(value) {
     const channelId = String(value || "").trim().toUpperCase();
     return /^[CGD][A-Z0-9]{8,}$/.test(channelId) ? channelId : "";
@@ -3411,25 +4380,206 @@
         || ""
       ).trim();
     }
-    return normalizePassAiSlackTeamId(configured || PASS_AI_SLACK_TEAM_ID);
+    const normalizedConfigured = normalizePassAiSlackTeamId(configured);
+    if (normalizedConfigured) return normalizedConfigured;
+    return normalizePassAiSlackTeamId(PASS_AI_SLACK_TEAM_ID);
   }
 
-  function getPassAiWorkspaceTeamIdForUrls() {
-    const expected = getExpectedPassAiSlackTeamId();
-    if (expected && expected.startsWith("T")) return expected;
-    const fallback = normalizePassAiSlackTeamId(PASS_AI_SLACK_TEAM_ID);
-    return fallback && fallback.startsWith("T") ? fallback : "";
+  function readPassAiSlackOpenIdSetting(storageKey, windowKeys) {
+    let value = "";
+    try {
+      value = String(window.localStorage.getItem(storageKey) || "").trim();
+    } catch (_) {}
+    if (value) return value;
+    const keys = Array.isArray(windowKeys) ? windowKeys : [];
+    for (let i = 0; i < keys.length; i += 1) {
+      const key = String(keys[i] || "").trim();
+      if (!key || typeof window === "undefined") continue;
+      const candidate = String(window[key] || "").trim();
+      if (candidate) return candidate;
+    }
+    return "";
+  }
+
+  function normalizePassAiSlackOpenIdScope(value) {
+    const raw = String(value || "").trim().toLowerCase();
+    if (!raw) return PASS_AI_SLACK_OIDC_DEFAULT_SCOPE;
+    const parts = raw.split(/[\s,]+/).map((part) => part.trim()).filter(Boolean);
+    const allowed = new Set(["openid", "profile", "email"]);
+    const unique = [];
+    for (let i = 0; i < parts.length; i += 1) {
+      const scope = parts[i];
+      if (!allowed.has(scope)) continue;
+      if (!unique.includes(scope)) unique.push(scope);
+    }
+    if (!unique.includes("openid")) unique.unshift("openid");
+    return unique.length ? unique.join(" ") : PASS_AI_SLACK_OIDC_DEFAULT_SCOPE;
+  }
+
+  function getPassAiSlackOpenIdConfig() {
+    const clientId = readPassAiSlackOpenIdSetting(
+      PASS_AI_SLACK_OIDC_CLIENT_ID_STORAGE_KEY,
+      [
+        "ZIP_PASS_AI_SLACK_OIDC_CLIENT_ID",
+        "ZIP_PASS_AI_SLACK_CLIENT_ID"
+      ]
+    );
+    const clientSecret = readPassAiSlackOpenIdSetting(
+      PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY,
+      [
+        "ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET",
+        "ZIP_PASS_AI_SLACK_CLIENT_SECRET"
+      ]
+    );
+    const scope = normalizePassAiSlackOpenIdScope(
+      readPassAiSlackOpenIdSetting(
+        PASS_AI_SLACK_OIDC_SCOPE_STORAGE_KEY,
+        [
+          "ZIP_PASS_AI_SLACK_OIDC_SCOPE",
+          "ZIP_PASS_AI_SLACK_OIDC_SCOPES"
+        ]
+      )
+    );
+    const redirectPath = String(
+      readPassAiSlackOpenIdSetting(
+        PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY,
+        ["ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH"]
+      ) || PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH
+    ).trim() || PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH;
+    return {
+      clientId,
+      clientSecret,
+      scope,
+      redirectPath,
+      expectedTeamId: getExpectedPassAiSlackTeamId()
+    };
+  }
+
+  function hasPassAiSlackOpenIdConfig(config) {
+    const cfg = config && typeof config === "object" ? config : getPassAiSlackOpenIdConfig();
+    return !!(String(cfg.clientId || "").trim() && String(cfg.clientSecret || "").trim());
+  }
+
+  function normalizePassAiSlackApiToken(value) {
+    const token = String(value || "").trim();
+    if (!token) return "";
+    return /^xox[a-z]-/i.test(token) ? token : "";
+  }
+
+  function readPassAiSlackApiTokenSetting(storageKey, windowKeys) {
+    const keys = Array.isArray(windowKeys) ? windowKeys : [];
+    for (let i = 0; i < keys.length; i += 1) {
+      const key = String(keys[i] || "").trim();
+      if (!key || typeof window === "undefined") continue;
+      const candidate = normalizePassAiSlackApiToken(window[key]);
+      if (candidate) return candidate;
+    }
+    let localValue = "";
+    try {
+      localValue = String(window.localStorage.getItem(storageKey) || "").trim();
+    } catch (_) {}
+    const normalizedLocalValue = normalizePassAiSlackApiToken(localValue);
+    if (normalizedLocalValue) return normalizedLocalValue;
+    return "";
+  }
+
+  function getPassAiSlackApiTokenConfig() {
+    const botToken = readPassAiSlackApiTokenSetting(
+      PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY,
+      [
+        "ZIP_PASS_AI_SLACK_BOT_TOKEN",
+        "ZIP_PASS_AI_SLACK_TOKEN"
+      ]
+    );
+    const userToken = readPassAiSlackApiTokenSetting(
+      PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY,
+      ["ZIP_PASS_AI_SLACK_USER_TOKEN"]
+    );
+    return { botToken, userToken };
+  }
+
+  function hasPassAiSlackApiTokenConfig(config) {
+    const cfg = config && typeof config === "object" ? config : getPassAiSlackApiTokenConfig();
+    return !!(cfg.botToken || cfg.userToken);
+  }
+
+  function persistPassAiSlackApiTokenConfig(config) {
+    const cfg = config && typeof config === "object" ? config : getPassAiSlackApiTokenConfig();
+    const updates = {};
+    if (cfg.botToken) updates[PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY] = cfg.botToken;
+    if (cfg.userToken) updates[PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY] = cfg.userToken;
+    if (!Object.keys(updates).length) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      if (!chrome || !chrome.storage || !chrome.storage.local || typeof chrome.storage.local.set !== "function") {
+        resolve(false);
+        return;
+      }
+      chrome.storage.local.set(updates, () => {
+        void chrome.runtime.lastError;
+        resolve(true);
+      });
+    });
+  }
+
+  function normalizePassAiSlackOpenIdAuthResponse(response) {
+    const payload = response && typeof response === "object" ? response : {};
+    if (!payload || payload.ok !== true) return null;
+    return {
+      ready: true,
+      mode: "openid",
+      webReady: true,
+      userId: payload.user_id || payload.userId || "",
+      userName: payload.user_name || payload.userName || payload.display_name || payload.displayName || "",
+      avatarUrl: payload.avatar_url || payload.avatarUrl || "",
+      teamId: payload.team_id || payload.teamId || ""
+    };
+  }
+
+  async function refreshPassAiSlackOpenIdStatus(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const silent = !!opts.silent;
+    const config = getPassAiSlackOpenIdConfig();
+    if (!hasPassAiSlackOpenIdConfig(config)) return false;
+    try {
+      const response = await sendBackgroundRequest("ZIP_SLACK_OPENID_STATUS", {
+        expectedTeamId: config.expectedTeamId
+      });
+      const nextState = normalizePassAiSlackOpenIdAuthResponse(response);
+      if (!nextState) return false;
+      setPassAiSlackAuthState(nextState);
+      if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function runPassAiSlackOpenIdAuth(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const interactive = opts.interactive !== false;
+    const config = getPassAiSlackOpenIdConfig();
+    if (!hasPassAiSlackOpenIdConfig(config)) {
+      return { ok: false, error: "Slack OpenID client credentials are not configured." };
+    }
+    const response = await sendBackgroundRequest("ZIP_SLACK_OPENID_AUTH", {
+      clientId: config.clientId,
+      clientSecret: config.clientSecret,
+      scope: config.scope,
+      redirectPath: config.redirectPath,
+      expectedTeamId: config.expectedTeamId,
+      interactive
+    });
+    const nextState = normalizePassAiSlackOpenIdAuthResponse(response);
+    if (nextState) {
+      setPassAiSlackAuthState(nextState);
+    }
+    return response && typeof response === "object"
+      ? response
+      : { ok: false, error: "Slack OpenID authentication did not return a response." };
   }
 
   function buildPassAiSlackWorkspaceLandingUrl() {
-    const channelId = getPassAiSingularityChannelId() || PASS_AI_SLACK_CHANNEL_DEFAULT;
-    const workspaceTeamId = getPassAiWorkspaceTeamIdForUrls();
-    if (workspaceTeamId && channelId) {
-      return PASS_AI_SLACK_WORKSPACE_ORIGIN + "/client/" + encodeURIComponent(workspaceTeamId) + "/" + encodeURIComponent(channelId);
-    }
-    if (channelId) {
-      return PASS_AI_SLACK_WORKSPACE_ORIGIN + "/archives/" + encodeURIComponent(channelId);
-    }
+    // Use workspace root to let Slack resolve the active account/team automatically.
     return PASS_AI_SLACK_WORKSPACE_ORIGIN + "/";
   }
 
@@ -3573,6 +4723,15 @@
 
   function setPassAiLoading(on) {
     state.passAiLoading = !!on;
+    applyGlobalBusyUi();
+    updateTicketActionButtons();
+  }
+
+  function setPassAiConversationInFlight(on) {
+    const next = !!on;
+    if (state.passAiConversationInFlight === next) return;
+    state.passAiConversationInFlight = next;
+    applyGlobalBusyUi();
     updateTicketActionButtons();
   }
 
@@ -3582,15 +4741,23 @@
       passAiSlackAuthPollTimerId = null;
     }
     passAiSlackAuthPollAttempt = 0;
-    state.passAiSlackAuthBootstrapCount = 0;
     if (state.passAiSlackAuthPolling) {
       state.passAiSlackAuthPolling = false;
+      applyGlobalBusyUi();
       updateTicketActionButtons();
     }
   }
 
   function setPassAiSlackAuthState(nextState) {
     const ready = !!(nextState && nextState.ready);
+    const requestedMode = String(nextState && nextState.mode || "").trim().toLowerCase();
+    const hasRequestedWebReady = !!(
+      nextState
+      && Object.prototype.hasOwnProperty.call(nextState, "webReady")
+    );
+    const requestedWebReady = hasRequestedWebReady
+      ? !!(nextState && nextState.webReady)
+      : (requestedMode ? requestedMode === "web" : ready);
     const expectedTeamId = getExpectedPassAiSlackTeamId();
     const reportedTeamId = normalizePassAiSlackTeamId(nextState && nextState.teamId);
     const reportedEnterpriseId = normalizePassAiSlackTeamId(nextState && nextState.enterpriseId);
@@ -3602,9 +4769,19 @@
       || reportedEnterpriseId === expectedTeamId;
     const teamMismatch = !!(ready && !teamMatchesExpected);
 
-    state.passAiSlackReady = ready && !teamMismatch;
+    // Team mismatch is treated as advisory so existing Adobe DX sessions are not dropped.
+    state.passAiSlackReady = ready;
+    state.passAiSlackWebReady = state.passAiSlackReady && !!requestedWebReady;
     state.passAiSlackUserId = state.passAiSlackReady ? String((nextState && nextState.userId) || "").trim() : "";
-    state.passAiSlackTeamId = reportedEnterpriseId || reportedTeamId || expectedTeamId || "";
+    state.passAiSlackUserName = state.passAiSlackReady
+      ? String(
+        (nextState && (nextState.userName || nextState.user_name || nextState.displayName || nextState.display_name))
+        || ""
+      ).trim()
+      : "";
+    state.passAiSlackAvatarUrl = state.passAiSlackReady
+      ? normalizePassAiSlackAvatarUrl(nextState && (nextState.avatarUrl || nextState.avatar_url || ""))
+      : "";
     if (state.passAiSlackReady) {
       state.passAiSlackAuthError = "";
     } else if (teamMismatch) {
@@ -3615,28 +4792,45 @@
     updateTicketActionButtons();
   }
 
-  function shouldBootstrapSlackAuthTab(errorMessage) {
-    const message = String(errorMessage || "").trim().toLowerCase();
-    if (!message) return false;
-    return (
-      message.includes("no slack tab available")
-      || message.includes("unable to reach slack tab")
-      || message.includes("could not establish connection")
-      || message.includes("receiving end does not exist")
-      || message.includes("extension context invalidated")
-      || message.includes("not a slack tab")
-    );
-  }
-
   async function refreshPassAiSlackAuth(options) {
-    const silent = !!(options && options.silent);
-    const allowTabBootstrap = !(options && options.allowTabBootstrap === false);
+    const opts = options && typeof options === "object" ? options : {};
+    const silent = !!opts.silent;
+    const allowOpenIdSilentProbe = opts.allowOpenIdSilentProbe !== false;
+    const allowSlackTabBootstrap = opts.allowSlackTabBootstrap === true;
+    const openIdReady = await refreshPassAiSlackOpenIdStatus({ silent: true }).catch(() => false);
+    if (openIdReady) {
+      if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
+      return true;
+    }
+
+    if (allowOpenIdSilentProbe) {
+      const openIdConfig = getPassAiSlackOpenIdConfig();
+      if (hasPassAiSlackOpenIdConfig(openIdConfig)) {
+        const nowMs = Date.now();
+        if (nowMs - Number(slackOpenIdSilentProbeLastAt || 0) >= SLACK_OPENID_SILENT_PROBE_MIN_GAP_MS) {
+          slackOpenIdSilentProbeLastAt = nowMs;
+          const silentOpenId = await runPassAiSlackOpenIdAuth({ interactive: false }).catch(() => null);
+          if (silentOpenId && silentOpenId.ok === true && isPassAiSlacktivated()) {
+            if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
+            return true;
+          }
+        }
+      }
+    }
+
     const expectedTeamId = getExpectedPassAiSlackTeamId();
     const requestSlackAuthTest = async () => {
-      const response = await sendToSlackTab({
+      const response = await sendToSlackTabWithAutoBootstrap({
         action: "slackAuthTest",
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
         expectedTeamId
+      }, {
+        bootstrap: allowSlackTabBootstrap,
+        onBootstrap: () => {
+          if (!silent) {
+            setStatus("Preparing adobedx.slack.com web session for Slack auth…", false);
+          }
+        }
       });
       const ready = !!(
         response
@@ -3657,9 +4851,28 @@
 
     try {
       const response = await requestSlackAuthTest();
+      const capturedWebToken = normalizePassAiSlackApiToken(
+        response && (
+          response.session_token
+          || response.web_token
+          || response.user_token
+          || response.token
+        )
+      );
+      if (capturedWebToken) {
+        const currentTokens = getPassAiSlackApiTokenConfig();
+        await persistPassAiSlackApiTokenConfig({
+          botToken: currentTokens.botToken || "",
+          userToken: capturedWebToken
+        }).catch(() => {});
+      }
       setPassAiSlackAuthState({
         ready: true,
+        mode: "web",
+        webReady: true,
         userId: response.user_id || response.userId || "",
+        userName: response.user_name || response.userName || response.display_name || response.displayName || "",
+        avatarUrl: response.avatar_url || response.avatarUrl || "",
         teamId: response.team_id || response.teamId || "",
         enterpriseId: response.enterprise_id || response.enterpriseId || ""
       });
@@ -3668,95 +4881,68 @@
         if (!silent) setStatus(message, true);
         return false;
       }
-      if (!silent) setStatus("Slack connected for PASS AI.", false);
+      if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
       return true;
     } catch (tabErr) {
-      let tabMessage = normalizePassAiCommentBody(tabErr && tabErr.message);
-      const nowMs = Date.now();
-      const canBootstrapTab = allowTabBootstrap
-        && shouldBootstrapSlackAuthTab(tabMessage)
-        && Number(state.passAiSlackAuthBootstrapCount || 0) < 1
-        && (nowMs - Number(state.slackAuthTabBootstrapAt || 0) > 1000);
-
-      if (canBootstrapTab) {
-        state.slackAuthTabBootstrapAt = nowMs;
-        state.passAiSlackAuthBootstrapCount = Number(state.passAiSlackAuthBootstrapCount || 0) + 1;
-        try {
-          const existingSlackTabId = await getSlackTabId();
-          if (existingSlackTabId) {
-            state.slackTabId = existingSlackTabId;
-          } else {
-            const opened = await openSlackWorkspaceTab(buildPassAiSlackWorkspaceLandingUrl(), { active: false });
-            const openedTabId = Number(opened && opened.tabId);
-            if (Number.isFinite(openedTabId) && openedTabId > 0) {
-              state.slackTabId = openedTabId;
-            }
-          }
-          await wait(900);
-          const retry = await requestSlackAuthTest();
-          setPassAiSlackAuthState({
-            ready: true,
-            userId: retry.user_id || retry.userId || "",
-            teamId: retry.team_id || retry.teamId || "",
-            enterpriseId: retry.enterprise_id || retry.enterpriseId || ""
-          });
-          if (!state.passAiSlackReady) {
-            const message = state.passAiSlackAuthError || "Slack workspace mismatch.";
-            if (!silent) setStatus(message, true);
-            return false;
-          }
-          if (!silent) setStatus("Slack connected for PASS AI.", false);
-          return true;
-        } catch (retryErr) {
-          const retryMessage = normalizePassAiCommentBody(retryErr && retryErr.message);
-          if (retryMessage) tabMessage = retryMessage;
-        }
-      }
-
-      let oauthMessage = "";
-      try {
-        const oauthStatus = await sendBackgroundRequest("ZIP_SLACK_OAUTH_STATUS", {
-          expectedTeamId
-        });
-        if (oauthStatus && oauthStatus.ok === true && oauthStatus.ready) {
-          oauthMessage = "Slack OAuth is ready, but Slack web is not signed in on an open Slack tab.";
-        } else {
-          oauthMessage = normalizePassAiCommentBody(oauthStatus && (oauthStatus.error || oauthStatus.message));
-        }
-      } catch (_) {}
-
-      const message = tabMessage || oauthMessage || "Slack sign-in is required.";
+      const message = normalizePassAiCommentBody(tabErr && tabErr.message) || "Slack sign-in is required.";
       setPassAiSlackAuthState({ ready: false, error: message });
       if (!silent) {
-        setStatus("Slack sign-in required. Click Sign in with Slack.", true);
+        setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
       }
       return false;
     }
   }
 
-  function startPassAiSlackAuthPolling() {
+  async function refreshSlacktivatedState(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    if (!state.user) {
+      setPassAiSlackAuthState({ ready: false, error: "" });
+      return false;
+    }
+    const force = !!opts.force;
+    const nowMs = Date.now();
+    if (!force && slackAuthCheckInFlight) {
+      return isPassAiSlacktivated();
+    }
+    if (!force && nowMs - Number(slackAuthCheckLastAt || 0) < SLACK_AUTH_AUTO_REFRESH_MIN_GAP_MS) {
+      return isPassAiSlacktivated();
+    }
+
+    slackAuthCheckInFlight = true;
+    applyGlobalBusyUi();
+    slackAuthCheckLastAt = nowMs;
+    try {
+      return await refreshPassAiSlackAuth({
+        silent: opts.silent !== false,
+        allowOpenIdSilentProbe: opts.allowOpenIdSilentProbe !== false
+      });
+    } finally {
+      slackAuthCheckInFlight = false;
+      applyGlobalBusyUi();
+    }
+  }
+
+  function startPassAiSlackAuthPolling(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    void opts;
     stopPassAiSlackAuthPolling();
     state.passAiSlackAuthPolling = true;
+    applyGlobalBusyUi();
     passAiSlackAuthPollAttempt = 0;
     updateTicketActionButtons();
 
     const poll = () => {
       passAiSlackAuthPollAttempt += 1;
-      refreshPassAiSlackAuth({ silent: true })
+      refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false, allowSlackTabBootstrap: true })
         .then((ready) => {
           if (ready) {
             stopPassAiSlackAuthPolling();
-            if (state.slackLoginWindowId != null) {
-              const windowId = state.slackLoginWindowId;
-              state.slackLoginWindowId = null;
-              closeSlackLoginDialog(windowId).catch(() => {});
-            }
-            setStatus("Slack sign-in detected. AI? is now enabled.", false);
+            setStatus("Slack sign-in detected. ZIP is now SLACKTIVATED.", false);
             return;
           }
           if (passAiSlackAuthPollAttempt >= PASS_AI_SLACK_AUTH_POLL_MAX_ATTEMPTS) {
             stopPassAiSlackAuthPolling();
-            setStatus("Slack sign-in not detected yet. Retry Sign in with Slack.", true);
+            setStatus("Slack sign-in not detected yet. Retry the SLACKTIVATED login.", true);
             return;
           }
           passAiSlackAuthPollTimerId = window.setTimeout(poll, PASS_AI_SLACK_AUTH_POLL_INTERVAL_MS);
@@ -3764,7 +4950,7 @@
         .catch(() => {
           if (passAiSlackAuthPollAttempt >= PASS_AI_SLACK_AUTH_POLL_MAX_ATTEMPTS) {
             stopPassAiSlackAuthPolling();
-            setStatus("Slack sign-in not detected yet. Retry Sign in with Slack.", true);
+            setStatus("Slack sign-in not detected yet. Retry the SLACKTIVATED login.", true);
             return;
           }
           passAiSlackAuthPollTimerId = window.setTimeout(poll, PASS_AI_SLACK_AUTH_POLL_INTERVAL_MS);
@@ -3777,51 +4963,61 @@
   async function beginSlackLoginFlow() {
     stopPassAiSlackAuthPolling();
     state.passAiSlackAuthError = "";
-    state.slackAuthTabBootstrapAt = 0;
-    state.passAiSlackAuthBootstrapCount = 0;
     updateTicketActionButtons();
-    setStatus("Opening Sign in with Slack…", false);
+    setStatus("Checking adobedx.slack.com session…", false);
     try {
-      if (state.slackLoginWindowId != null) {
-        const windowId = state.slackLoginWindowId;
-        state.slackLoginWindowId = null;
-        closeSlackLoginDialog(windowId).catch(() => {});
+      const alreadyReady = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: true });
+      if (alreadyReady && state.passAiSlackReady) {
+        setStatus("ZIP is now SLACKTIVATED.", false);
+        return;
+      }
+
+      const openIdConfig = getPassAiSlackOpenIdConfig();
+      if (hasPassAiSlackOpenIdConfig(openIdConfig)) {
+        const interactiveOpenId = await runPassAiSlackOpenIdAuth({ interactive: true }).catch(() => null);
+        if (interactiveOpenId && interactiveOpenId.ok === true) {
+          setStatus("ZIP is now SLACKTIVATED.", false);
+          return;
+        }
       }
 
       const loginUrl = buildPassAiSlackLoginUrl();
-      const opened = await openSlackLoginDialog(loginUrl);
-      const openedWindowId = Number(opened && opened.windowId);
-      state.slackLoginWindowId = Number.isFinite(openedWindowId) && openedWindowId > 0 ? openedWindowId : null;
+      let opened = null;
+      let existingSlackTabs = await querySlackTabsFromSidepanel({ injectableOnly: true }).catch(() => []);
+      if (!Array.isArray(existingSlackTabs) || !existingSlackTabs.length) {
+        existingSlackTabs = await querySlackTabsFromSidepanel({ injectableOnly: false }).catch(() => []);
+      }
+      if (Array.isArray(existingSlackTabs) && existingSlackTabs.length > 0 && existingSlackTabs[0] && existingSlackTabs[0].id != null) {
+        opened = await focusSlackWorkspaceTab(existingSlackTabs[0].id, loginUrl);
+      } else {
+        opened = await openSlackWorkspaceTab(loginUrl, { active: true });
+      }
       const openedTabId = Number(opened && opened.tabId);
       if (Number.isFinite(openedTabId) && openedTabId > 0) {
         state.slackTabId = openedTabId;
       }
-
-      const readyNow = await refreshPassAiSlackAuth({ silent: true });
+      await wait(450);
+      const readyNow = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false });
       if (readyNow) {
-        if (state.slackLoginWindowId != null) {
-          const windowId = state.slackLoginWindowId;
-          state.slackLoginWindowId = null;
-          closeSlackLoginDialog(windowId).catch(() => {});
-        }
-        setStatus("Slack connected for PASS AI.", false);
+        setStatus("ZIP is now SLACKTIVATED.", false);
         return;
       }
 
       startPassAiSlackAuthPolling();
-      setStatus("Complete Slack sign-in in the popup window.", false);
+      setStatus("Complete Slack sign-in in the adobedx.slack.com tab.", false);
     } catch (err) {
       const message = normalizePassAiCommentBody(err && err.message) || "Slack sign-in failed.";
       setPassAiSlackAuthState({ ready: false, error: message });
       setStatus("Slack sign-in failed: " + message, true);
       state.passAiSlackAuthPolling = false;
+      applyGlobalBusyUi();
       updateTicketActionButtons();
     }
   }
 
   async function ensurePassAiSlackSession() {
-    if (state.passAiSlackReady) return true;
-    throw new Error("Slack sign-in is required. Click Sign in with Slack and complete login in Slack web.");
+    if (isPassAiSlacktivated()) return true;
+    throw new Error("Slack sign-in is required. Click the Slack indicator and complete login at adobedx.slack.com.");
   }
 
   function renderPassAiError(message) {
@@ -4181,15 +5377,20 @@
     if (!confirmed) return;
 
     state.passAiDeleteInFlight = true;
+    applyGlobalBusyUi();
     if (triggerButton) triggerButton.disabled = true;
 
     try {
-      const response = await sendToSlackTab({
+      const response = await sendToSlackTabWithAutoBootstrap({
         action: "slackDeleteSingularityThread",
         workspaceOrigin: context.workspaceOrigin || PASS_AI_SLACK_WORKSPACE_ORIGIN,
         channelId: context.channelId,
         parentTs: context.parentTs,
         limit: 200
+      }, {
+        onBootstrap: () => {
+          setStatus("Preparing adobedx.slack.com web session for Slack delete…", false);
+        }
       });
       if (!response || response.ok !== true) {
         throw buildPassAiSlackRequestError(response, "Unable to delete Slack thread.");
@@ -4214,6 +5415,7 @@
       setStatus("Slack delete failed: " + (err && err.message ? err.message : "Unknown error"), true);
     } finally {
       state.passAiDeleteInFlight = false;
+      applyGlobalBusyUi();
     }
   }
 
@@ -4539,7 +5741,7 @@
     appendPassAiDebugLine(debugLines, "channelId=" + channelId);
     appendPassAiDebugLine(debugLines, "POST " + PASS_AI_SLACK_API_ENDPOINT + "/chat.postMessage");
 
-    const sendPayload = await sendToSlackTab({
+    const sendPayload = await sendToSlackTabWithAutoBootstrap({
       action: "slackSendToSingularity",
       workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
       channelId,
@@ -4550,6 +5752,10 @@
       frontendClientId,
       singularityUserId: PASS_AI_SLACK_SINGULARITY_USER_ID,
       mention
+    }, {
+      onBootstrap: () => {
+        setStatus("Preparing adobedx.slack.com web session for Q&AI…", false);
+      }
     });
     if (!sendPayload || sendPayload.ok !== true) {
       throw buildPassAiSlackRequestError(sendPayload, "Unable to post message to Singularity.");
@@ -4587,7 +5793,7 @@
       }
 
       appendPassAiDebugLine(debugLines, "Poll attempt " + String(attempt) + ": " + PASS_AI_SLACK_API_ENDPOINT + "/conversations.replies");
-      const pollPayload = await sendToSlackTab({
+      const pollPayload = await sendToSlackTabWithAutoBootstrap({
         action: "slackPollSingularityThread",
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
         channelId: postedChannel,
@@ -4600,6 +5806,10 @@
         ticketId,
         limit: 40,
         cached_latest_updates: pollCachedLatestUpdates
+      }, {
+        onBootstrap: () => {
+          setStatus("Preparing adobedx.slack.com web session for Q&AI replies…", false);
+        }
       });
       lastPollPayload = pollPayload && typeof pollPayload === "object" ? pollPayload : null;
       if (!pollPayload || pollPayload.ok !== true) {
@@ -5004,6 +6214,7 @@
     state.passAiTicketId = selectedTicketId;
     state.passAiActiveClientId = "";
     setPassAiLastThreadContext(null);
+    setPassAiConversationInFlight(true);
     setPassAiLoading(true);
     setStatus("Sending question to PASS Singularity…", false);
     try {
@@ -5064,6 +6275,7 @@
       setStatus("PASS Singularity request failed: " + message, true);
     } finally {
       state.passAiActiveClientId = "";
+      setPassAiConversationInFlight(false);
       setPassAiLoading(false);
     }
   }
@@ -6392,7 +7604,11 @@
     renderApiParams();
     setStatus("Hello " + (me.user.name || me.user.email || "agent") + ". Loading assigned tickets...", false);
     await loadTickets(me.user && me.user.id != null ? String(me.user.id) : "");
-    setStatus("Ready. " + state.filteredTickets.length + " tickets shown.", false);
+    refreshSlacktivatedState({ force: true, silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
+    setStatus(
+      "Assigned tickets loaded. " + state.filteredTickets.length + " rows shown. Loading filter menus…",
+      false
+    );
     if (isFirstLogin) {
       try {
         assignedFilterNavResult = await ensureAssignedFilterTabOpen();
@@ -6557,6 +7773,7 @@
         loadSidePanelContext();
         loadContextMenuUpdateState(false).catch(() => {});
         loadThemeState().catch(() => {});
+        if (state.user) refreshSlacktivatedState({ silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
         triggerAuthCheckNow();
       });
       window.addEventListener("resize", () => {
@@ -6568,6 +7785,7 @@
           loadSidePanelContext();
           loadContextMenuUpdateState(false).catch(() => {});
           loadThemeState().catch(() => {});
+          if (state.user) refreshSlacktivatedState({ silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
           triggerAuthCheckNow();
         }
       });
@@ -6694,8 +7912,34 @@
     if (els.passAiToggleBtn) {
       els.passAiToggleBtn.addEventListener("click", (e) => {
         e.preventDefault();
-        if (state.passAiLoading) return;
+        if (state.passAiLoading || state.passAiSlackAuthPolling || state.slackItToMeLoading) return;
         togglePassAiPanelForSelectedTicket().catch(() => {});
+      });
+    }
+    if (els.slacktivatedBtn) {
+      els.slacktivatedBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (!state.user) return;
+        if (state.passAiSlackAuthPolling) {
+          stopPassAiSlackAuthPolling();
+        }
+        if (isPassAiSlacktivated()) {
+          refreshSlacktivatedState({ force: true, silent: true, allowOpenIdSilentProbe: false }).catch(() => {});
+          setStatus("Hey " + getSlacktivatedDisplayName() + ", ZIP is SLACKTIVATED!!!", false);
+          return;
+        }
+        (async () => {
+          const ready = await refreshSlacktivatedState({ force: true, silent: true, allowOpenIdSilentProbe: false }).catch(() => false);
+          if (ready && isPassAiSlacktivated()) {
+            setStatus("Hey " + getSlacktivatedDisplayName() + ", ZIP is SLACKTIVATED!!!", false);
+            return;
+          }
+          beginSlackLoginFlow().catch((err) => {
+            const message = normalizePassAiCommentBody(err && err.message) || "Slack sign-in failed.";
+            setPassAiSlackAuthState({ ready: false, error: message });
+            setStatus("Slack sign-in failed: " + message, true);
+          });
+        })();
       });
     }
     if (els.askPassAiBtn) {
@@ -6705,14 +7949,13 @@
         askPassAiForSelectedTicket();
       });
     }
-    if (els.slackLoginBtn) {
-      els.slackLoginBtn.addEventListener("click", (e) => {
+    if (els.slackItToMeBtn) {
+      els.slackItToMeBtn.addEventListener("click", (e) => {
         e.preventDefault();
-        if (state.passAiLoading) return;
-        beginSlackLoginFlow().catch((err) => {
-          const message = normalizePassAiCommentBody(err && err.message) || "Slack sign-in failed.";
-          setPassAiSlackAuthState({ ready: false, error: message });
-          setStatus("Slack sign-in failed: " + message, true);
+        if (state.slackItToMeLoading) return;
+        slackVisibleTicketsToMe().catch((err) => {
+          const message = normalizePassAiCommentBody(err && err.message) || "Slack send failed.";
+          setStatus("SLACK_IT_TO_ME failed: " + message, true);
         });
       });
     }

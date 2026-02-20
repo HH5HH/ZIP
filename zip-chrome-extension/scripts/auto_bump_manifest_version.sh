@@ -19,7 +19,11 @@ Options:
   --help                    Show this help text.
 
 Behavior:
-  - Bumps patch segment of manifest version (x.y.z -> x.y.(z+1)).
+  - Uses rollover patch bumps:
+      - x.y.z -> x.y.(z+1) when z < 100
+      - x.y.z -> x.(y+1).0 when z >= 100
+  - Legacy overflow versions are normalized with carry:
+      - 1.2.104 is treated as 1.3.4 baseline before the next bump.
   - Prints new version to stdout only when a bump occurs.
 USAGE
 }
@@ -94,7 +98,33 @@ fi
 major="${BASH_REMATCH[1]}"
 minor="${BASH_REMATCH[2]}"
 patch="${BASH_REMATCH[3]}"
-new_version="${major}.${minor}.$((patch + 1))"
+
+# ZIP versioning policy:
+# - patch range is 0..100
+# - bump at patch 100 rolls to next minor, patch 0
+# - legacy overflow versions (patch > 100) carry into minor+patch
+#   so historical count is preserved (example: 1.2.104 => 1.3.4 baseline)
+normalized_major="$major"
+normalized_minor="$minor"
+normalized_patch="$patch"
+
+if (( normalized_patch >= 100 )); then
+  overflow=$((normalized_patch - 100))
+  normalized_minor=$((normalized_minor + 1 + (overflow / 101)))
+  normalized_patch=$((overflow % 101))
+fi
+
+if (( normalized_patch >= 100 )); then
+  new_major="$normalized_major"
+  new_minor=$((normalized_minor + 1))
+  new_patch=0
+else
+  new_major="$normalized_major"
+  new_minor="$normalized_minor"
+  new_patch=$((normalized_patch + 1))
+fi
+
+new_version="${new_major}.${new_minor}.${new_patch}"
 
 tmp="$(mktemp)"
 jq --arg version "$new_version" '.version = $version' "$MANIFEST" > "$tmp"

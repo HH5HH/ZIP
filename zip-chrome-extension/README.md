@@ -8,9 +8,33 @@
 
 - `Login with Zendesk` in the sidepanel only does one of two things:
 - Focus an existing Zendesk tab (`https://{subdomain}.zendesk.com/*`) in the main browser context.
-- Open a normal browser tab to `https://{subdomain}.zendesk.com` when no Zendesk tab exists.
+- Open a normal browser tab to `https://{subdomain}.zendesk.com/access/login?return_to=<encoded https://{subdomain}.zendesk.com/agent/dashboard>` when no Zendesk tab exists.
 - ZIP has no local `Sign out` control. Session state is fully synchronized to Zendesk session state.
 - Session authority is `GET /api/v2/users/me/session` from the Zendesk content script, with background fallback only when the content script is unavailable.
+
+## SLACKTIVATED Flow
+
+- ZIP now performs no-touch Slack session detection for `https://adobedx.slack.com/`.
+- ZIP supports optional **official Slack OpenID Connect Sign in with Slack** flow (via `chrome.identity.launchWebAuthFlow`) when app credentials are configured.
+- The SLACKTIVATED indicator lives in the app header (to the right of the Zendesk avatar) and has two states:
+- `NOT_SLACKTIVATED`: disabled-looking Slack app icon with tooltip `ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/`.
+- `SLACKTIVATED`: current Slack user avatar with tooltip `Hey {logged in user}, ZIP is SLACKTIVATED!!!`.
+- Clicking the indicator while `NOT_SLACKTIVATED` focuses an existing Slack workspace tab or opens a standard Slack tab. ZIP waits for Slack web session confirmation and then flips to `SLACKTIVATED`.
+- When Slack OpenID credentials are present, ZIP attempts non-interactive OpenID auth first (no-touch if session is already valid), then interactive OpenID auth, then falls back to workspace tab detection.
+- Q&AI (Singularity button) and `@ME` are shown for ticket-selected workflows and stay disabled until SLACKTIVATED.
+- `@ME` (`SLACK_IT_TO_ME`) sends the visible ticket table as Markdown to the logged-in Slack user via DM.
+- `@ME` now uses strict background Slack API delivery only (no Slack tab relay). End users should only see the resulting DM arrive in Slack.
+- Packaged ZIP builds now include `slack-runtime-config.js` so Slack defaults ship with the extension and do not depend on local-only config files.
+
+Slack OpenID config keys (set in sidepanel page context or `localStorage`):
+- `zip.passAi.slackOidc.clientId` / `ZIP_PASS_AI_SLACK_OIDC_CLIENT_ID`
+- `zip.passAi.slackOidc.clientSecret` / `ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET`
+- `zip.passAi.slackOidc.scope` / `ZIP_PASS_AI_SLACK_OIDC_SCOPE` (default `openid profile email`)
+- `zip.passAi.slackOidc.redirectPath` / `ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH` (default `slack-openid`)
+
+Optional Slack API token keys for no-tab `@ME` delivery:
+- `zip.passAi.slackApi.botToken` / `ZIP_PASS_AI_SLACK_BOT_TOKEN`
+- `zip.passAi.slackApi.userToken` / `ZIP_PASS_AI_SLACK_USER_TOKEN`
 
 ## Quick Start (Urgent Line Paged)
 
@@ -109,9 +133,10 @@ Also available:
 
 ## Runtime Behavior
 
-Runs only on:
+Runs on:
 
 - `https://*.zendesk.com/*`
+- `https://*.slack.com/*`
 
 Uses active logged-in Zendesk browser session to call:
 

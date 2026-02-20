@@ -13,6 +13,20 @@
         <img id="zipTopAvatar" class="top-avatar hidden" alt="Zendesk agent avatar" />
         <span id="zipTopAvatarFallback" class="top-avatar-fallback">?</span>
       </div>
+      <button
+        id="zipSlacktivatedBtn"
+        class="btn icon-btn icon-only slacktivated-indicator spectrum-Button spectrum-Button--outline spectrum-Button--sizeS"
+        title="ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/"
+        aria-label="ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/"
+      >
+        <img
+          id="zipSlacktivatedIcon"
+          class="slacktivated-icon"
+          src="icons/icon128.png"
+          data-default-src="icons/icon128.png"
+          alt="ZIP Slack session status"
+        />
+      </button>
     </div>
     <select id="zipDocsMenu" class="docs-menu zip-select-control" title="Open Adobe Pass resources" aria-label="Open Adobe Pass resources">
       <option value="">Links</option>
@@ -49,7 +63,7 @@
         </div>
         <div class="login-card-left">
           <button id="zipLoginBtn" class="btn primary spectrum-Button spectrum-Button--fill spectrum-Button--accent spectrum-Button--sizeM">
-            <span class="spectrum-Button-label">Login with Zendesk</span>
+            <span class="spectrum-Button-label">Sign in with Zendesk</span>
           </button>
         </div>
         <blockquote id="zipAppDescription" class="login-card-description" cite="">
@@ -94,7 +108,7 @@
         </div>
         <div class="ticket-table-footer control-row">
           <button id="zipTogglePassAiBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS hidden" title="Open Q and AI panel" aria-label="Open Q and AI panel" disabled>
-            <img class="zip-pass-ai-toggle-icon" src="https://avatars.slack-edge.com/2023-11-15/6196448729237_750b72455b05b8c81a1c_512.jpg" alt="" />
+            <img id="zipTogglePassAiIcon" class="zip-pass-ai-toggle-icon" src="https://avatars.slack-edge.com/2023-11-15/6196448729237_750b72455b05b8c81a1c_512.jpg" alt="PASS AI @Singularity" />
           </button>
           <label class="zip-visually-hidden" for="zipTicketSearch">Search assigned tickets</label>
           <input id="zipTicketSearch" class="zip-text-input spectrum-Textfield-input" type="text" placeholder="search" aria-label="Search assigned tickets" />
@@ -106,6 +120,9 @@
             <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 5a7 7 0 1 1-6.93 8h2.03a5 5 0 1 0 1.24-4.1L11 11H4V4l2.81 2.81A8.96 8.96 0 0 1 12 5z" fill="currentColor"></path>
             </svg>
+          </button>
+          <button id="zipSlackItToMeBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="SLACK IT TO ME" aria-label="SLACK IT TO ME" disabled>
+            <span class="spectrum-Button-label">@ME</span>
           </button>
           <button id="zipExportCsvBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Export current table as csv" aria-label="Export current ticket table as csv" disabled>
             <span class="spectrum-Button-label">CSV</span>
@@ -121,14 +138,10 @@
             <textarea id="zipPassAiQuestion" class="zip-pass-ai-box zip-pass-ai-question spectrum-Textfield-input hidden" rows="4" placeholder="Latest customer question from Zendesk will appear here."></textarea>
             <div id="zipPassAiCtaZone" class="zip-pass-ai-cta-zone hidden">
               <div id="zipPassAiSubmitWrap" class="zip-pass-ai-submit-wrap hidden">
-                <button id="zipSlackLoginBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS hidden" title="Sign in with Slack for PASS AI" aria-label="Sign in with Slack for PASS AI">
-                  <span class="spectrum-Button-label">Sign in with Slack</span>
-                </button>
                 <button id="zipAskPassAiBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS hidden" title="Submit question to @Singularity" aria-label="Submit question to @Singularity with PASS AI">
                   <span class="spectrum-Button-label">AI?</span>
                 </button>
               </div>
-              <span id="zipPassAiSlackAuthStatus" class="zip-pass-ai-slack-auth-status hidden" aria-live="polite"></span>
             </div>
           </section>
           <section id="zipPassAiAnswerBlock" class="zip-pass-ai-block zip-pass-ai-answer-block hidden">
@@ -249,6 +262,7 @@
   <script src="paths.js"></script>
   <script src="theme-palette-data.js"></script>
   <script src="sidepanel-login-fallback.js"></script>
+  <script src="slack-runtime-config.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
