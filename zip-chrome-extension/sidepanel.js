@@ -2260,6 +2260,16 @@
     return false;
   }
 
+  function isTransientSlackAuthProbeFailureMessage(message) {
+    const text = String(message || "").toLowerCase();
+    if (!text) return false;
+    if (isSlackWebBootstrapErrorMessage(text)) return true;
+    return (
+      text.includes("waiting for web token capture")
+      || text.includes("slack tab is not ready yet")
+    );
+  }
+
   async function bootstrapSlackWorkspaceForMessaging() {
     const workspaceOrigin = normalizeSlackWorkspaceOriginForTabs(PASS_AI_SLACK_WORKSPACE_ORIGIN);
     const landingUrl = workspaceOrigin + "/";
@@ -3163,7 +3173,12 @@
       return;
     }
 
-    const ready = await refreshSlacktivatedState({ force: true, silent: true, allowOpenIdSilentProbe: false }).catch(() => false);
+    const ready = await refreshSlacktivatedState({
+      force: true,
+      silent: true,
+      allowOpenIdSilentProbe: true,
+      allowSlackTabBootstrap: true
+    }).catch(() => false);
     if (!ready || !isPassAiSlacktivated()) {
       setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
       updateTicketActionButtons();
@@ -5672,7 +5687,11 @@
       if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
       return true;
     } catch (tabErr) {
+      const wasReady = isPassAiSlacktivated();
       const message = normalizePassAiCommentBody(tabErr && tabErr.message) || "Slack sign-in is required.";
+      if (wasReady && isTransientSlackAuthProbeFailureMessage(message)) {
+        return true;
+      }
       setPassAiSlackAuthState({ ready: false, error: message });
       if (!silent) {
         setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
@@ -8390,7 +8409,7 @@
     renderApiParams();
     setStatus("Hello " + (me.user.name || me.user.email || "agent") + ". Loading assigned tickets...", false);
     await loadTickets(me.user && me.user.id != null ? String(me.user.id) : "");
-    refreshSlacktivatedState({ force: true, silent: true, allowOpenIdSilentProbe: true, allowSlackTabBootstrap: true }).catch(() => {});
+    refreshSlacktivatedState({ force: true, silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
     setStatus(
       "Assigned tickets loaded. " + state.filteredTickets.length + " rows shown. Loading filter menus…",
       false

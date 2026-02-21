@@ -37,7 +37,7 @@ test("sidepanel uses SLACKTIVATED indicator + @ME action and removes legacy Slac
   assert.match(js, /SLACKTIVATED_LOGIN_TOOLTIP/);
   assert.match(js, /slacktivatedBtn:\s*\$\("zipSlacktivatedBtn"\)/);
   assert.match(js, /contextMenuClearKey:\s*\$\("zipContextMenuClearKey"\)/);
-  assert.match(js, /const ready = await refreshSlacktivatedState\(\{ force: true, silent: true, allowOpenIdSilentProbe: false \}\)/);
+  assert.match(js, /const ready = await refreshSlacktivatedState\(\{[\s\S]*allowOpenIdSilentProbe: true[\s\S]*allowSlackTabBootstrap: true[\s\S]*\}\)\.catch/);
   assert.match(js, /beginSlackLoginFlow\(\)\.catch/);
   assert.match(js, /const alreadyReady = await refreshPassAiSlackAuth\(\{ silent: true, allowOpenIdSilentProbe: false \}\)/);
   assert.match(js, /const openIdConfig = getPassAiSlackOpenIdConfig\(\);/);
@@ -67,6 +67,8 @@ test("sidepanel uses SLACKTIVATED indicator + @ME action and removes legacy Slac
   assert.match(js, /const PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY = "zip\.passAi\.slackApi\.botToken";/);
   assert.match(js, /const PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY = "zip\.passAi\.slackApi\.userToken";/);
   assert.match(js, /function isAllowedSlackWorkspaceHost\(host, workspaceHost\)/);
+  assert.match(js, /function isTransientSlackAuthProbeFailureMessage\(message\)/);
+  assert.match(js, /if \(wasReady && isTransientSlackAuthProbeFailureMessage\(message\)\) \{/);
   assert.match(js, /function getPassAiSlackApiTokenConfig\(\)/);
   assert.match(js, /runContextMenuAction\("clearZipKey"\)/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
@@ -171,6 +173,8 @@ test("background removes legacy Slack OAuth and popup-login handlers", () => {
   assert.match(source, /async function markSlackMessageUnreadViaApiToken\(workspaceOrigin, token, channelId, messageTs\)/);
   assert.match(source, /async function slackSendMarkdownToSelfViaApi\(input\)/);
   assert.match(source, /async function slackSendMarkdownToSelfViaWorkspaceSession\(input, reasonCode\)/);
+  assert.match(source, /function isAllowedSlackWorkspaceHost\(host, workspaceHost\)/);
+  assert.match(source, /if \(!isAllowedSlackWorkspaceHost\(tabHost, expectedHost\)\) continue;/);
   assert.match(source, /const primarySessionDelivery = await slackSendMarkdownToSelfViaWorkspaceSession\(body, "workspace_session_primary"\);/);
   assert.match(source, /if \(primarySessionDelivery && primarySessionDelivery\.ok\) \{/);
   assert.match(source, /const userDeliveryToken = normalizeSlackApiToken\(tokens\.userToken\);/);
@@ -181,6 +185,7 @@ test("background removes legacy Slack OAuth and popup-login handlers", () => {
   assert.match(source, /for \(let i = 0; i < userCandidates\.length; i \+= 1\) \{/);
   assert.match(source, /for \(let i = 0; i < tokenAttempts\.length; i \+= 1\)/);
   assert.match(source, /function isSlackUserOAuthToken\(value\)/);
+  assert.doesNotMatch(source, /Active Slack API user does not match the SLACKTIVATED user\./);
   assert.doesNotMatch(source, /function isSlackBotApiToken\(value\)/);
   assert.match(source, /function isSlackTokenInvalidationCode\(code\)/);
   assert.match(source, /async function invalidateStoredSlackToken\(token\)/);
