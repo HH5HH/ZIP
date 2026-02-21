@@ -23,5 +23,8 @@
   if (!window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH) {
     window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH = "slack-user";
   }
+  if (!window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_URI) {
+    window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_URI = "";
+  }
   // Slack API user token is now loaded from ZIP.KEY into chrome.storage.local.
 })();

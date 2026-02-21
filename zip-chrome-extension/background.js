@@ -23,6 +23,7 @@ const ZIP_SLACK_CLIENT_ID_STORAGE_KEY = "zip_slack_client_id";
 const ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY = "zip_slack_client_secret";
 const ZIP_SLACK_SCOPE_STORAGE_KEY = "zip_slack_scope";
 const ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY = "zip_slack_redirect_path";
+const ZIP_SLACK_REDIRECT_URI_STORAGE_KEY = "zip_slack_redirect_uri";
 // Legacy cleanup only. Team pinning is no longer part of ZIP.KEY validation.
 const ZIP_SLACK_EXPECTED_TEAM_ID_STORAGE_KEY = "zip_slack_expected_team_id";
 const ZIP_SLACK_BOT_TOKEN_STORAGE_KEY = "zip_slack_bot_token";
@@ -38,6 +39,7 @@ const SLACK_OIDC_CLIENT_ID_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.clientId";
 const SLACK_OIDC_CLIENT_SECRET_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.clientSecret";
 const SLACK_OIDC_SCOPE_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.scope";
 const SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.redirectPath";
+const SLACK_OIDC_REDIRECT_URI_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.redirectUri";
 const SLACK_EXPECTED_TEAM_LEGACY_STORAGE_KEY = "zip.passAi.expectedSlackTeamId";
 const SLACK_API_BOT_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.botToken";
 const SLACK_API_USER_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.userToken";
@@ -106,6 +108,7 @@ const ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS = [
   SLACK_OIDC_CLIENT_SECRET_LEGACY_STORAGE_KEY,
   SLACK_OIDC_SCOPE_LEGACY_STORAGE_KEY,
   SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY,
+  SLACK_OIDC_REDIRECT_URI_LEGACY_STORAGE_KEY,
   SLACK_EXPECTED_TEAM_LEGACY_STORAGE_KEY,
   SLACK_API_BOT_TOKEN_STORAGE_KEY,
   SLACK_API_USER_TOKEN_STORAGE_KEY,
@@ -122,6 +125,7 @@ const ZIP_SLACK_STORAGE_KEYS = [
   ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY,
   ZIP_SLACK_SCOPE_STORAGE_KEY,
   ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY,
+  ZIP_SLACK_REDIRECT_URI_STORAGE_KEY,
   ZIP_SLACK_EXPECTED_TEAM_ID_STORAGE_KEY,
   ZIP_SLACK_BOT_TOKEN_STORAGE_KEY,
   ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
@@ -136,6 +140,7 @@ const ZIP_SLACK_LEGACY_STORAGE_KEYS = [
   SLACK_OIDC_CLIENT_SECRET_LEGACY_STORAGE_KEY,
   SLACK_OIDC_SCOPE_LEGACY_STORAGE_KEY,
   SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY,
+  SLACK_OIDC_REDIRECT_URI_LEGACY_STORAGE_KEY,
   SLACK_EXPECTED_TEAM_LEGACY_STORAGE_KEY,
   SLACK_API_BOT_TOKEN_STORAGE_KEY,
   SLACK_API_USER_TOKEN_STORAGE_KEY,
@@ -1623,6 +1628,23 @@ function normalizeZipRedirectPath(value) {
   return normalized;
 }
 
+function normalizeSlackOpenIdRedirectUri(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  let parsed = null;
+  try {
+    parsed = new URL(raw);
+  } catch (_) {
+    parsed = null;
+  }
+  if (!parsed) return "";
+  const host = String(parsed.hostname || "").toLowerCase();
+  if (parsed.protocol !== "https:") return "";
+  if (!host || !host.endsWith(".chromiumapp.org")) return "";
+  const pathname = String(parsed.pathname || "").trim() || "/";
+  return parsed.origin + pathname;
+}
+
 function normalizeZipConfigServiceName(value) {
   const raw = String(value || "").trim().toLowerCase();
   if (!raw) return "";
@@ -1727,6 +1749,20 @@ function normalizeZipSecretConfig(input) {
     || source[SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY]
     || ""
   );
+  const redirectUri = normalizeSlackOpenIdRedirectUri(
+    source.redirectUri
+    || source.redirect_uri
+    || slacktivationSource.redirect_uri
+    || slacktivationSource.redirectUri
+    || slacktivationOidcSource.redirect_uri
+    || slacktivationOidcSource.redirectUri
+    || oidcSource.redirect_uri
+    || oidcSource.redirectUri
+    || source.zip_slack_redirect_uri
+    || source[ZIP_SLACK_REDIRECT_URI_STORAGE_KEY]
+    || source[SLACK_OIDC_REDIRECT_URI_LEGACY_STORAGE_KEY]
+    || ""
+  );
   const userToken = normalizeSlackApiToken(
     source.userToken
     || slacktivationSource.user_token
@@ -1787,6 +1823,7 @@ function normalizeZipSecretConfig(input) {
     clientSecret,
     scope,
     redirectPath,
+    redirectUri,
     userToken,
     oauthToken,
     singularityChannelId,
@@ -1870,6 +1907,7 @@ async function storeZipSecrets(input, options) {
   setOrRemove(ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY, normalized.clientSecret);
   setOrRemove(ZIP_SLACK_SCOPE_STORAGE_KEY, normalized.scope);
   setOrRemove(ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY, normalized.redirectPath);
+  setOrRemove(ZIP_SLACK_REDIRECT_URI_STORAGE_KEY, normalized.redirectUri);
   removals.push(ZIP_SLACK_EXPECTED_TEAM_ID_STORAGE_KEY);
   removals.push(ZIP_SLACK_BOT_TOKEN_STORAGE_KEY);
   setOrRemove(ZIP_SLACK_USER_TOKEN_STORAGE_KEY, normalized.userToken);
@@ -2492,8 +2530,12 @@ function normalizeSlackOpenIdAuthConfig(input) {
   const configInput = input && typeof input === "object" ? input : {};
   const clientId = String(configInput.clientId || "").trim();
   const clientSecret = String(configInput.clientSecret || "").trim();
-  const redirectPath = String(configInput.redirectPath || SLACK_OPENID_DEFAULT_REDIRECT_PATH).trim() || SLACK_OPENID_DEFAULT_REDIRECT_PATH;
-  const redirectUriRaw = String(configInput.redirectUri || "").trim();
+  const redirectPath = normalizeZipRedirectPath(configInput.redirectPath || SLACK_OPENID_DEFAULT_REDIRECT_PATH);
+  const redirectUriRaw = normalizeSlackOpenIdRedirectUri(
+    configInput.redirectUri
+    || configInput.redirect_uri
+    || ""
+  );
   return {
     clientId,
     clientSecret,
@@ -2503,13 +2545,34 @@ function normalizeSlackOpenIdAuthConfig(input) {
   };
 }
 
-function resolveSlackOpenIdRedirectUri(config) {
-  const raw = String(config && config.redirectUriRaw || "").trim();
-  if (raw) return raw;
+function resolveSlackOpenIdRedirectUriCandidates(config) {
+  const candidates = [];
+  const seen = new Set();
+  const pushCandidate = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw || seen.has(raw)) return;
+    seen.add(raw);
+    candidates.push(raw);
+  };
+  const raw = normalizeSlackOpenIdRedirectUri(config && config.redirectUriRaw);
+  if (raw) pushCandidate(raw);
   if (chrome.identity && typeof chrome.identity.getRedirectURL === "function") {
-    return chrome.identity.getRedirectURL(String(config && config.redirectPath || SLACK_OPENID_DEFAULT_REDIRECT_PATH));
+    const configuredPath = String(config && config.redirectPath || SLACK_OPENID_DEFAULT_REDIRECT_PATH);
+    pushCandidate(chrome.identity.getRedirectURL(configuredPath));
+    pushCandidate(chrome.identity.getRedirectURL(SLACK_OPENID_DEFAULT_REDIRECT_PATH));
+    // Backward compatibility for Slack apps that only allow the origin/root callback URI.
+    pushCandidate(chrome.identity.getRedirectURL(""));
   }
-  return "";
+  return candidates;
+}
+
+function isSlackOpenIdRedirectMismatchError(message) {
+  const text = String(message || "").toLowerCase();
+  if (!text) return false;
+  if (text.includes("invalid_redirect_uri")) return true;
+  if (text.includes("redirect_uri_mismatch")) return true;
+  if (text.includes("redirect uri did not match")) return true;
+  return text.includes("redirect_uri") && text.includes("configured uris");
 }
 
 function launchSlackOpenIdWebAuth(url, interactive) {
@@ -2637,59 +2700,105 @@ async function runSlackOpenIdAuth(input) {
   if (!config.clientId || !config.clientSecret) {
     return { ok: false, error: "Slack OpenID client credentials are not configured." };
   }
-  const redirectUri = resolveSlackOpenIdRedirectUri(config);
-  if (!redirectUri) {
+  const redirectUriCandidates = resolveSlackOpenIdRedirectUriCandidates(config);
+  if (!redirectUriCandidates.length) {
     return { ok: false, error: "Slack OpenID redirect URI is unavailable in this browser context." };
   }
 
-  const state = createSlackOpenIdEntropy();
-  const nonce = createSlackOpenIdEntropy();
-  const params = new URLSearchParams();
-  params.set("response_type", "code");
-  params.set("client_id", config.clientId);
-  params.set("scope", config.scope);
-  params.set("redirect_uri", redirectUri);
-  params.set("state", state);
-  params.set("nonce", nonce);
+  let redirectMismatchMessage = "";
+  for (let i = 0; i < redirectUriCandidates.length; i += 1) {
+    const redirectUri = redirectUriCandidates[i];
+    const hasFallbackCandidate = i + 1 < redirectUriCandidates.length;
+    const state = createSlackOpenIdEntropy();
+    const nonce = createSlackOpenIdEntropy();
+    const params = new URLSearchParams();
+    params.set("response_type", "code");
+    params.set("client_id", config.clientId);
+    params.set("scope", config.scope);
+    params.set("redirect_uri", redirectUri);
+    params.set("state", state);
+    params.set("nonce", nonce);
 
-  const authorizeUrl = SLACK_OPENID_AUTHORIZE_URL + "?" + params.toString();
-  let callbackUrl = "";
-  try {
-    callbackUrl = await launchSlackOpenIdWebAuth(authorizeUrl, interactive);
-  } catch (err) {
-    const message = String(err && err.message || "").trim();
-    return {
-      ok: false,
-      code: interactive ? "auth_flow_failed" : "interaction_required",
-      error: message || "Slack OpenID authentication failed."
-    };
+    const authorizeUrl = SLACK_OPENID_AUTHORIZE_URL + "?" + params.toString();
+    let callbackUrl = "";
+    try {
+      callbackUrl = await launchSlackOpenIdWebAuth(authorizeUrl, interactive);
+    } catch (err) {
+      const message = String(err && err.message || "").trim();
+      if (isSlackOpenIdRedirectMismatchError(message) && hasFallbackCandidate) {
+        redirectMismatchMessage = message || redirectMismatchMessage;
+        continue;
+      }
+      return {
+        ok: false,
+        code: isSlackOpenIdRedirectMismatchError(message)
+          ? "redirect_uri_mismatch"
+          : (interactive ? "auth_flow_failed" : "interaction_required"),
+        error: message || "Slack OpenID authentication failed."
+      };
+    }
+
+    let parsed = null;
+    try {
+      parsed = new URL(callbackUrl);
+    } catch (_) {
+      return { ok: false, error: "Slack OpenID callback URL is invalid." };
+    }
+    const callbackState = String(parsed.searchParams.get("state") || "").trim();
+    if (!callbackState || callbackState !== state) {
+      return { ok: false, error: "Slack OpenID state validation failed." };
+    }
+    const callbackError = String(parsed.searchParams.get("error") || "").trim();
+    if (callbackError) {
+      const callbackErrorDescription = String(parsed.searchParams.get("error_description") || "").trim();
+      const callbackErrorMessage = callbackErrorDescription
+        ? (callbackError + ": " + callbackErrorDescription)
+        : callbackError;
+      if (isSlackOpenIdRedirectMismatchError(callbackErrorMessage) && hasFallbackCandidate) {
+        redirectMismatchMessage = callbackErrorMessage || redirectMismatchMessage;
+        continue;
+      }
+      return {
+        ok: false,
+        code: isSlackOpenIdRedirectMismatchError(callbackErrorMessage) ? "redirect_uri_mismatch" : "auth_flow_failed",
+        error: callbackErrorMessage
+      };
+    }
+    const code = String(parsed.searchParams.get("code") || "").trim();
+    const exchangeResult = await exchangeSlackOpenIdCodeForSession({
+      code,
+      config,
+      redirectUri,
+      expectedNonce: nonce
+    });
+    if (exchangeResult && exchangeResult.ok === true) {
+      return exchangeResult;
+    }
+    const exchangeMessage = String(
+      (exchangeResult && (
+        exchangeResult.error
+        || (exchangeResult.payload && exchangeResult.payload.error)
+      ))
+      || ""
+    ).trim();
+    if (isSlackOpenIdRedirectMismatchError(exchangeMessage) && hasFallbackCandidate) {
+      redirectMismatchMessage = exchangeMessage || redirectMismatchMessage;
+      continue;
+    }
+    if (isSlackOpenIdRedirectMismatchError(exchangeMessage) && exchangeResult && typeof exchangeResult === "object") {
+      return {
+        ...exchangeResult,
+        code: "redirect_uri_mismatch"
+      };
+    }
+    return exchangeResult;
   }
 
-  let parsed = null;
-  try {
-    parsed = new URL(callbackUrl);
-  } catch (_) {
-    return { ok: false, error: "Slack OpenID callback URL is invalid." };
-  }
-  const callbackState = String(parsed.searchParams.get("state") || "").trim();
-  if (!callbackState || callbackState !== state) {
-    return { ok: false, error: "Slack OpenID state validation failed." };
-  }
-  const callbackError = String(parsed.searchParams.get("error") || "").trim();
-  if (callbackError) {
-    const callbackErrorDescription = String(parsed.searchParams.get("error_description") || "").trim();
-    return {
-      ok: false,
-      error: callbackErrorDescription ? (callbackError + ": " + callbackErrorDescription) : callbackError
-    };
-  }
-  const code = String(parsed.searchParams.get("code") || "").trim();
-  return exchangeSlackOpenIdCodeForSession({
-    code,
-    config,
-    redirectUri,
-    expectedNonce: nonce
-  });
+  return {
+    ok: false,
+    code: "redirect_uri_mismatch",
+    error: redirectMismatchMessage || "Slack OpenID redirect URI did not match any configured Slack app callback URI."
+  };
 }
 
 async function getSlackOpenIdStatus(input) {

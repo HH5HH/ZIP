@@ -99,6 +99,23 @@
     return normalized;
   }
 
+  function normalizeRedirectUri(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    let parsed = null;
+    try {
+      parsed = new URL(raw);
+    } catch (_) {
+      parsed = null;
+    }
+    if (!parsed) return "";
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (parsed.protocol !== "https:") return "";
+    if (!host || !host.endsWith(".chromiumapp.org")) return "";
+    const pathname = String(parsed.pathname || "").trim() || "/";
+    return parsed.origin + pathname;
+  }
+
   function normalizeSlackToken(value) {
     const token = String(value || "").trim();
     return /^xox[a-z]-/i.test(token) ? token : "";
@@ -246,6 +263,22 @@
       "zip.passAi.slackOidc.redirectPath",
       "redirectPath"
     ]));
+    const redirectUri = normalizeRedirectUri(readZipKeyValue(payload, [
+      "services.slacktivation.redirect_uri",
+      "services.slacktivation.redirectUri",
+      "services.slacktivation.oidc.redirect_uri",
+      "services.slacktivation.oidc.redirectUri",
+      "slacktivation.redirect_uri",
+      "slacktivation.redirectUri",
+      "slacktivation.oidc.redirect_uri",
+      "slacktivation.oidc.redirectUri",
+      "slack.oidc.redirectUri",
+      "slackOidc.redirectUri",
+      "zip_slack_redirect_uri",
+      "zip.passAi.slackOidc.redirectUri",
+      "redirect_uri",
+      "redirectUri"
+    ]));
     const userToken = normalizeSlackToken(readZipKeyValue(payload, [
       "services.slacktivation.user_token",
       "services.slacktivation.userToken",
@@ -272,7 +305,8 @@
         clientId,
         clientSecret,
         scope,
-        redirectPath
+        redirectPath,
+        redirectUri
       },
       api: {
         userToken
