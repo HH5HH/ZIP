@@ -2102,6 +2102,25 @@
   }
 
   function sendToZendeskTab(inner) {
+    const collectZendeskTabCandidates = async () => {
+      const orderedIds = [];
+      const pushId = (value) => {
+        const numericId = Number(value);
+        if (!Number.isFinite(numericId) || numericId <= 0) return;
+        if (!orderedIds.includes(numericId)) orderedIds.push(numericId);
+      };
+      if (state.zendeskTabId != null) pushId(state.zendeskTabId);
+      const activeTabId = await getActiveTabId().catch(() => null);
+      if (activeTabId != null) pushId(activeTabId);
+      const zendeskTabs = await queryZendeskTabsFromSidepanel().catch(() => []);
+      if (Array.isArray(zendeskTabs)) {
+        for (let i = 0; i < zendeskTabs.length; i += 1) {
+          pushId(zendeskTabs[i] && zendeskTabs[i].id);
+        }
+      }
+      return orderedIds;
+    };
+
     const sendOnce = (tabId) => new Promise((resolve, reject) => {
       if (!tabId) {
         reject(new Error("No active tab"));
@@ -2129,12 +2148,7 @@
     return (async () => {
       let lastError = null;
       for (let attempt = 1; attempt <= ZENDESK_TAB_RETRY_MAX_ATTEMPTS; attempt += 1) {
-        const candidateIds = [];
-        if (state.zendeskTabId != null) candidateIds.push(state.zendeskTabId);
-        if (!candidateIds.length || attempt > 1) {
-          const activeTabId = await getActiveTabId();
-          if (activeTabId != null && !candidateIds.includes(activeTabId)) candidateIds.push(activeTabId);
-        }
+        const candidateIds = await collectZendeskTabCandidates();
         if (!candidateIds.length) {
           throw new Error("No active tab");
         }
