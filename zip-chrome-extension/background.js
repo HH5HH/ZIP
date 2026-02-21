@@ -1523,7 +1523,9 @@ function normalizeSlackApiToken(value) {
 
 function isSlackUserOAuthToken(value) {
   const token = normalizeSlackApiToken(value);
-  return /^xoxp-/i.test(token);
+  if (!token) return false;
+  // User/session-flavored tokens are eligible; bot tokens are not.
+  return !/^xoxb-/i.test(token);
 }
 
 function toPriorSlackTs(value) {
@@ -2386,6 +2388,80 @@ async function slackSendMarkdownToSelfViaApi(input) {
     const sessionFallback = await slackSendMarkdownToSelfViaWorkspaceSession(body, lastFailureCode);
     if (sessionFallback && sessionFallback.ok) return sessionFallback;
   }
+  return {
+    ok: false,
+    code: lastFailureCode,
+    error: lastFailureError
+  };
+}
+
+async function slackAuthTestViaApi(input) {
+  const body = input && typeof input === "object" ? input : {};
+  const workspaceOrigin = normalizeSlackWorkspaceOrigin(body.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
+  const tokens = await resolveSlackApiTokens(body);
+  const userCandidates = Array.isArray(tokens && tokens.userCandidates)
+    ? tokens.userCandidates.map((token) => normalizeSlackApiToken(token)).filter(Boolean)
+    : [normalizeSlackApiToken(tokens && tokens.userToken)].filter(Boolean);
+  const tokenAttempts = [];
+  for (let i = 0; i < userCandidates.length; i += 1) {
+    const normalizedToken = normalizeSlackApiToken(userCandidates[i]);
+    if (!normalizedToken) continue;
+    if (!isSlackUserOAuthToken(normalizedToken)) continue;
+    if (!tokenAttempts.includes(normalizedToken)) tokenAttempts.push(normalizedToken);
+  }
+  if (!tokenAttempts.length) {
+    return {
+      ok: false,
+      code: "slack_user_token_missing",
+      error: "Slack user/session token is missing for API auth test."
+    };
+  }
+
+  const openIdSession = await readSlackOpenIdSession();
+  let lastFailureCode = "slack_auth_failed";
+  let lastFailureError = "Unable to validate Slack API credentials.";
+
+  for (let i = 0; i < tokenAttempts.length; i += 1) {
+    const attemptToken = normalizeSlackApiToken(tokenAttempts[i]);
+    if (!attemptToken) continue;
+    const auth = await postSlackApiWithBearerToken(workspaceOrigin, "/api/auth.test", {
+      _x_reason: "zip-slacktivation-auth-bg"
+    }, attemptToken);
+    if (!auth.ok) {
+      lastFailureCode = auth.code || "slack_auth_failed";
+      lastFailureError = auth.error || "Unable to validate Slack API credentials.";
+      if (isSlackTokenInvalidationCode(lastFailureCode)) {
+        await invalidateStoredSlackToken(attemptToken);
+      }
+      continue;
+    }
+
+    const payload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
+    const userId = normalizeSlackUserId(payload.user_id || payload.user || body.userId || body.user_id);
+    const teamId = normalizeSlackTeamId(payload.team_id || payload.team);
+    const userName = String(
+      body.userName
+      || body.user_name
+      || (openIdSession && openIdSession.userName)
+      || ""
+    ).trim();
+    const avatarUrl = String(
+      body.avatarUrl
+      || body.avatar_url
+      || (openIdSession && openIdSession.avatarUrl)
+      || ""
+    ).trim();
+    return {
+      ok: true,
+      ready: true,
+      mode: "api",
+      user_id: userId,
+      team_id: teamId,
+      user_name: userName,
+      avatar_url: avatarUrl
+    };
+  }
+
   return {
     ok: false,
     code: lastFailureCode,
@@ -3656,6 +3732,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch((err) => sendResponse({
         ok: false,
         error: err && err.message ? err.message : "Slack OpenID status check failed."
+      }));
+    return true;
+  }
+  if (msg.type === "ZIP_SLACK_API_AUTH_TEST") {
+    slackAuthTestViaApi(msg)
+      .then((result) => sendResponse(result || { ok: false, error: "Slack API auth test did not return a result." }))
+      .catch((err) => sendResponse({
+        ok: false,
+        error: err && err.message ? err.message : "Slack API auth test failed."
       }));
     return true;
   }

@@ -5647,6 +5647,30 @@
       }
     }
 
+    // API-level token validation supports auto-SLACKTIVATION without requiring an open Slack tab.
+    try {
+      const apiStatus = await sendBackgroundRequest("ZIP_SLACK_API_AUTH_TEST", {
+        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+        userId: state.passAiSlackUserId || "",
+        userName: state.passAiSlackUserName || "",
+        avatarUrl: state.passAiSlackAvatarUrl || "",
+        userToken: getPassAiSlackApiTokenConfig().userToken || ""
+      });
+      if (apiStatus && apiStatus.ok === true) {
+        setPassAiSlackAuthState({
+          ready: true,
+          mode: "api",
+          webReady: true,
+          userId: apiStatus.user_id || apiStatus.userId || state.passAiSlackUserId || "",
+          userName: apiStatus.user_name || apiStatus.userName || state.passAiSlackUserName || "",
+          avatarUrl: apiStatus.avatar_url || apiStatus.avatarUrl || state.passAiSlackAvatarUrl || "",
+          teamId: apiStatus.team_id || apiStatus.teamId || ""
+        });
+        if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
+        return true;
+      }
+    } catch (_) {}
+
     const requestSlackAuthTest = async () => {
       const response = await sendToSlackTabWithAutoBootstrap({
         action: "slackAuthTest",

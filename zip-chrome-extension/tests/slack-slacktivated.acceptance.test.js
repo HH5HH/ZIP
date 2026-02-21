@@ -43,6 +43,7 @@ test("sidepanel uses SLACKTIVATED indicator + @ME action and removes legacy Slac
   assert.match(js, /const openIdConfig = getPassAiSlackOpenIdConfig\(\);/);
   assert.match(js, /runPassAiSlackOpenIdAuth\(\{ interactive: false \}\)/);
   assert.match(js, /runPassAiSlackOpenIdAuth\(\{ interactive: true \}\)/);
+  assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_AUTH_TEST"/);
   assert.match(js, /existingSlackTabs = await querySlackTabsFromSidepanel\(\{ injectableOnly: true \}\)\.catch/);
   assert.match(js, /existingSlackTabs = await querySlackTabsFromSidepanel\(\{ injectableOnly: false \}\)\.catch/);
   assert.match(js, /opened = await focusSlackWorkspaceTab\(existingSlackTabs\[0\]\.id, loginUrl\)/);
@@ -172,6 +173,7 @@ test("background removes legacy Slack OAuth and popup-login handlers", () => {
   assert.match(source, /function isSlackOpenIdRedirectMismatchError\(message\)/);
   assert.match(source, /msg\.type === "ZIP_SLACK_OPENID_AUTH"/);
   assert.match(source, /msg\.type === "ZIP_SLACK_OPENID_STATUS"/);
+  assert.match(source, /msg\.type === "ZIP_SLACK_API_AUTH_TEST"/);
   assert.match(source, /msg\.type === "ZIP_SLACK_API_SEND_TO_SELF"/);
   assert.match(source, /async function slackMarkUnreadViaWorkspaceSession\(input, reasonCode\)/);
   assert.match(source, /action:\s*"slackMarkUnread"/);
@@ -191,6 +193,7 @@ test("background removes legacy Slack OAuth and popup-login handlers", () => {
   assert.match(source, /for \(let i = 0; i < userCandidates\.length; i \+= 1\) \{/);
   assert.match(source, /for \(let i = 0; i < tokenAttempts\.length; i \+= 1\)/);
   assert.match(source, /function isSlackUserOAuthToken\(value\)/);
+  assert.doesNotMatch(source, /return \/\^xoxp-\//);
   assert.doesNotMatch(source, /Active Slack API user does not match the SLACKTIVATED user\./);
   assert.doesNotMatch(source, /function isSlackBotApiToken\(value\)/);
   assert.match(source, /function isSlackTokenInvalidationCode\(code\)/);
