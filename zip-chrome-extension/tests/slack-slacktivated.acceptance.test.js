@@ -69,6 +69,10 @@ test("sidepanel uses SLACKTIVATED indicator + @ME action and removes legacy Slac
   assert.match(js, /function isAllowedSlackWorkspaceHost\(host, workspaceHost\)/);
   assert.match(js, /function isTransientSlackAuthProbeFailureMessage\(message\)/);
   assert.match(js, /if \(wasReady && isTransientSlackAuthProbeFailureMessage\(message\)\) \{/);
+  assert.match(js, /const allowSlackTabBootstrapCreate = opts\.allowSlackTabBootstrapCreate !== false;/);
+  assert.match(js, /allowCreateTab:\s*allowSlackTabBootstrapCreate/);
+  assert.match(js, /const bootstrapAllowCreateTab = opts\.allowCreateTab !== false;/);
+  assert.match(js, /bootstrapSlackWorkspaceForMessaging\(\{ allowCreateTab: bootstrapAllowCreateTab \}\)/);
   assert.match(js, /function getPassAiSlackApiTokenConfig\(\)/);
   assert.match(js, /runContextMenuAction\("clearZipKey"\)/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
