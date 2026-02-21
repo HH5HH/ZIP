@@ -192,6 +192,8 @@
   let slackAuthCheckInFlight = false;
   let slackAuthCheckLastAt = 0;
   let slackIdentityEnrichmentLastAt = 0;
+  let slackTransientAvatarProbeInFlight = false;
+  let slackTransientAvatarProbeLastAt = 0;
   let slackSessionCacheHydrated = false;
   let slackOpenIdSilentProbeLastAt = 0;
   let slackBootstrapInFlight = false;
@@ -203,6 +205,7 @@
   const AUTH_CHECK_FORCE_GAP_MS = 1500;
   const SLACK_AUTH_AUTO_REFRESH_MIN_GAP_MS = 8000;
   const SLACK_IDENTITY_ENRICH_MIN_GAP_MS = 30 * 1000;
+  const SLACK_TRANSIENT_AVATAR_PROBE_MIN_GAP_MS = 90 * 1000;
   const SLACK_OPENID_SILENT_PROBE_MIN_GAP_MS = 60 * 1000;
   const VIEW_COUNT_CACHE_KEY = "zip.filter.viewCounts.v1";
   const ORG_COUNT_CACHE_KEY = "zip.filter.orgCounts.v1";
@@ -2339,6 +2342,160 @@
     }
   }
 
+  function sendToSpecificSlackTab(tabId, inner) {
+    const numericTabId = Number(tabId);
+    if (!Number.isFinite(numericTabId) || numericTabId <= 0) {
+      return Promise.reject(new Error("Slack tab id is invalid."));
+    }
+    return new Promise((resolve, reject) => {
+      const requestId = "s" + Date.now() + "_" + Math.random().toString(36).slice(2);
+      chrome.runtime.sendMessage(
+        { type: "ZIP_REQUEST", tabId: numericTabId, requestId, inner },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message || "Extension error"));
+            return;
+          }
+          if (response && response.error) {
+            reject(new Error(response.error));
+            return;
+          }
+          if (response && response.result !== undefined) {
+            resolve(response.result);
+            return;
+          }
+          if (response && response.type === "ZIP_RESPONSE" && response.result !== undefined) {
+            resolve(response.result);
+            return;
+          }
+          resolve(response);
+        }
+      );
+    });
+  }
+
+  async function enrichPassAiSlackIdentityViaTransientTab(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const force = !!opts.force;
+    const nowMs = Date.now();
+    if (slackTransientAvatarProbeInFlight) return null;
+    if (!force && nowMs - Number(slackTransientAvatarProbeLastAt || 0) < SLACK_TRANSIENT_AVATAR_PROBE_MIN_GAP_MS) {
+      return null;
+    }
+
+    slackTransientAvatarProbeInFlight = true;
+    slackTransientAvatarProbeLastAt = nowMs;
+    const workspaceOrigin = normalizeSlackWorkspaceOriginForTabs(PASS_AI_SLACK_WORKSPACE_ORIGIN);
+    const landingUrl = workspaceOrigin + "/";
+    let createdTabId = null;
+
+    try {
+      let targetTabId = null;
+      const injectableTabs = await querySlackTabsFromSidepanel({
+        injectableOnly: true,
+        workspaceOrigin
+      }).catch(() => []);
+      if (Array.isArray(injectableTabs) && injectableTabs.length > 0 && injectableTabs[0] && injectableTabs[0].id != null) {
+        targetTabId = Number(injectableTabs[0].id);
+      }
+
+      if (!Number.isFinite(targetTabId) || targetTabId <= 0) {
+        const workspaceTabs = await querySlackTabsFromSidepanel({
+          injectableOnly: false,
+          workspaceOrigin
+        }).catch(() => []);
+        if (Array.isArray(workspaceTabs) && workspaceTabs.length > 0 && workspaceTabs[0] && workspaceTabs[0].id != null) {
+          const existingTabId = Number(workspaceTabs[0].id);
+          if (Number.isFinite(existingTabId) && existingTabId > 0) {
+            await new Promise((resolve) => {
+              if (!chrome || !chrome.tabs || typeof chrome.tabs.update !== "function") {
+                resolve();
+                return;
+              }
+              chrome.tabs.update(existingTabId, { url: landingUrl, active: false }, () => {
+                void chrome.runtime.lastError;
+                resolve();
+              });
+            });
+          }
+        } else {
+          const opened = await openSlackWorkspaceTab(landingUrl, { active: false }).catch(() => null);
+          const openedTabId = Number(opened && opened.tabId);
+          if (Number.isFinite(openedTabId) && openedTabId > 0) {
+            createdTabId = openedTabId;
+          }
+        }
+
+        const deadlineMs = Date.now() + 8000;
+        while (Date.now() < deadlineMs) {
+          const nowInjectableTabs = await querySlackTabsFromSidepanel({
+            injectableOnly: true,
+            workspaceOrigin
+          }).catch(() => []);
+          if (Array.isArray(nowInjectableTabs) && nowInjectableTabs.length > 0) {
+            const preferredId = Number(
+              nowInjectableTabs.find((tab) => Number(tab && tab.id) === Number(createdTabId))?.id
+              || nowInjectableTabs[0].id
+            );
+            if (Number.isFinite(preferredId) && preferredId > 0) {
+              targetTabId = preferredId;
+              break;
+            }
+          }
+          await wait(320);
+        }
+      }
+
+      if (!Number.isFinite(targetTabId) || targetTabId <= 0) return null;
+
+      const response = await sendToSpecificSlackTab(targetTabId, {
+        action: "slackAuthTest",
+        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN
+      }).catch(() => null);
+      const ready = !!(
+        response
+        && response.ok === true
+        && (
+          response.ready === true
+          || response.ready == null
+        )
+      );
+      if (!ready) return null;
+
+      const userToken = normalizePassAiSlackApiToken(
+        response.session_token
+        || response.web_token
+        || response.user_token
+        || response.token
+        || ""
+      );
+      const userName = String(
+        response.user_name
+        || response.userName
+        || response.display_name
+        || response.displayName
+        || ""
+      ).trim();
+      const avatarUrl = normalizePassAiSlackAvatarUrl(response.avatar_url || response.avatarUrl || "");
+      if (!avatarUrl) return null;
+      return {
+        userId: String(response.user_id || response.userId || "").trim(),
+        userName,
+        avatarUrl,
+        teamId: String(response.team_id || response.teamId || "").trim(),
+        enterpriseId: String(response.enterprise_id || response.enterpriseId || "").trim(),
+        userToken
+      };
+    } catch (_) {
+      return null;
+    } finally {
+      slackTransientAvatarProbeInFlight = false;
+      if (createdTabId != null) {
+        await closeSlackWorkspaceTab(createdTabId).catch(() => {});
+      }
+    }
+  }
+
   async function bootstrapSlackWorkspaceForMessaging(options) {
     const opts = options && typeof options === "object" ? options : {};
     const allowCreateTab = opts.allowCreateTab !== false;
@@ -3934,6 +4091,8 @@
     stopPassAiSlackAuthPolling();
     hideToast();
     slackIdentityEnrichmentLastAt = 0;
+    slackTransientAvatarProbeInFlight = false;
+    slackTransientAvatarProbeLastAt = 0;
     slackSessionCacheHydrated = false;
     state.user = null;
     state.zendeskTabId = null;
@@ -5850,6 +6009,21 @@
             if (identityFromTab.userToken) {
               await persistPassAiSlackApiTokenConfig({
                 userToken: identityFromTab.userToken
+              }).catch(() => {});
+            }
+          }
+        }
+        if (!apiAvatarUrl) {
+          const transientIdentity = await enrichPassAiSlackIdentityViaTransientTab({ force: false });
+          if (transientIdentity) {
+            if (!apiUserId) apiUserId = String(transientIdentity.userId || "").trim();
+            if (!apiUserName) apiUserName = String(transientIdentity.userName || "").trim();
+            if (!apiAvatarUrl) apiAvatarUrl = normalizePassAiSlackAvatarUrl(transientIdentity.avatarUrl || "");
+            if (!apiTeamId) apiTeamId = String(transientIdentity.teamId || "").trim();
+            if (!apiEnterpriseId) apiEnterpriseId = String(transientIdentity.enterpriseId || "").trim();
+            if (transientIdentity.userToken) {
+              await persistPassAiSlackApiTokenConfig({
+                userToken: transientIdentity.userToken
               }).catch(() => {});
             }
           }
