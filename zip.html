@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ZIP Install Hub</title>
+  <link rel="stylesheet" href="./zip-chrome-extension/install-hub.css" />
+</head>
+<body class="spectrum spectrum--medium spectrum--dark">
+  <main class="card">
+    <section class="hero" aria-label="ZIP brand splash">
+      <img src="./zip-chrome-extension/assets/brand/splash/zeek-info-peek-master-splash-1920x1080.png" alt="ZIP splash art" />
+      <div class="hero-text">
+        <div class="brand-row">
+          <img src="./zip-chrome-extension/assets/brand/source/zeek-info-peek-master-icon.svg" alt="ZIP app icon" />
+          <span class="title">ZEEK INFO PEEK</span>
+        </div>
+        <h1>ZIP Install Hub</h1>
+        <p>Management-ready onboarding for extension testing across the team.</p>
+      </div>
+    </section>
+
+    <div class="warn">
+      <strong>Urgent line just paged?</strong> Fast path:
+      1) `chrome://extensions` -> Developer mode ON -> Load unpacked -> `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
+      2) Open Zendesk dashboard
+      3) Open ZIP and hit `Login with Zendesk` if prompted
+      4) Start with `Assigned Tickets`
+    </div>
+
+    <p><strong>ZIP = Zeek Info Peek</strong> — ZIP into INFO from the Zendesk API.</p>
+    <p>
+      ZIP is packaged as a pure Chrome extension with no third-party dependencies.
+      One-time setup is handled in <code>chrome://extensions</code>, then daily use is: open Zendesk, open ZIP, login if prompted.
+    </p>
+
+    <blockquote class="mission-quote">
+      <strong>Mission:</strong> Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. Don't get stuck wasting cycles on blockers. If ZIP can make your job faster, better, or more enjoyable, please share feedback.
+    </blockquote>
+
+    <ol>
+      <li>Open <code>chrome://extensions</code>.</li>
+      <li>Turn on <strong>Developer mode</strong> (top-right).</li>
+      <li>Click <strong>Load unpacked</strong>.</li>
+      <li>Select folder:<br /><code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code></li>
+      <li>Open Zendesk dashboard:<br /><code>https://adobeprimetime.zendesk.com/agent/dashboard</code></li>
+      <li>If logged out, click <strong>Login with Zendesk</strong> from the ZIP panel.</li>
+    </ol>
+
+    <div class="btn-row">
+      <button type="button" class="install-btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" id="open-extensions-btn" data-copy-url="chrome://extensions" title="Chrome blocks direct links to chrome:// — this copies the URL so you can paste it in the address bar">
+        <span class="spectrum-Button-label">Copy chrome://extensions link</span>
+      </button>
+      <span id="extensions-feedback" class="btn-feedback" aria-live="polite"></span>
+      <a class="install-btn spectrum-Button spectrum-Button--fill spectrum-Button--accent spectrum-Button--sizeS" href="https://adobeprimetime.zendesk.com/agent/dashboard" target="_blank" rel="noopener">
+        <span class="spectrum-Button-label">Open Zendesk Dashboard</span>
+      </a>
+      <a class="install-btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" href="./zip-chrome-extension/README.md" target="_blank" rel="noopener">
+        <span class="spectrum-Button-label">Open Extension README</span>
+      </a>
+      <a class="install-btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" href="./zip-chrome-extension.zip" download>
+        <span class="spectrum-Button-label">Download Extension Zip</span>
+      </a>
+    </div>
+    <p class="hint" id="extensions-hint">Paste in Chrome’s address bar (Ctrl+L or Cmd+L) and press Enter.</p>
+
+    <div class="meta">
+      Canonical extension package: <code>/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension</code><br />
+      Brand kit integrated from: <code>/Users/minnick/Documents/PASS/ZIP/ZIP_APP_ICON_PACK_v4.zip</code>
+    </div>
+
+    <div class="warn">
+      If your team cannot use "Load unpacked", your Chrome admin can deploy this extension centrally via enterprise policy.
+    </div>
+  </main>
+  <script src="./zip-chrome-extension/install-hub.js"></script>
+</body>
+</html>

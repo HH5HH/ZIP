@@ -1,0 +1,181 @@
+@import url("./spectrum/spectrum-components.css");
+
+* { box-sizing: border-box; }
+
+:root {
+  --zip-install-bg-a: color-mix(in srgb, var(--spectrum-accent-color-800) 18%, transparent);
+  --zip-install-bg-b: color-mix(in srgb, var(--spectrum-accent-color-900) 8%, transparent);
+  --zip-install-surface: color-mix(in srgb, var(--spectrum-background-layer-1-color) 96%, transparent);
+  --zip-install-surface-strong: color-mix(in srgb, var(--spectrum-background-layer-2-color) 94%, transparent);
+  --zip-install-border: color-mix(in srgb, var(--spectrum-body-color) 22%, transparent);
+  --zip-install-shadow: color-mix(in srgb, var(--spectrum-black) 35%, transparent);
+  --zip-install-warning-bg: var(--spectrum-notice-subtle-background-color-default);
+  --zip-install-warning-border: var(--spectrum-notice-border-color-default, var(--spectrum-notice-content-color-default));
+  --zip-install-muted: var(--spectrum-neutral-subdued-content-color-default);
+  --zip-install-hint: var(--spectrum-disabled-content-color);
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--spectrum-sans-font-family-stack);
+  color: var(--spectrum-body-color);
+  background:
+    radial-gradient(100% 75% at 8% 0%, var(--zip-install-bg-a) 0%, transparent 52%),
+    linear-gradient(180deg, color-mix(in srgb, var(--spectrum-background-base-color) 96%, var(--spectrum-black) 4%) 0%, var(--spectrum-background-base-color) 100%);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.card {
+  width: min(1020px, 96vw);
+  border: 1px solid var(--zip-install-border);
+  background: linear-gradient(180deg, var(--zip-install-bg-b) 0%, var(--zip-install-surface) 35%, var(--zip-install-surface-strong) 100%);
+  border-radius: var(--spectrum-corner-radius-200, 10px);
+  padding: 20px;
+  box-shadow: 0 18px 38px var(--zip-install-shadow);
+}
+
+.hero {
+  position: relative;
+  border: 1px solid var(--zip-install-border);
+  border-radius: var(--spectrum-corner-radius-200, 10px);
+  overflow: hidden;
+  margin-bottom: 16px;
+  min-height: 168px;
+  background: var(--spectrum-background-layer-2-color);
+}
+
+.hero img {
+  width: 100%;
+  height: 100%;
+  max-height: 240px;
+  object-fit: cover;
+  display: block;
+  opacity: 0.86;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(95deg, color-mix(in srgb, var(--spectrum-background-base-color) 86%, transparent) 8%, color-mix(in srgb, var(--spectrum-background-base-color) 32%, transparent) 74%);
+}
+
+.hero-text {
+  position: absolute;
+  inset: auto auto 14px 14px;
+  z-index: 1;
+  max-width: min(94%, 700px);
+}
+
+.brand-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.brand-row img {
+  width: 26px;
+  height: 26px;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--spectrum-accent-color-900) 32%, transparent));
+}
+
+.brand-row .title {
+  font-size: var(--spectrum-font-size-75);
+  letter-spacing: 0.08em;
+  font-weight: var(--spectrum-bold-font-weight);
+  text-transform: uppercase;
+  color: var(--spectrum-heading-color);
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: var(--spectrum-heading-size-l);
+  line-height: var(--spectrum-heading-line-height);
+}
+
+.hero p {
+  margin: 6px 0 0;
+  color: var(--spectrum-body-color);
+}
+
+p { margin: 0 0 12px; color: var(--zip-install-muted); }
+ol { margin: 0 0 14px 20px; }
+li { margin-bottom: 8px; }
+
+code {
+  background: color-mix(in srgb, var(--spectrum-background-layer-2-color) 82%, var(--spectrum-black) 18%);
+  border: 1px solid var(--zip-install-border);
+  border-radius: var(--spectrum-corner-radius-100, 8px);
+  padding: 1px 6px;
+  color: var(--spectrum-body-color);
+  font-size: var(--spectrum-code-size-s);
+  font-family: var(--spectrum-code-font-family-stack);
+  word-break: break-word;
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 14px;
+  align-items: center;
+}
+
+.install-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.warn {
+  margin-top: 12px;
+  border: 1px solid var(--zip-install-warning-border);
+  background: var(--zip-install-warning-bg);
+  border-radius: var(--spectrum-corner-radius-100, 8px);
+  padding: 10px 12px;
+  color: var(--spectrum-body-color);
+  font-size: var(--spectrum-body-size-s);
+  line-height: var(--spectrum-body-line-height);
+}
+
+.meta {
+  margin-top: 10px;
+  border: 1px solid var(--zip-install-border);
+  background: color-mix(in srgb, var(--spectrum-background-layer-2-color) 92%, transparent);
+  border-radius: var(--spectrum-corner-radius-100, 8px);
+  padding: 10px 12px;
+  color: var(--zip-install-muted);
+  font-size: var(--spectrum-detail-size-s);
+}
+
+.mission-quote {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--spectrum-accent-content-color-default);
+  background: color-mix(in srgb, var(--spectrum-accent-subtle-background-color-default) 58%, transparent);
+  color: var(--zip-install-muted);
+  font-size: var(--spectrum-body-size-s);
+  line-height: 1.5;
+  border-radius: var(--spectrum-corner-radius-100, 8px);
+}
+
+.mission-quote strong { color: var(--spectrum-heading-color); }
+.btn-feedback { font-size: var(--spectrum-detail-size-s); color: var(--spectrum-positive-content-color-default); margin-left: 4px; }
+.hint { font-size: var(--spectrum-detail-size-s); color: var(--zip-install-hint); margin: -6px 0 12px; display: none; }
+.hint.visible { display: block; }
+
+@media (max-width: 720px) {
+  body { padding: 12px; }
+  .card { padding: 14px; }
+  .hero h1 { font-size: var(--spectrum-heading-size-m); }
+}

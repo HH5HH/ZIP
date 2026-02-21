@@ -1,0 +1,27 @@
+"use strict";
+
+(function installZipSlackRuntimeConfig() {
+  if (typeof window === "undefined") return;
+
+  // Keep git-tracked runtime defaults non-sensitive.
+  // Production credentials should be supplied via ZIP.KEY import in sidepanel.
+  if (!window.ZIP_PASS_AI_SLACK_APP_ID) {
+    window.ZIP_PASS_AI_SLACK_APP_ID = "";
+  }
+  if (!window.ZIP_PASS_AI_EXPECTED_SLACK_TEAM_ID) {
+    window.ZIP_PASS_AI_EXPECTED_SLACK_TEAM_ID = "";
+  }
+  if (!window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_ID) {
+    window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_ID = "";
+  }
+  if (!window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET) {
+    window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET = "";
+  }
+  if (!window.ZIP_PASS_AI_SLACK_OIDC_SCOPE) {
+    window.ZIP_PASS_AI_SLACK_OIDC_SCOPE = "openid profile email";
+  }
+  if (!window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH) {
+    window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH = "slack-user";
+  }
+  // Tokens are intentionally not hardcoded; provide via ZIP.KEY import into chrome.storage.local.
+})();
