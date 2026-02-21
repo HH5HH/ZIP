@@ -31,6 +31,7 @@ const ZIP_SLACK_USER_TOKEN_STORAGE_KEY = "zip_slack_user_token";
 const ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY = "zip_slack_oauth_token";
 const ZIP_SLACK_KEY_LOADED_STORAGE_KEY = "zip_slack_key_loaded";
 const ZIP_SLACK_KEY_META_STORAGE_KEY = "zip_slack_key_meta";
+const ZIP_SLACK_SESSION_CACHE_STORAGE_KEY = "zip_slack_session_cache_v1";
 const ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY = "zip_singularity_channel_id";
 const ZIP_SINGULARITY_MENTION_STORAGE_KEY = "zip_singularity_mention";
 const ZIP_MIGRATION_V1_DONE_STORAGE_KEY = "zip_migration_v1_done";
@@ -132,6 +133,7 @@ const ZIP_SLACK_STORAGE_KEYS = [
   ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
   ZIP_SLACK_KEY_LOADED_STORAGE_KEY,
   ZIP_SLACK_KEY_META_STORAGE_KEY,
+  ZIP_SLACK_SESSION_CACHE_STORAGE_KEY,
   ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY,
   ZIP_SINGULARITY_MENTION_STORAGE_KEY
 ];
@@ -1518,7 +1520,7 @@ function normalizeSlackUserId(value) {
 function normalizeSlackApiToken(value) {
   const token = String(value || "").trim();
   if (!token) return "";
-  return /^xox[a-z]-/i.test(token) ? token : "";
+  return /^(xox[a-z]-|xoxe\.xox[a-z]-)/i.test(token) ? token : "";
 }
 
 function isSlackUserOAuthToken(value) {

@@ -51,8 +51,10 @@
   const ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY = "zip_slack_oauth_token";
   const ZIP_SLACK_KEY_LOADED_STORAGE_KEY = "zip_slack_key_loaded";
   const ZIP_SLACK_KEY_META_STORAGE_KEY = "zip_slack_key_meta";
+  const ZIP_SLACK_SESSION_CACHE_STORAGE_KEY = "zip_slack_session_cache_v1";
   const ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY = "zip_singularity_channel_id";
   const ZIP_SINGULARITY_MENTION_STORAGE_KEY = "zip_singularity_mention";
+  const SLACKTIVATED_SESSION_CACHE_VERSION = 1;
   const ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS = Object.freeze([
     PASS_AI_SLACK_OIDC_CLIENT_ID_STORAGE_KEY,
     PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY,
@@ -189,6 +191,7 @@
   let authRefreshInFlight = false;
   let slackAuthCheckInFlight = false;
   let slackAuthCheckLastAt = 0;
+  let slackSessionCacheHydrated = false;
   let slackOpenIdSilentProbeLastAt = 0;
   let slackBootstrapInFlight = false;
   let slackBootstrapLastAt = 0;
@@ -2284,6 +2287,15 @@
     );
   }
 
+  function isSlackApiTokenInvalidationCode(code) {
+    const normalized = String(code || "").trim().toLowerCase();
+    if (!normalized) return false;
+    return normalized === "account_inactive"
+      || normalized === "invalid_auth"
+      || normalized === "token_revoked"
+      || normalized === "not_authed";
+  }
+
   async function bootstrapSlackWorkspaceForMessaging(options) {
     const opts = options && typeof options === "object" ? options : {};
     const allowCreateTab = opts.allowCreateTab !== false;
@@ -3867,6 +3879,7 @@
   function showLogin() {
     stopPassAiSlackAuthPolling();
     hideToast();
+    slackSessionCacheHydrated = false;
     state.user = null;
     state.zendeskTabId = null;
     state.slackTabId = null;
@@ -5041,6 +5054,75 @@
     });
   }
 
+  function normalizePassAiSlacktivatedSessionCache(input) {
+    const raw = input && typeof input === "object" ? input : null;
+    if (!raw) return null;
+    const workspaceOrigin = normalizeSlackWorkspaceOriginForTabs(
+      raw.workspaceOrigin || PASS_AI_SLACK_WORKSPACE_ORIGIN
+    );
+    const workspaceHost = getSlackWorkspaceHostForTabs(PASS_AI_SLACK_WORKSPACE_ORIGIN);
+    const parsedWorkspace = parseSlackTabUrl(workspaceOrigin);
+    const host = parsedWorkspace ? String(parsedWorkspace.hostname || "").toLowerCase() : "";
+    if (!isAllowedSlackWorkspaceHost(host, workspaceHost)) return null;
+
+    const verifiedAtMs = Number(raw.verifiedAtMs || raw.verifiedAt || raw.cachedAtMs || 0);
+    return {
+      version: Number(raw.version || SLACKTIVATED_SESSION_CACHE_VERSION),
+      mode: String(raw.mode || "").trim().toLowerCase() || "cached",
+      workspaceOrigin,
+      webReady: raw.webReady !== false,
+      userId: String(raw.userId || raw.user_id || "").trim(),
+      userName: String(raw.userName || raw.user_name || "").trim(),
+      avatarUrl: normalizePassAiSlackAvatarUrl(raw.avatarUrl || raw.avatar_url || ""),
+      teamId: String(raw.teamId || raw.team_id || "").trim().toUpperCase(),
+      enterpriseId: String(raw.enterpriseId || raw.enterprise_id || "").trim().toUpperCase(),
+      verifiedAtMs: Number.isFinite(verifiedAtMs) && verifiedAtMs > 0 ? verifiedAtMs : Date.now()
+    };
+  }
+
+  async function readPassAiSlacktivatedSessionCache() {
+    const stored = await getChromeStorageLocal([ZIP_SLACK_SESSION_CACHE_STORAGE_KEY]);
+    return normalizePassAiSlacktivatedSessionCache(stored && stored[ZIP_SLACK_SESSION_CACHE_STORAGE_KEY]);
+  }
+
+  async function writePassAiSlacktivatedSessionCache(input) {
+    const normalized = normalizePassAiSlacktivatedSessionCache(input);
+    if (!normalized) return false;
+    const payload = {
+      ...normalized,
+      version: SLACKTIVATED_SESSION_CACHE_VERSION,
+      cachedAtMs: Date.now(),
+      cachedAt: new Date().toISOString()
+    };
+    await setChromeStorageLocal({ [ZIP_SLACK_SESSION_CACHE_STORAGE_KEY]: payload });
+    return true;
+  }
+
+  async function clearPassAiSlacktivatedSessionCache() {
+    await removeChromeStorageLocal([ZIP_SLACK_SESSION_CACHE_STORAGE_KEY]);
+  }
+
+  async function hydratePassAiSlacktivatedStateFromCache(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    if (!state.user) return false;
+    if (!opts.force && slackSessionCacheHydrated) return isPassAiSlacktivated();
+    const cached = await readPassAiSlacktivatedSessionCache().catch(() => null);
+    slackSessionCacheHydrated = true;
+    if (!cached) return false;
+    setPassAiSlackAuthState({
+      ready: true,
+      mode: cached.mode || "cached",
+      webReady: cached.webReady !== false,
+      userId: cached.userId || "",
+      userName: cached.userName || "",
+      avatarUrl: cached.avatarUrl || "",
+      teamId: cached.teamId || "",
+      enterpriseId: cached.enterpriseId || "",
+      skipPersist: true
+    });
+    return isPassAiSlacktivated();
+  }
+
   async function refreshZipSecretConfigFromStorage() {
     const stored = await getChromeStorageLocal(getZipSecretStorageReadKeys());
     const normalized = normalizeZipSecretConfigShape(stored);
@@ -5341,7 +5423,8 @@
   function normalizePassAiSlackApiToken(value) {
     const token = String(value || "").trim();
     if (!token) return "";
-    return /^xox[a-z]-/i.test(token) ? token : "";
+    const tokenLooksValid = /^(xox[a-z]-|xoxe\.xox[a-z]-)/i.test(token);
+    return tokenLooksValid ? token : "";
   }
 
   function getPassAiSlackApiTokenConfig() {
@@ -5592,6 +5675,8 @@
   function setPassAiSlackAuthState(nextState) {
     const ready = !!(nextState && nextState.ready);
     const requestedMode = String(nextState && nextState.mode || "").trim().toLowerCase();
+    const skipPersist = !!(nextState && nextState.skipPersist);
+    const clearPersisted = !!(nextState && nextState.clearPersisted);
     const hasRequestedWebReady = !!(
       nextState
       && Object.prototype.hasOwnProperty.call(nextState, "webReady")
@@ -5617,6 +5702,27 @@
       state.passAiSlackAuthError = String((nextState && nextState.error) || "").trim();
     }
     updateTicketActionButtons();
+
+    if (clearPersisted) {
+      slackSessionCacheHydrated = true;
+      clearPassAiSlacktivatedSessionCache().catch(() => {});
+      return;
+    }
+    if (!state.passAiSlackReady || skipPersist) return;
+
+    slackSessionCacheHydrated = true;
+    writePassAiSlacktivatedSessionCache({
+      version: SLACKTIVATED_SESSION_CACHE_VERSION,
+      mode: requestedMode || "api",
+      workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+      webReady: state.passAiSlackWebReady,
+      userId: state.passAiSlackUserId || "",
+      userName: state.passAiSlackUserName || "",
+      avatarUrl: state.passAiSlackAvatarUrl || "",
+      teamId: String((nextState && (nextState.teamId || nextState.team_id)) || "").trim().toUpperCase(),
+      enterpriseId: String((nextState && (nextState.enterpriseId || nextState.enterprise_id)) || "").trim().toUpperCase(),
+      verifiedAtMs: Date.now()
+    }).catch(() => {});
   }
 
   async function refreshPassAiSlackAuth(options) {
@@ -5647,7 +5753,11 @@
       }
     }
 
+    await hydratePassAiSlacktivatedStateFromCache({ force: false }).catch(() => false);
+
     // API-level token validation supports auto-SLACKTIVATION without requiring an open Slack tab.
+    let apiFailureCode = "";
+    let apiFailureMessage = "";
     try {
       const apiStatus = await sendBackgroundRequest("ZIP_SLACK_API_AUTH_TEST", {
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
@@ -5669,7 +5779,16 @@
         if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
         return true;
       }
+      apiFailureCode = String(apiStatus && apiStatus.code || "").trim().toLowerCase();
+      apiFailureMessage = normalizePassAiCommentBody(apiStatus && (apiStatus.error || apiStatus.message));
     } catch (_) {}
+    if (isSlackApiTokenInvalidationCode(apiFailureCode)) {
+      setPassAiSlackAuthState({
+        ready: false,
+        error: apiFailureMessage || "Slack session expired. Click the Slack indicator to sign in again.",
+        clearPersisted: true
+      });
+    }
 
     const requestSlackAuthTest = async () => {
       const response = await sendToSlackTabWithAutoBootstrap({
