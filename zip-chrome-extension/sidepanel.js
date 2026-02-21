@@ -190,6 +190,8 @@
   let slackAuthCheckInFlight = false;
   let slackAuthCheckLastAt = 0;
   let slackOpenIdSilentProbeLastAt = 0;
+  let slackBootstrapInFlight = false;
+  let slackBootstrapLastAt = 0;
   let eventsWired = false;
   const AUTH_CHECK_INTERVAL_ACTIVE_MS = 60 * 1000;
   const AUTH_CHECK_INTERVAL_LOGGED_OUT_MS = 15 * 1000;
@@ -204,6 +206,7 @@
   const ZENDESK_TAB_RETRY_BASE_DELAY_MS = 150;
   const SLACK_TAB_RETRY_MAX_ATTEMPTS = 6;
   const SLACK_TAB_RETRY_BASE_DELAY_MS = 150;
+  const SLACK_BOOTSTRAP_MIN_GAP_MS = 25 * 1000;
   const FILTER_CATALOG_RETRY_ATTEMPTS = 3;
   const FILTER_CATALOG_RETRY_BASE_DELAY_MS = 500;
   const TICKET_EMAIL_COPY_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -701,12 +704,15 @@
   }
 
   function startAuthCheckPolling() {
-    authCheckPollingEnabled = false;
+    authCheckPollingEnabled = true;
     stopAuthCheckPolling();
+    authCheckPollingEnabled = true;
+    scheduleNextAuthCheck(800);
   }
 
   function triggerAuthCheckNow() {
     sendBackgroundRequest("ZIP_FORCE_CHECK", { reason: "sidepanel_trigger" }).catch(() => {});
+    runAuthCheckTick({ force: true }).catch(() => {});
   }
 
   const $ = (id) => document.getElementById(id);
@@ -2244,6 +2250,8 @@
     if (!text) return false;
     if (text.includes("no slack tab available")) return true;
     if (text.includes("not a slack tab")) return true;
+    if (text.includes("could not establish connection")) return true;
+    if (text.includes("receiving end does not exist")) return true;
     if (text.includes("session token not found")) return true;
     if (text.includes("no slack web session token")) return true;
     if (text.includes("slack session unavailable")) return true;
@@ -2325,11 +2333,20 @@
     let bootstrapAttempted = false;
     const tryBootstrap = async () => {
       if (!canBootstrap || bootstrapAttempted) return false;
+      if (slackBootstrapInFlight) return false;
+      const nowMs = Date.now();
+      if (nowMs - Number(slackBootstrapLastAt || 0) < SLACK_BOOTSTRAP_MIN_GAP_MS) return false;
       bootstrapAttempted = true;
+      slackBootstrapInFlight = true;
+      slackBootstrapLastAt = nowMs;
       if (onBootstrap) {
         try { onBootstrap(); } catch (_) {}
       }
-      return bootstrapSlackWorkspaceForMessaging();
+      try {
+        return await bootstrapSlackWorkspaceForMessaging();
+      } finally {
+        slackBootstrapInFlight = false;
+      }
     };
 
     let response = null;
@@ -3859,6 +3876,7 @@
     const gateStatus = enforceZipConfigGate({ reportStatus: false });
     if (gateStatus.ready) {
       setStatus("", false);
+      startAuthCheckPolling();
     } else {
       setStatus(getZipConfigGateMessage(gateStatus), gateStatus.reason === "missing_fields");
     }
@@ -5684,7 +5702,8 @@
     try {
       return await refreshPassAiSlackAuth({
         silent: opts.silent !== false,
-        allowOpenIdSilentProbe: opts.allowOpenIdSilentProbe !== false
+        allowOpenIdSilentProbe: opts.allowOpenIdSilentProbe !== false,
+        allowSlackTabBootstrap: opts.allowSlackTabBootstrap === true
       });
     } finally {
       slackAuthCheckInFlight = false;
@@ -5705,7 +5724,7 @@
 
     const poll = () => {
       passAiSlackAuthPollAttempt += 1;
-      refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false, allowSlackTabBootstrap: false })
+      refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false, allowSlackTabBootstrap: true })
         .then((ready) => {
           if (ready) {
             stopPassAiSlackAuthPolling();
@@ -8371,7 +8390,7 @@
     renderApiParams();
     setStatus("Hello " + (me.user.name || me.user.email || "agent") + ". Loading assigned tickets...", false);
     await loadTickets(me.user && me.user.id != null ? String(me.user.id) : "");
-    refreshSlacktivatedState({ force: true, silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
+    refreshSlacktivatedState({ force: true, silent: true, allowOpenIdSilentProbe: true, allowSlackTabBootstrap: true }).catch(() => {});
     setStatus(
       "Assigned tickets loaded. " + state.filteredTickets.length + " rows shown. Loading filter menus…",
       false
@@ -8533,6 +8552,8 @@
           return;
         }
       }
+      await runAuthCheckTick({ force: true }).catch(() => {});
+      if (state.user) return;
       setStatus("Login with Zendesk to continue.", false);
     } catch (_) {
       showLogin();
