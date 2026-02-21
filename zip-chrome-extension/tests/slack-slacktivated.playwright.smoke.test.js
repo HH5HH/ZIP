@@ -202,11 +202,34 @@ function buildSidepanelHarnessBootstrap(options) {
         }
       };
 
+      const seededMeta = {
+        services: ["slacktivation"],
+        importedAt: new Date().toISOString(),
+        source: "test"
+      };
+      Object.assign(storage, {
+        zip_slack_client_id: "mock.client.id",
+        zip_slack_client_secret: "mock.client.secret",
+        zip_slack_oauth_token: "xoxp-mock-user-token",
+        zip_slack_scope: "openid profile email",
+        zip_slack_redirect_path: "slack-user",
+        zip_slack_key_loaded: true,
+        zip_slack_key_meta: seededMeta
+      });
+
       window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_ID = "mock.client.id";
       window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET = "mock.client.secret";
       window.ZIP_PASS_AI_SLACK_OIDC_SCOPE = "openid profile email";
-      window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH = "slack-openid";
+      window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH = "slack-user";
       window.ZIP_PASS_AI_EXPECTED_SLACK_TEAM_ID = "";
+      window.ZIP_CONFIG_META = seededMeta;
+      try {
+        window.localStorage.setItem("zip.config.meta.v1", JSON.stringify({
+          services: ["slacktivation"],
+          importedAt: new Date().toISOString(),
+          source: "test"
+        }));
+      } catch (_) {}
 
       window.chrome = {
         runtime: {

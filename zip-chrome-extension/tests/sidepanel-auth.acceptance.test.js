@@ -9,7 +9,8 @@ const BACKGROUND_PATH = path.join(ROOT, "background.js");
 const SIDEPANEL_PATH = path.join(ROOT, "sidepanel.js");
 const CONTENT_PATH = path.join(ROOT, "content.js");
 const SIDEPANEL_FALLBACK_PATH = path.join(ROOT, "sidepanel-login-fallback.js");
-const ZENDESK_DASHBOARD_URL = "https://adobeprimetime.zendesk.com/agent/dashboard";
+const MANIFEST_PATH = path.join(ROOT, "manifest.json");
+const ZENDESK_DASHBOARD_URL = "https://adobeprimetime.zendesk.com/agent/dashboard?brand_id=2379046";
 const ZENDESK_LOGIN_WITH_RETURN_URL = "https://adobeprimetime.zendesk.com/access/login?return_to="
   + encodeURIComponent(ZENDESK_DASHBOARD_URL);
 
@@ -285,7 +286,8 @@ function createChromeHarness(options) {
     calls,
     mutable,
     resetCalls,
-    sendRuntimeMessage
+    sendRuntimeMessage,
+    storageDump: () => storageArea._dump()
   };
 }
 
@@ -322,6 +324,28 @@ test("LOGIN_CLICKED opens a normal Zendesk tab when none exists", async () => {
   assert.equal(harness.calls.windowsCreate.length, 0, "Zendesk login must not open popup windows");
 });
 
+test("LOGIN_CLICKED still routes to login URL when background auth state is stale logged-in", async () => {
+  const harness = createChromeHarness({
+    zendeskTabs: [{ id: 42, windowId: 7, url: ZENDESK_DASHBOARD_URL }]
+  });
+  await harness.sendRuntimeMessage(
+    { type: "ZD_SESSION_OK", status: 200, payload: { session: { id: 1 } } },
+    { url: ZENDESK_DASHBOARD_URL }
+  );
+  harness.resetCalls();
+
+  const response = await harness.sendRuntimeMessage({ type: "LOGIN_CLICKED" });
+
+  assert.equal(response && response.ok, true);
+  assert.equal(harness.calls.tabsUpdate.length, 1, "existing Zendesk tab should still be updated");
+  assert.equal(
+    String(harness.calls.tabsUpdate[0] && harness.calls.tabsUpdate[0].updateInfo && harness.calls.tabsUpdate[0].updateInfo.url || ""),
+    ZENDESK_LOGIN_WITH_RETURN_URL,
+    "login click should always route through Zendesk login URL to avoid stale-auth no-op clicks"
+  );
+  assert.equal(harness.calls.tabsCreate.length, 0, "no new tab should be created when existing Zendesk tab is present");
+});
+
 test("legacy idle storage never blocks session checks", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],
@@ -343,6 +367,103 @@ test("legacy idle storage never blocks session checks", async () => {
   assert.equal(harness.calls.fetch.length > 0 || harness.calls.tabsSendMessage.length > 0, true, "force check should probe Zendesk session");
 });
 
+test("ZIP_CHECK_SECRETS reports missing state until ZIP_IMPORT_KEY_PAYLOAD succeeds", async () => {
+  const harness = createChromeHarness({ zendeskTabs: [] });
+  harness.resetCalls();
+
+  const before = await harness.sendRuntimeMessage({ type: "ZIP_CHECK_SECRETS" });
+  assert.equal(before && before.ok, false);
+
+  const imported = await harness.sendRuntimeMessage({
+    type: "ZIP_IMPORT_KEY_PAYLOAD",
+    config: {
+      oidc: {
+        clientId: "zip-client-id",
+        clientSecret: "zip-client-secret",
+        scope: "openid profile email",
+        redirectPath: "slack-user"
+      },
+      api: {
+        userToken: "xoxp-test-token"
+      },
+      singularity: {
+        channelId: "C123456789A",
+        mention: "@Singularity"
+      }
+    }
+  });
+  assert.equal(imported && imported.ok, true);
+
+  const after = await harness.sendRuntimeMessage({ type: "ZIP_CHECK_SECRETS" });
+  assert.equal(after && after.ok, true);
+  const stored = harness.storageDump();
+  assert.equal(String(stored.zip_slack_client_id || ""), "zip-client-id");
+  assert.equal(String(stored.zip_slack_client_secret || ""), "zip-client-secret");
+  assert.equal(stored.zip_slack_key_loaded, true);
+
+  const cleared = await harness.sendRuntimeMessage({ type: "ZIP_CLEAR_KEY" });
+  assert.equal(cleared && cleared.ok, true);
+  const finalStatus = await harness.sendRuntimeMessage({ type: "ZIP_CHECK_SECRETS" });
+  assert.equal(finalStatus && finalStatus.ok, false);
+  const afterClear = harness.storageDump();
+  assert.equal(Object.prototype.hasOwnProperty.call(afterClear, "zip_slack_client_id"), false);
+  assert.equal(afterClear.zip_slack_key_loaded, false);
+});
+
+test("ZIP_RUN_LOCALSTORAGE_MIGRATION maps legacy keys to canonical chrome.storage.local keys", async () => {
+  const harness = createChromeHarness({ zendeskTabs: [] });
+  harness.resetCalls();
+
+  const migrated = await harness.sendRuntimeMessage({
+    type: "ZIP_RUN_LOCALSTORAGE_MIGRATION",
+    legacy: {
+      "zip.passAi.slackOidc.clientId": "legacy-client-id",
+      "zip.passAi.slackOidc.clientSecret": "legacy-client-secret",
+      "zip.passAi.slackOidc.scope": "openid profile email",
+      "zip.passAi.slackOidc.redirectPath": "slack-user",
+      "zip.passAi.expectedSlackTeamId": "TLEGACY1234",
+      "zip.passAi.slackApi.userToken": "xoxp-legacy-token",
+      "zip.passAi.singularityMention": "@Singularity"
+    }
+  });
+  assert.equal(migrated && migrated.ok, true);
+  assert.equal(migrated && migrated.migrated, true);
+  assert.equal(Array.isArray(migrated && migrated.clearLocalStorageKeys), true);
+
+  const stored = harness.storageDump();
+  assert.equal(String(stored.zip_slack_client_id || ""), "legacy-client-id");
+  assert.equal(String(stored.zip_slack_client_secret || ""), "legacy-client-secret");
+  assert.equal(stored.zip_slack_key_loaded, true);
+  assert.equal(stored.zip_migration_v1_done, true);
+});
+
+test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", async () => {
+  const harness = createChromeHarness({ zendeskTabs: [] });
+  harness.resetCalls();
+
+  const imported = await harness.sendRuntimeMessage({
+    type: "ZIP_IMPORT_KEY_PAYLOAD",
+    config: {
+      oidc: {
+        clientId: "menu-client-id",
+        clientSecret: "menu-client-secret",
+        scope: "openid profile email",
+        redirectPath: "slack-user"
+      },
+      api: {
+        userToken: "xoxp-menu-test-token"
+      }
+    }
+  });
+  assert.equal(imported && imported.ok, true);
+
+  const action = await harness.sendRuntimeMessage({ type: "ZIP_CONTEXT_MENU_ACTION", action: "clearZipKey" });
+  assert.equal(action && action.ok, true);
+  const stored = harness.storageDump();
+  assert.equal(Object.prototype.hasOwnProperty.call(stored, "zip_slack_client_id"), false);
+  assert.equal(stored.zip_slack_key_loaded, false);
+});
+
 test("sidepanel login wiring uses LOGIN_CLICKED with no ZIP local sign-out path", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
   const startLoginMatch = source.match(/async function startLogin\(\)\s*\{[\s\S]*?\n  \}/);
@@ -357,6 +478,21 @@ test("sidepanel login wiring uses LOGIN_CLICKED with no ZIP local sign-out path"
   assert.match(source, /msg\.type === "AUTHENTICATED"/);
   assert.match(source, /msg\.type === "LOGGED_OUT"/);
   assert.match(source, /msg\.type === "ABOUT_TO_EXPIRE"/);
+});
+
+test("sidepanel requires ZIP.KEY gate before Zendesk login", () => {
+  const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
+  assert.match(source, /const ZIP_KEY_FILE_PREFIX = "ZIPKEY1:";/);
+  assert.match(source, /const ZIP_CONFIG_META_STORAGE_KEY = "zip\.config\.meta\.v1";/);
+  assert.match(source, /const ZIP_SLACKTIVATION_SERVICE_KEY = "slacktivation";/);
+  assert.match(source, /"slacktivation\.client_id"/);
+  assert.match(source, /"slacktivation\.client_secret"/);
+  assert.match(source, /"slacktivation\.user_token"/);
+  assert.match(source, /function parseZipKeyPayload\(rawText\)/);
+  assert.match(source, /function importZipKeyFromFile\(file\)/);
+  assert.match(source, /const gateStatus = enforceZipConfigGate\(\{ reportStatus: true \}\);/);
+  assert.match(source, /msg\.type === "ZIP_KEY_CLEARED"/);
+  assert.doesNotMatch(source, /ZIP\.KEY cleared\. Drop the latest ZIP\.KEY file to continue\./);
 });
 
 test("startup status waits for filter catalogs before announcing Ready", () => {
@@ -383,7 +519,19 @@ test("content script supports authoritative session probe and logout/session eve
   assert.match(source, /type === "ZIP_SESSION_PROBE"/);
   assert.match(source, /type:\s*"ZD_SESSION_OK"/);
   assert.match(source, /type:\s*"ZD_LOGOUT"/);
+  assert.match(source, /msg && msg\.type === "ZIP_KEY_CLEARED"/);
+  assert.match(source, /type:\s*"ZIP_CHECK_SECRETS"/);
+  assert.match(source, /type:\s*"ZIP_OPEN_OPTIONS"/);
+  assert.match(source, /ZIP_KEY_BANNER_ID/);
   assert.match(source, /\/api\/v2\/users\/me\/session/);
+});
+
+test("manifest enables storage permission and options page", () => {
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
+  assert.equal(manifest && manifest.manifest_version, 3);
+  assert.equal(Array.isArray(manifest && manifest.permissions), true);
+  assert.equal(manifest.permissions.includes("storage"), true);
+  assert.equal(typeof manifest.options_ui === "object" && manifest.options_ui.page === "options.html", true);
 });
 
 test("sidepanel fallback script exists and opens Zendesk via tabs APIs", () => {
@@ -414,7 +562,7 @@ test("ZD session events are accepted only from trusted Zendesk content senders",
   harness.resetCalls();
   const trusted = await harness.sendRuntimeMessage(
     { type: "ZD_SESSION_OK", status: 200, payload: { session: { id: 1 } } },
-    { url: "https://adobeprimetime.zendesk.com/agent/dashboard" }
+    { url: ZENDESK_DASHBOARD_URL }
   );
   assert.equal(trusted && trusted.ok, true);
   assert.equal(

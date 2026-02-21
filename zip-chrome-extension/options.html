@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZIP Settings</title>
+  <style>
+    :root {
+      --zip-bg: #f5f5f5;
+      --zip-surface: #ffffff;
+      --zip-text: #1e1e1e;
+      --zip-muted: #5c5c5c;
+      --zip-border: #d4d4d4;
+      --zip-accent: #1473e6;
+      --zip-accent-hover: #0d66d0;
+      --zip-danger: #d31510;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--zip-bg);
+      color: var(--zip-text);
+      font-family: "Adobe Clean", "Segoe UI", system-ui, sans-serif;
+    }
+
+    .spectrum {
+      min-height: 100vh;
+      padding: 32px 20px;
+      box-sizing: border-box;
+    }
+
+    .zip-settings-card {
+      max-width: 720px;
+      margin: 0 auto;
+      background: var(--zip-surface);
+      border: 1px solid var(--zip-border);
+      border-radius: 12px;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin: 0 0 6px;
+    }
+
+    p {
+      margin: 0 0 14px;
+      color: var(--zip-muted);
+      font-size: 14px;
+    }
+
+    .zip-settings-group {
+      margin-top: 16px;
+    }
+
+    .zip-settings-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .zip-settings-input,
+    .zip-settings-textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid var(--zip-border);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--zip-text);
+      font-size: 13px;
+      padding: 10px 11px;
+    }
+
+    .zip-settings-textarea {
+      min-height: 180px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      line-height: 1.4;
+    }
+
+    .zip-settings-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .zip-btn {
+      border: 1px solid transparent;
+      border-radius: 999px;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+
+    .zip-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    .zip-btn-primary {
+      background: var(--zip-accent);
+      color: #fff;
+    }
+
+    .zip-btn-primary:hover:enabled {
+      background: var(--zip-accent-hover);
+    }
+
+    .zip-btn-outline {
+      background: #fff;
+      color: var(--zip-text);
+      border-color: var(--zip-border);
+    }
+
+    .zip-btn-danger {
+      background: #fff;
+      color: var(--zip-danger);
+      border-color: rgba(211, 21, 16, 0.4);
+    }
+
+    .zip-settings-status {
+      margin-top: 14px;
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: 12px;
+      border: 1px solid transparent;
+      background: #edf5ff;
+      color: #004fa3;
+    }
+
+    .zip-settings-status.is-error {
+      background: #ffebe7;
+      border-color: #ffbcb7;
+      color: #8f2019;
+    }
+
+    .zip-settings-status.is-ok {
+      background: #eaf7eb;
+      border-color: #b8dfbd;
+      color: #1f6f43;
+    }
+  </style>
+</head>
+<body class="spectrum spectrum--medium">
+  <main class="zip-settings-card">
+    <h1>ZIP.KEY Settings</h1>
+    <p>Import ZIP.KEY to load Slack bridge secrets into Chrome extension storage. ZIP never shows or echoes secret values.</p>
+
+    <div class="zip-settings-group">
+      <label class="zip-settings-label" for="zipKeyFile">ZIP.KEY file</label>
+      <input id="zipKeyFile" class="zip-settings-input" type="file" accept=".key,.json,.txt,.inc">
+    </div>
+
+    <div class="zip-settings-group">
+      <label class="zip-settings-label" for="zipKeyText">Or paste ZIP.KEY content</label>
+      <textarea id="zipKeyText" class="zip-settings-textarea" placeholder="ZIPKEY1:... or JSON or KEY=VALUE lines"></textarea>
+    </div>
+
+    <div class="zip-settings-actions">
+      <button id="zipImportBtn" class="zip-btn zip-btn-primary" type="button">Import ZIP.KEY</button>
+      <button id="zipClearBtn" class="zip-btn zip-btn-danger" type="button">Clear ZIP.KEY</button>
+      <button id="zipRefreshBtn" class="zip-btn zip-btn-outline" type="button">Refresh Status</button>
+    </div>
+
+    <div id="zipSettingsStatus" class="zip-settings-status" role="status" aria-live="polite">Checking current ZIP.KEY status…</div>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

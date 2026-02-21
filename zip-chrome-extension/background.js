@@ -7,7 +7,7 @@ try {
 } catch (_) {}
 
 const ZENDESK_ORIGIN = "https://adobeprimetime.zendesk.com";
-const ZENDESK_DASHBOARD_PATH = "/agent/dashboard";
+const ZENDESK_DASHBOARD_PATH = "/agent/dashboard?brand_id=2379046";
 const ZENDESK_DASHBOARD_URL = ZENDESK_ORIGIN + ZENDESK_DASHBOARD_PATH;
 const ASSIGNED_FILTER_PATH = "/agent/filters/36464467";
 const ASSIGNED_FILTER_URL = ZENDESK_ORIGIN + ASSIGNED_FILTER_PATH;
@@ -19,16 +19,39 @@ const SLACK_OPENID_AUTHORIZE_URL = "https://slack.com/openid/connect/authorize";
 const SLACK_OPENID_TOKEN_URL = "https://slack.com/api/openid.connect.token";
 const SLACK_OPENID_USERINFO_URL = "https://slack.com/api/openid.connect.userInfo";
 const SLACK_OPENID_SESSION_STORAGE_KEY = "zip.slack.openid.session.v1";
+const ZIP_SLACK_CLIENT_ID_STORAGE_KEY = "zip_slack_client_id";
+const ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY = "zip_slack_client_secret";
+const ZIP_SLACK_SCOPE_STORAGE_KEY = "zip_slack_scope";
+const ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY = "zip_slack_redirect_path";
+// Legacy cleanup only. Team pinning is no longer part of ZIP.KEY validation.
+const ZIP_SLACK_EXPECTED_TEAM_ID_STORAGE_KEY = "zip_slack_expected_team_id";
+const ZIP_SLACK_BOT_TOKEN_STORAGE_KEY = "zip_slack_bot_token";
+const ZIP_SLACK_USER_TOKEN_STORAGE_KEY = "zip_slack_user_token";
+const ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY = "zip_slack_oauth_token";
+const ZIP_SLACK_KEY_LOADED_STORAGE_KEY = "zip_slack_key_loaded";
+const ZIP_SLACK_KEY_META_STORAGE_KEY = "zip_slack_key_meta";
+const ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY = "zip_singularity_channel_id";
+const ZIP_SINGULARITY_MENTION_STORAGE_KEY = "zip_singularity_mention";
+const ZIP_MIGRATION_V1_DONE_STORAGE_KEY = "zip_migration_v1_done";
+const ZIP_MIGRATION_V1_REPORT_STORAGE_KEY = "zip_migration_v1_report";
+const SLACK_OIDC_CLIENT_ID_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.clientId";
+const SLACK_OIDC_CLIENT_SECRET_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.clientSecret";
+const SLACK_OIDC_SCOPE_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.scope";
+const SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.redirectPath";
+const SLACK_EXPECTED_TEAM_LEGACY_STORAGE_KEY = "zip.passAi.expectedSlackTeamId";
 const SLACK_API_BOT_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.botToken";
 const SLACK_API_USER_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.userToken";
 const SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY = "zip.passAi.slackBotToken";
 const SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY = "zip.passAi.slackUserToken";
+const SLACK_SINGULARITY_CHANNEL_LEGACY_STORAGE_KEY = "zip.passAi.singularityChannelId";
+const SLACK_SINGULARITY_MENTION_LEGACY_STORAGE_KEY = "zip.passAi.singularityMention";
+const ZIP_CONFIG_META_LEGACY_STORAGE_KEY = "zip.config.meta.v1";
 // Runtime-config / storage values should populate tokens. Do not hardcode live tokens in source.
 const SLACK_API_DEFAULT_BOT_TOKEN = "";
 const SLACK_API_SECONDARY_BOT_TOKEN = "";
 const SLACK_API_DEFAULT_USER_TOKEN = "";
 const SLACK_OPENID_DEFAULT_SCOPES = "openid profile email";
-const SLACK_OPENID_DEFAULT_REDIRECT_PATH = "slack-openid";
+const SLACK_OPENID_DEFAULT_REDIRECT_PATH = "slack-user";
 const SLACK_OPENID_STATUS_VERIFY_TTL_MS = 60 * 1000;
 const ZIP_PANEL_PATH = "sidepanel.html";
 const ZENDESK_SUBDOMAIN = (() => {
@@ -54,6 +77,8 @@ const MENU_ROOT = "zip_root";
 const MENU_TOGGLE_SIDE = "zip_toggle_side";
 const MENU_ASK_ERIC = "zip_ask_eric";
 const MENU_GET_LATEST = "zip_get_latest";
+const MENU_CLEAR_KEY_SEPARATOR = "zip_clear_key_separator";
+const MENU_CLEAR_KEY = "zip_clear_key";
 const MENU_THEME_PARENT = "zip_theme_parent";
 const MENU_THEME_PREFIX = "zip_theme_";
 const ASK_ERIC_EMAIL = "minnick@adobe.com";
@@ -69,7 +94,57 @@ const CHROME_SIDEPANEL_SETTINGS_URL = "chrome://settings/?search=side%20panel";
 const MENU_SIDEPANEL_POSITION_LABEL = "⚙ Side panel position";
 const MENU_ASK_ERIC_LABEL = "✉ Ask Eric";
 const MENU_APPEARANCE_LABEL = "👁 Appearance";
+const MENU_CLEAR_KEY_LABEL = "⚠ Clear ZIP.KEY (Reset ZIP)";
 const THEME_STORAGE_KEY = "zip.ui.theme.v1";
+const ZIP_REQUIRED_SECRET_KEYS = [
+  ZIP_SLACK_CLIENT_ID_STORAGE_KEY,
+  ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY,
+  ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY
+];
+const ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS = [
+  SLACK_OIDC_CLIENT_ID_LEGACY_STORAGE_KEY,
+  SLACK_OIDC_CLIENT_SECRET_LEGACY_STORAGE_KEY,
+  SLACK_OIDC_SCOPE_LEGACY_STORAGE_KEY,
+  SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY,
+  SLACK_EXPECTED_TEAM_LEGACY_STORAGE_KEY,
+  SLACK_API_BOT_TOKEN_STORAGE_KEY,
+  SLACK_API_USER_TOKEN_STORAGE_KEY,
+  SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY,
+  SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY,
+  SLACK_SINGULARITY_CHANNEL_LEGACY_STORAGE_KEY,
+  SLACK_SINGULARITY_MENTION_LEGACY_STORAGE_KEY,
+  "slack_client_id",
+  "slack_client_secret",
+  "slack_token"
+];
+const ZIP_SLACK_STORAGE_KEYS = [
+  ZIP_SLACK_CLIENT_ID_STORAGE_KEY,
+  ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY,
+  ZIP_SLACK_SCOPE_STORAGE_KEY,
+  ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY,
+  ZIP_SLACK_EXPECTED_TEAM_ID_STORAGE_KEY,
+  ZIP_SLACK_BOT_TOKEN_STORAGE_KEY,
+  ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
+  ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
+  ZIP_SLACK_KEY_LOADED_STORAGE_KEY,
+  ZIP_SLACK_KEY_META_STORAGE_KEY,
+  ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY,
+  ZIP_SINGULARITY_MENTION_STORAGE_KEY
+];
+const ZIP_SLACK_LEGACY_STORAGE_KEYS = [
+  SLACK_OIDC_CLIENT_ID_LEGACY_STORAGE_KEY,
+  SLACK_OIDC_CLIENT_SECRET_LEGACY_STORAGE_KEY,
+  SLACK_OIDC_SCOPE_LEGACY_STORAGE_KEY,
+  SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY,
+  SLACK_EXPECTED_TEAM_LEGACY_STORAGE_KEY,
+  SLACK_API_BOT_TOKEN_STORAGE_KEY,
+  SLACK_API_USER_TOKEN_STORAGE_KEY,
+  SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY,
+  SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY,
+  SLACK_SINGULARITY_CHANNEL_LEGACY_STORAGE_KEY,
+  SLACK_SINGULARITY_MENTION_LEGACY_STORAGE_KEY,
+  ZIP_CONFIG_META_LEGACY_STORAGE_KEY
+];
 const THEME_PALETTE_DATA = (
   typeof globalThis !== "undefined"
   && globalThis.ZIP_THEME_PALETTE_V2
@@ -272,6 +347,17 @@ function getAuthStatePayload(extra) {
 function broadcastAuthEvent(type, payload) {
   try {
     chrome.runtime.sendMessage({ type, payload }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch (_) {}
+}
+
+function broadcastZipKeyCleared(payload) {
+  try {
+    chrome.runtime.sendMessage({
+      type: "ZIP_KEY_CLEARED",
+      payload: payload && typeof payload === "object" ? payload : {}
+    }, () => {
       void chrome.runtime.lastError;
     });
   } catch (_) {}
@@ -580,27 +666,44 @@ async function handleLoginClicked() {
   });
   let targetTabId = null;
   let openedNewTab = false;
+  let lastError = "";
   if (tabs && tabs.length > 0) {
-    if (tabs[0] && tabs[0].id != null) {
-      targetTabId = tabs[0].id;
-      const shouldNavigateToLogin = !zendeskAuthState.loggedIn;
-      const updatePayload = shouldNavigateToLogin
-        ? { active: true, url: ZENDESK_LOGIN_WITH_RETURN_URL }
-        : { active: true };
-      await new Promise((resolve) => {
+    const preferredTab = pickPreferredZendeskTab(tabs);
+    if (preferredTab && preferredTab.id != null) {
+      const updatePayload = { active: true, url: ZENDESK_LOGIN_WITH_RETURN_URL };
+      const updated = await new Promise((resolve) => {
         try {
-          chrome.tabs.update(tabs[0].id, updatePayload, () => {
-            void chrome.runtime.lastError;
-            resolve();
+          chrome.tabs.update(preferredTab.id, updatePayload, (tab) => {
+            const runtimeError = chrome.runtime.lastError;
+            if (runtimeError) {
+              resolve({ ok: false, error: runtimeError.message || "Unable to update Zendesk tab." });
+              return;
+            }
+            resolve({ ok: true, tab: tab || preferredTab });
           });
         } catch (_) {
-          resolve();
+          resolve({ ok: false, error: "Unable to update Zendesk tab." });
         }
       });
-      if (tabs[0].windowId != null) {
+      if (updated && updated.ok) {
+        const updatedTabId = Number(updated.tab && updated.tab.id);
+        targetTabId = Number.isFinite(updatedTabId) && updatedTabId > 0
+          ? updatedTabId
+          : preferredTab.id;
+      } else {
+        lastError = String(updated && updated.error || "Unable to update Zendesk tab.");
+      }
+      const focusWindowId = (
+        updated
+        && updated.tab
+        && updated.tab.windowId != null
+      )
+        ? updated.tab.windowId
+        : preferredTab.windowId;
+      if (updated && updated.ok && focusWindowId != null) {
         await new Promise((resolve) => {
           try {
-            chrome.windows.update(tabs[0].windowId, { focused: true }, () => {
+            chrome.windows.update(focusWindowId, { focused: true }, () => {
               void chrome.runtime.lastError;
               resolve();
             });
@@ -610,7 +713,8 @@ async function handleLoginClicked() {
         });
       }
     }
-  } else {
+  }
+  if (targetTabId == null) {
     const created = await new Promise((resolve) => {
       try {
         chrome.tabs.create({ url: ZENDESK_LOGIN_WITH_RETURN_URL }, (tab) => {
@@ -623,6 +727,15 @@ async function handleLoginClicked() {
     });
     targetTabId = created && created.id != null ? created.id : null;
     openedNewTab = true;
+    if (targetTabId == null && !lastError) {
+      lastError = "Unable to open Zendesk login tab.";
+    }
+  }
+  if (targetTabId == null) {
+    return {
+      ok: false,
+      error: lastError || "Unable to focus or open Zendesk login tab."
+    };
   }
   // Do not authenticate inside extension context. Zendesk main tab remains authoritative.
   setTimeout(() => {
@@ -765,6 +878,11 @@ function getToggleMenuItemTitle(currentSide) {
 function getAskEricMenuTitle() {
   if (contextMenuState.grouped) return MENU_ASK_ERIC_LABEL;
   return getZipRootMenuTitle() + " | " + MENU_ASK_ERIC_LABEL;
+}
+
+function getClearKeyMenuTitle() {
+  if (contextMenuState.grouped) return MENU_CLEAR_KEY_LABEL;
+  return getZipRootMenuTitle() + " | " + MENU_CLEAR_KEY_LABEL;
 }
 
 function parseVersionPart(value) {
@@ -1222,8 +1340,7 @@ async function slackSendMarkdownToSelfViaWorkspaceSession(input, reasonCode) {
         try {
           await sendSlackInnerRequestToTab(tab.id, {
             action: "slackAuthTest",
-            workspaceOrigin,
-            expectedTeamId: body.expectedTeamId || body.expected_team_id || ""
+            workspaceOrigin
           }).catch(() => null);
 
           const result = await sendSlackInnerRequestToTab(tab.id, {
@@ -1235,15 +1352,29 @@ async function slackSendMarkdownToSelfViaWorkspaceSession(input, reasonCode) {
             markdownText: body.markdownText || body.text || body.messageText || ""
           });
           if (result && result.ok === true) {
+            let unreadMarked = result.unread_marked === true;
+            const deliveredChannel = String(result.channel || "").trim();
+            const deliveredTs = String(result.ts || "").trim();
+            if (!unreadMarked && deliveredChannel && deliveredTs) {
+              await sleepMs(260);
+              const markResult = await sendSlackInnerRequestToTab(tab.id, {
+                action: "slackMarkUnread",
+                workspaceOrigin,
+                channelId: deliveredChannel,
+                ts: deliveredTs
+              }).catch(() => null);
+              unreadMarked = !!(markResult && markResult.ok === true && markResult.unread_marked === true);
+            }
             return {
               ok: true,
-              channel: String(result.channel || "").trim(),
-              ts: String(result.ts || "").trim(),
+              channel: deliveredChannel,
+              ts: deliveredTs,
               user_id: String(result.user_id || body.userId || body.user_id || "").trim(),
-              team_id: String(result.team_id || body.expectedTeamId || body.expected_team_id || "").trim(),
+              team_id: String(result.team_id || "").trim(),
               user_name: String(result.user_name || body.userName || body.user_name || "").trim(),
               avatar_url: String(result.avatar_url || body.avatarUrl || body.avatar_url || "").trim(),
               delivery_mode: "workspace_session_dm",
+              unread_marked: unreadMarked,
               fallback_reason: String(reasonCode || "").trim()
             };
           }
@@ -1273,6 +1404,92 @@ async function slackSendMarkdownToSelfViaWorkspaceSession(input, reasonCode) {
   }
 }
 
+async function slackMarkUnreadViaWorkspaceSession(input, reasonCode) {
+  const body = input && typeof input === "object" ? input : {};
+  const workspaceOrigin = normalizeSlackWorkspaceOrigin(body.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
+  const channelId = normalizeSlackChannelId(body.channelId || body.channel_id || body.channel);
+  const messageTs = String(body.ts || body.messageTs || body.message_ts || "").trim();
+  if (!channelId || !messageTs) {
+    return {
+      ok: false,
+      code: "slack_mark_unread_payload_invalid",
+      error: "Slack unread marker requires channel and timestamp."
+    };
+  }
+  const shouldBootstrapTab = body.autoBootstrapSlackTab !== false;
+  let bootstrapTabId = null;
+  try {
+    let tabs = await queryInjectableSlackTabs(workspaceOrigin);
+    if (!tabs.length && shouldBootstrapTab) {
+      const bootstrapTab = await openSlackWorkspaceBootstrapTab(workspaceOrigin);
+      if (bootstrapTab && bootstrapTab.id != null) {
+        bootstrapTabId = Number(bootstrapTab.id);
+        await waitForTabComplete(bootstrapTabId, 7000);
+        await sleepMs(800);
+        tabs = await queryInjectableSlackTabs(workspaceOrigin);
+      }
+    }
+
+    const preferred = pickPreferredSlackTab(tabs);
+    const orderedTabs = preferred
+      ? [preferred].concat(tabs.filter((tab) => tab && preferred && tab.id !== preferred.id))
+      : tabs.slice();
+    if (!orderedTabs.length) {
+      return {
+        ok: false,
+        code: "slack_workspace_tab_missing",
+        error: "No active Slack workspace tab is available for unread marking."
+      };
+    }
+
+    let lastError = "";
+    for (let i = 0; i < orderedTabs.length; i += 1) {
+      const tab = orderedTabs[i];
+      if (!tab || tab.id == null) continue;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const result = await sendSlackInnerRequestToTab(tab.id, {
+            action: "slackMarkUnread",
+            workspaceOrigin,
+            channelId,
+            ts: messageTs
+          });
+          if (result && result.ok === true && result.unread_marked === true) {
+            return {
+              ok: true,
+              channel: channelId,
+              ts: messageTs,
+              unread_marked: true,
+              delivery_mode: "workspace_session_mark_unread",
+              fallback_reason: String(reasonCode || "").trim()
+            };
+          }
+          lastError = String((result && result.error) || "Slack workspace unread mark failed.");
+        } catch (err) {
+          lastError = err && err.message ? err.message : "Slack workspace unread mark failed.";
+        }
+        const lower = String(lastError || "").toLowerCase();
+        const retryable = lower.includes("token not found")
+          || lower.includes("session token")
+          || lower.includes("waiting for web token capture")
+          || lower.includes("complete login first");
+        if (!retryable || attempt >= 2) break;
+        await sleepMs(700);
+      }
+    }
+
+    return {
+      ok: false,
+      code: "slack_workspace_mark_unread_failed",
+      error: String(lastError || "Slack workspace unread mark failed.")
+    };
+  } finally {
+    if (bootstrapTabId != null && body.keepBootstrapTab !== true) {
+      await closeTabSilently(bootstrapTabId);
+    }
+  }
+}
+
 function normalizeSlackTeamId(value) {
   const id = String(value || "").trim().toUpperCase();
   return /^T[A-Z0-9]{8,}$/.test(id) ? id : "";
@@ -1289,14 +1506,86 @@ function normalizeSlackApiToken(value) {
   return /^xox[a-z]-/i.test(token) ? token : "";
 }
 
-function isSlackBotApiToken(value) {
-  const token = normalizeSlackApiToken(value);
-  return /^xoxb-/i.test(token);
-}
-
 function isSlackUserOAuthToken(value) {
   const token = normalizeSlackApiToken(value);
   return /^xoxp-/i.test(token);
+}
+
+function toPriorSlackTs(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d+)\.(\d+)$/);
+  if (!match) {
+    const asInt = Number.parseInt(raw, 10);
+    if (Number.isFinite(asInt) && asInt > 0) return String(asInt - 1) + ".999999";
+    return "0.000000";
+  }
+  let seconds = Number.parseInt(match[1], 10);
+  let micros = Number.parseInt(match[2].slice(0, 6).padEnd(6, "0"), 10);
+  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
+  if (!Number.isFinite(micros) || micros < 0) micros = 0;
+  if (micros > 0) {
+    micros -= 1;
+  } else if (seconds > 0) {
+    seconds -= 1;
+    micros = 999999;
+  }
+  return String(seconds) + "." + String(micros).padStart(6, "0");
+}
+
+async function markSlackMessageUnreadViaApiToken(workspaceOrigin, token, channelId, messageTs) {
+  const targetChannel = normalizeSlackChannelId(channelId);
+  const targetTs = String(messageTs || "").trim();
+  if (!targetChannel || !targetTs) return false;
+
+  const delays = [0, 260, 860];
+  for (let pass = 0; pass < delays.length; pass += 1) {
+    if (delays[pass] > 0) await sleepMs(delays[pass]);
+    const priorTs = toPriorSlackTs(targetTs);
+    const attempts = [
+      {
+        path: "/api/conversations.mark",
+        fields: {
+          channel: targetChannel,
+          ts: priorTs,
+          _x_reason: "zip-slack-it-to-me-mark-unread-bg"
+        }
+      }
+    ];
+    if (priorTs !== "0.000000") {
+      attempts.push({
+        path: "/api/conversations.mark",
+        fields: {
+          channel: targetChannel,
+          ts: "0.000000",
+          _x_reason: "zip-slack-it-to-me-mark-unread-bg-fallback"
+        }
+      });
+    }
+    attempts.push({
+      path: "/api/subscriptions.thread.mark",
+      fields: {
+        channel: targetChannel,
+        thread_ts: targetTs,
+        ts: targetTs,
+        read: "false",
+        _x_reason: "zip-slack-it-to-me-thread-unread-bg"
+      }
+    });
+
+    for (let i = 0; i < attempts.length; i += 1) {
+      const attempt = attempts[i];
+      try {
+        const result = await postSlackApiWithBearerToken(
+          workspaceOrigin,
+          attempt.path,
+          attempt.fields,
+          token
+        );
+        if (result && result.ok) return true;
+      } catch (_) {}
+    }
+  }
+  return false;
 }
 
 function normalizeSlackWorkspaceOrigin(value) {
@@ -1310,6 +1599,391 @@ function normalizeSlackWorkspaceOrigin(value) {
   } catch (_) {
     return SLACK_WORKSPACE_ORIGIN;
   }
+}
+
+function normalizeSlackChannelId(value) {
+  const channelId = String(value || "").trim().toUpperCase();
+  return /^[CGD][A-Z0-9]{8,}$/.test(channelId) ? channelId : "";
+}
+
+function normalizeSingularityMention(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^<@[UW][A-Z0-9]{8,}>$/i.test(raw)) return raw;
+  const plain = raw.startsWith("@") ? raw.slice(1).trim() : raw;
+  if (!plain) return "";
+  return "@" + plain;
+}
+
+function normalizeZipRedirectPath(value) {
+  const raw = String(value || "").trim().replace(/^\/+/, "");
+  if (!raw) return SLACK_OPENID_DEFAULT_REDIRECT_PATH;
+  const normalized = raw.replace(/[^a-zA-Z0-9._/-]/g, "");
+  if (!normalized || normalized.includes("..")) return SLACK_OPENID_DEFAULT_REDIRECT_PATH;
+  return normalized;
+}
+
+function normalizeZipConfigServiceName(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  return raw.replace(/[^a-z0-9._-]/g, "");
+}
+
+function normalizeZipConfigServices(value) {
+  const next = [];
+  const seen = new Set();
+  const add = (entry) => {
+    const normalized = normalizeZipConfigServiceName(entry);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    next.push(normalized);
+  };
+  if (Array.isArray(value)) {
+    value.forEach(add);
+  } else if (typeof value === "string") {
+    value.split(/[\s,]+/).forEach(add);
+  } else if (value && typeof value === "object") {
+    Object.keys(value).forEach((key) => {
+      if (value[key]) add(key);
+    });
+  }
+  return next;
+}
+
+function normalizeZipKeyMeta(input) {
+  const meta = input && typeof input === "object" ? input : {};
+  return {
+    services: normalizeZipConfigServices(meta.services || meta.service || meta.features),
+    keyVersion: String(meta.keyVersion || meta.version || "").trim(),
+    importedAt: String(meta.importedAt || "").trim() || nowIso(),
+    importedBuild: String(meta.importedBuild || getZipBuildVersion() || "").trim(),
+    source: String(meta.source || "zip-key").trim() || "zip-key"
+  };
+}
+
+function normalizeZipSecretConfig(input) {
+  const source = input && typeof input === "object" ? input : {};
+  const servicesSource = source.services && typeof source.services === "object" ? source.services : {};
+  const slacktivationSource = servicesSource.slacktivation && typeof servicesSource.slacktivation === "object"
+    ? servicesSource.slacktivation
+    : {};
+  const slacktivationOidcSource = slacktivationSource.oidc && typeof slacktivationSource.oidc === "object"
+    ? slacktivationSource.oidc
+    : {};
+  const slacktivationApiSource = slacktivationSource.api && typeof slacktivationSource.api === "object"
+    ? slacktivationSource.api
+    : {};
+  const oidcSource = source.oidc && typeof source.oidc === "object" ? source.oidc : {};
+  const apiSource = source.api && typeof source.api === "object" ? source.api : {};
+  const singularitySource = source.singularity && typeof source.singularity === "object" ? source.singularity : {};
+  const fromMeta = source.meta && typeof source.meta === "object" ? source.meta : {};
+  const clientId = String(
+    source.clientId
+    || slacktivationSource.client_id
+    || slacktivationSource.clientId
+    || slacktivationOidcSource.client_id
+    || slacktivationOidcSource.clientId
+    || oidcSource.clientId
+    || source.zip_slack_client_id
+    || source[ZIP_SLACK_CLIENT_ID_STORAGE_KEY]
+    || source[SLACK_OIDC_CLIENT_ID_LEGACY_STORAGE_KEY]
+    || source.slack_client_id
+    || source.client_id
+    || ""
+  ).trim();
+  const clientSecret = String(
+    source.clientSecret
+    || slacktivationSource.client_secret
+    || slacktivationSource.clientSecret
+    || slacktivationOidcSource.client_secret
+    || slacktivationOidcSource.clientSecret
+    || oidcSource.clientSecret
+    || source.zip_slack_client_secret
+    || source[ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY]
+    || source[SLACK_OIDC_CLIENT_SECRET_LEGACY_STORAGE_KEY]
+    || source.slack_client_secret
+    || source.client_secret
+    || ""
+  ).trim();
+  const scope = normalizeSlackOpenIdScopes(
+    source.scope
+    || slacktivationSource.scope
+    || slacktivationOidcSource.scope
+    || oidcSource.scope
+    || source.zip_slack_scope
+    || source[ZIP_SLACK_SCOPE_STORAGE_KEY]
+    || source[SLACK_OIDC_SCOPE_LEGACY_STORAGE_KEY]
+    || ""
+  );
+  const redirectPath = normalizeZipRedirectPath(
+    source.redirectPath
+    || slacktivationSource.redirect_path
+    || slacktivationSource.redirectPath
+    || slacktivationOidcSource.redirect_path
+    || slacktivationOidcSource.redirectPath
+    || oidcSource.redirectPath
+    || source.zip_slack_redirect_path
+    || source[ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY]
+    || source[SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY]
+    || ""
+  );
+  const userToken = normalizeSlackApiToken(
+    source.userToken
+    || slacktivationSource.user_token
+    || slacktivationSource.userToken
+    || slacktivationApiSource.user_token
+    || slacktivationApiSource.userToken
+    || apiSource.userToken
+    || source.zip_slack_user_token
+    || source[ZIP_SLACK_USER_TOKEN_STORAGE_KEY]
+    || source[SLACK_API_USER_TOKEN_STORAGE_KEY]
+    || source[SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY]
+    || source.user_token
+    || ""
+  );
+  const oauthToken = normalizeSlackApiToken(
+    source.oauthToken
+    || slacktivationSource.oauth_token
+    || slacktivationSource.oauthToken
+    || slacktivationApiSource.oauth_token
+    || slacktivationApiSource.oauthToken
+    || slacktivationApiSource.user_token
+    || slacktivationApiSource.userToken
+    || apiSource.oauthToken
+    || apiSource.userToken
+    || source.zip_slack_oauth_token
+    || source[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY]
+    || source.slack_token
+    || source.oauth_token
+    || userToken
+    || ""
+  );
+  const singularityChannelId = normalizeSlackChannelId(
+    source.singularityChannelId
+    || slacktivationSource.singularity_channel_id
+    || slacktivationSource.singularityChannelId
+    || singularitySource.channelId
+    || source.zip_singularity_channel_id
+    || source[ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY]
+    || source[SLACK_SINGULARITY_CHANNEL_LEGACY_STORAGE_KEY]
+    || source.singularity_channel_id
+    || ""
+  );
+  const singularityMention = normalizeSingularityMention(
+    source.singularityMention
+    || slacktivationSource.singularity_mention
+    || slacktivationSource.singularityMention
+    || singularitySource.mention
+    || source.zip_singularity_mention
+    || source[ZIP_SINGULARITY_MENTION_STORAGE_KEY]
+    || source[SLACK_SINGULARITY_MENTION_LEGACY_STORAGE_KEY]
+    || source.singularity_mention
+    || ""
+  );
+  const hasRequired = !!(clientId && clientSecret && oauthToken);
+
+  return {
+    clientId,
+    clientSecret,
+    scope,
+    redirectPath,
+    userToken,
+    oauthToken,
+    singularityChannelId,
+    singularityMention,
+    keyLoaded: hasRequired,
+    meta: normalizeZipKeyMeta({
+      ...fromMeta,
+      keyVersion: source.keyVersion || fromMeta.keyVersion || fromMeta.version || "",
+      services: source.services || fromMeta.services || (hasRequired ? ["slacktivation"] : [])
+    })
+  };
+}
+
+async function readStorageLocal(keys) {
+  if (!chrome.storage || !chrome.storage.local || typeof chrome.storage.local.get !== "function") {
+    return {};
+  }
+  try {
+    return await chrome.storage.local.get(keys);
+  } catch (_) {
+    return {};
+  }
+}
+
+async function setStorageLocal(values) {
+  const payload = values && typeof values === "object" ? values : {};
+  if (!Object.keys(payload).length) return;
+  if (!chrome.storage || !chrome.storage.local || typeof chrome.storage.local.set !== "function") return;
+  try {
+    await chrome.storage.local.set(payload);
+  } catch (_) {}
+}
+
+async function removeStorageLocal(keys) {
+  const list = Array.isArray(keys) ? keys.filter(Boolean) : [];
+  if (!list.length) return;
+  if (!chrome.storage || !chrome.storage.local || typeof chrome.storage.local.remove !== "function") return;
+  try {
+    await chrome.storage.local.remove(list);
+  } catch (_) {}
+}
+
+function computeZipSecretsStatus(storedValues) {
+  const values = storedValues && typeof storedValues === "object" ? storedValues : {};
+  const missing = ZIP_REQUIRED_SECRET_KEYS.filter((key) => !String(values[key] || "").trim());
+  const loadedFlag = values[ZIP_SLACK_KEY_LOADED_STORAGE_KEY] === true;
+  return {
+    ok: loadedFlag && missing.length === 0,
+    loaded: loadedFlag,
+    missing
+  };
+}
+
+async function readZipSecretsStatus() {
+  const keys = ZIP_REQUIRED_SECRET_KEYS.concat([ZIP_SLACK_KEY_LOADED_STORAGE_KEY]);
+  const stored = await readStorageLocal(keys);
+  return computeZipSecretsStatus(stored);
+}
+
+function hasStorageValue(value) {
+  if (value == null) return false;
+  if (typeof value === "string") return !!value.trim();
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return value;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return false;
+}
+
+async function storeZipSecrets(input, options) {
+  const normalized = normalizeZipSecretConfig(input);
+  const opts = options && typeof options === "object" ? options : {};
+  const updates = {};
+  const removals = [];
+  const setOrRemove = (key, value) => {
+    const normalizedValue = String(value || "").trim();
+    if (normalizedValue) updates[key] = normalizedValue;
+    else removals.push(key);
+  };
+
+  setOrRemove(ZIP_SLACK_CLIENT_ID_STORAGE_KEY, normalized.clientId);
+  setOrRemove(ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY, normalized.clientSecret);
+  setOrRemove(ZIP_SLACK_SCOPE_STORAGE_KEY, normalized.scope);
+  setOrRemove(ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY, normalized.redirectPath);
+  removals.push(ZIP_SLACK_EXPECTED_TEAM_ID_STORAGE_KEY);
+  removals.push(ZIP_SLACK_BOT_TOKEN_STORAGE_KEY);
+  setOrRemove(ZIP_SLACK_USER_TOKEN_STORAGE_KEY, normalized.userToken);
+  setOrRemove(ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY, normalized.oauthToken);
+  setOrRemove(ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY, normalized.singularityChannelId);
+  setOrRemove(ZIP_SINGULARITY_MENTION_STORAGE_KEY, normalized.singularityMention);
+  updates[ZIP_SLACK_KEY_META_STORAGE_KEY] = normalized.meta;
+  updates[ZIP_SLACK_KEY_LOADED_STORAGE_KEY] = normalized.keyLoaded;
+
+  await setStorageLocal(updates);
+  await removeStorageLocal(removals.concat(ZIP_SLACK_LEGACY_STORAGE_KEYS));
+  if (opts.clearOpenIdSession !== false) {
+    await clearSlackOpenIdSession();
+  }
+  const status = computeZipSecretsStatus({
+    [ZIP_SLACK_CLIENT_ID_STORAGE_KEY]: normalized.clientId,
+    [ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY]: normalized.clientSecret,
+    [ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY]: normalized.oauthToken,
+    [ZIP_SLACK_KEY_LOADED_STORAGE_KEY]: normalized.keyLoaded
+  });
+  return { ok: status.ok, loaded: status.loaded, missing: status.missing };
+}
+
+async function clearZipSecrets() {
+  await removeStorageLocal(
+    ZIP_SLACK_STORAGE_KEYS
+      .filter((key) => key !== ZIP_SLACK_KEY_LOADED_STORAGE_KEY)
+      .concat(ZIP_SLACK_LEGACY_STORAGE_KEYS)
+      .concat([SLACK_OPENID_SESSION_STORAGE_KEY])
+  );
+  await setStorageLocal({ [ZIP_SLACK_KEY_LOADED_STORAGE_KEY]: false });
+  broadcastZipKeyCleared({
+    loaded: false,
+    missing: ZIP_REQUIRED_SECRET_KEYS.slice(),
+    clearedAt: nowIso()
+  });
+  return {
+    ok: true,
+    cleared: true,
+    loaded: false,
+    missing: ZIP_REQUIRED_SECRET_KEYS.slice()
+  };
+}
+
+async function runChromeStorageLegacyMigration() {
+  const keys = ZIP_SLACK_STORAGE_KEYS.concat(ZIP_SLACK_LEGACY_STORAGE_KEYS);
+  const stored = await readStorageLocal(keys);
+  const hasLegacyValues = ZIP_SLACK_LEGACY_STORAGE_KEYS.some((key) => hasStorageValue(stored && stored[key]));
+  const statusBefore = computeZipSecretsStatus(stored);
+  if (!hasLegacyValues && statusBefore.ok) {
+    return statusBefore;
+  }
+
+  const normalized = normalizeZipSecretConfig(stored);
+  if (hasLegacyValues || normalized.keyLoaded) {
+    await storeZipSecrets(normalized, { clearOpenIdSession: false });
+  }
+  return readZipSecretsStatus();
+}
+
+async function runLocalStorageMigration(input) {
+  const doneState = await readStorageLocal(ZIP_MIGRATION_V1_DONE_STORAGE_KEY);
+  const done = !!(doneState && doneState[ZIP_MIGRATION_V1_DONE_STORAGE_KEY]);
+  if (done) {
+    const status = await readZipSecretsStatus();
+    const normalizedWhenDone = normalizeZipSecretConfig(input);
+    const hasPayloadValues = !!(
+      normalizedWhenDone.clientId
+      || normalizedWhenDone.clientSecret
+      || normalizedWhenDone.userToken
+      || normalizedWhenDone.oauthToken
+      || normalizedWhenDone.singularityChannelId
+      || normalizedWhenDone.singularityMention
+    );
+    if (status.ok || !hasPayloadValues) {
+      return {
+        ok: true,
+        skipped: true,
+        migrated: false,
+        status,
+        clearLocalStorageKeys: ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS.slice()
+      };
+    }
+  }
+
+  const normalized = normalizeZipSecretConfig(input);
+  const hasLegacyValues = !!(
+    normalized.clientId
+    || normalized.clientSecret
+    || normalized.userToken
+    || normalized.oauthToken
+    || normalized.singularityChannelId
+    || normalized.singularityMention
+  );
+  if (hasLegacyValues) {
+    await storeZipSecrets(normalized, { clearOpenIdSession: false });
+  }
+  const status = await readZipSecretsStatus();
+  await setStorageLocal({
+    [ZIP_MIGRATION_V1_DONE_STORAGE_KEY]: true,
+    [ZIP_MIGRATION_V1_REPORT_STORAGE_KEY]: {
+      migrated: hasLegacyValues,
+      completedAt: nowIso(),
+      loaded: !!status.ok,
+      missing: Array.isArray(status.missing) ? status.missing.slice() : []
+    }
+  });
+
+  return {
+    ok: true,
+    migrated: hasLegacyValues,
+    status,
+    clearLocalStorageKeys: ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS.slice()
+  };
 }
 
 function buildSlackApiFormBody(fields) {
@@ -1380,46 +2054,34 @@ async function readStoredSlackApiTokens() {
     return out;
   };
   if (!chrome.storage || !chrome.storage.local || typeof chrome.storage.local.get !== "function") {
-    const botCandidates = uniq([SLACK_API_DEFAULT_BOT_TOKEN, SLACK_API_SECONDARY_BOT_TOKEN]);
     const userCandidates = uniq([SLACK_API_DEFAULT_USER_TOKEN]);
     return {
-      botToken: botCandidates[0] || "",
       userToken: userCandidates[0] || "",
-      botCandidates,
       userCandidates
     };
   }
   try {
     const stored = await chrome.storage.local.get([
-      SLACK_API_BOT_TOKEN_STORAGE_KEY,
+      ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
+      ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
       SLACK_API_USER_TOKEN_STORAGE_KEY,
-      SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY,
       SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY
     ]);
-    const botCandidates = uniq([
-      stored && stored[SLACK_API_BOT_TOKEN_STORAGE_KEY],
-      stored && stored[SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY],
-      SLACK_API_DEFAULT_BOT_TOKEN,
-      SLACK_API_SECONDARY_BOT_TOKEN
-    ]);
     const userCandidates = uniq([
+      stored && stored[ZIP_SLACK_USER_TOKEN_STORAGE_KEY],
+      stored && stored[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY],
       stored && stored[SLACK_API_USER_TOKEN_STORAGE_KEY],
       stored && stored[SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY],
       SLACK_API_DEFAULT_USER_TOKEN
     ]);
     return {
-      botToken: botCandidates[0] || "",
       userToken: userCandidates[0] || "",
-      botCandidates,
       userCandidates
     };
   } catch (_) {
-    const botCandidates = uniq([SLACK_API_DEFAULT_BOT_TOKEN, SLACK_API_SECONDARY_BOT_TOKEN]);
     const userCandidates = uniq([SLACK_API_DEFAULT_USER_TOKEN]);
     return {
-      botToken: botCandidates[0] || "",
       userToken: userCandidates[0] || "",
-      botCandidates,
       userCandidates
     };
   }
@@ -1427,7 +2089,6 @@ async function readStoredSlackApiTokens() {
 
 async function resolveSlackApiTokens(input) {
   const body = input && typeof input === "object" ? input : {};
-  const botFromMessage = normalizeSlackApiToken(body.botToken || body.bot_token);
   const userFromMessage = normalizeSlackApiToken(body.userToken || body.user_token);
   const stored = await readStoredSlackApiTokens();
   const uniq = (values) => {
@@ -1440,16 +2101,11 @@ async function resolveSlackApiTokens(input) {
     }
     return out;
   };
-  const botCandidates = uniq([botFromMessage].concat(
-    Array.isArray(stored && stored.botCandidates) ? stored.botCandidates : [stored && stored.botToken]
-  ));
   const userCandidates = uniq([userFromMessage].concat(
     Array.isArray(stored && stored.userCandidates) ? stored.userCandidates : [stored && stored.userToken]
   ));
   return {
-    botToken: botCandidates[0] || "",
     userToken: userCandidates[0] || "",
-    botCandidates,
     userCandidates
   };
 }
@@ -1469,9 +2125,9 @@ async function invalidateStoredSlackToken(token) {
   if (!chrome.storage || !chrome.storage.local || typeof chrome.storage.local.get !== "function") return;
   try {
     const keys = [
-      SLACK_API_BOT_TOKEN_STORAGE_KEY,
+      ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
+      ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
       SLACK_API_USER_TOKEN_STORAGE_KEY,
-      SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY,
       SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY
     ];
     const stored = await chrome.storage.local.get(keys);
@@ -1496,47 +2152,40 @@ async function slackSendMarkdownToSelfViaApi(input) {
     return { ok: false, error: "Slack message body is empty.", code: "slack_payload_empty" };
   }
   const webApiOrigin = SLACK_WEB_API_ORIGIN;
-  const expectedTeamId = normalizeSlackTeamId(body.expectedTeamId || body.expected_team_id);
-
-  // @ME must target the SLACKTIVATED user identity. Bot fallback is opt-in only.
+  // @ME must target the SLACKTIVATED user identity via user OAuth/session token.
   const tokens = await resolveSlackApiTokens(body);
   const userDeliveryToken = normalizeSlackApiToken(tokens.userToken);
-  const botDeliveryToken = normalizeSlackApiToken(tokens.botToken);
-  const allowBotDelivery = body.allowBotDelivery === true;
-  const botCandidates = Array.isArray(tokens && tokens.botCandidates)
-    ? tokens.botCandidates.map((token) => normalizeSlackApiToken(token)).filter(Boolean)
-    : [botDeliveryToken].filter(Boolean);
   const userCandidates = Array.isArray(tokens && tokens.userCandidates)
     ? tokens.userCandidates.map((token) => normalizeSlackApiToken(token)).filter(Boolean)
     : [userDeliveryToken].filter(Boolean);
   const hasUserOAuthCandidate = userCandidates.some((token) => isSlackUserOAuthToken(token));
 
-  // If no explicit Slack user OAuth token is available, try workspace-session first.
-  // When xoxp exists, API user-token delivery remains primary.
+  // Prefer workspace-session first so @ME mirrors native Slack "new unread" behavior.
+  const primarySessionDelivery = await slackSendMarkdownToSelfViaWorkspaceSession(body, "workspace_session_primary");
+  if (primarySessionDelivery && primarySessionDelivery.ok) {
+    return primarySessionDelivery;
+  }
+  const primarySessionError = String((primarySessionDelivery && primarySessionDelivery.error) || "").trim();
+
+  // If no explicit Slack user OAuth token is available, rely on session guidance.
   if (!hasUserOAuthCandidate) {
-    const primarySessionDelivery = await slackSendMarkdownToSelfViaWorkspaceSession(body, "workspace_session_primary");
-    if (primarySessionDelivery && primarySessionDelivery.ok) {
-      return primarySessionDelivery;
-    }
+    return {
+      ok: false,
+      code: "slack_user_token_missing",
+      error: "SLACK_IT_TO_ME requires a Slack user/session token for DM delivery." + (
+        primarySessionError
+          ? (" " + primarySessionError)
+          : ""
+      )
+    };
   }
 
   const tokenAttempts = [];
-  const pushTokenAttempt = (token, mode) => {
-    const normalizedToken = normalizeSlackApiToken(token);
-    if (!normalizedToken) return;
-    const isBot = isSlackBotApiToken(normalizedToken);
-    if (mode === "user" && isBot) return;
-    if (mode === "bot" && !isBot) return;
-    if (tokenAttempts.some((entry) => entry.token === normalizedToken)) return;
-    tokenAttempts.push({ token: normalizedToken, mode: String(mode || "user").trim().toLowerCase() || "user" });
-  };
   for (let i = 0; i < userCandidates.length; i += 1) {
-    pushTokenAttempt(userCandidates[i], "user");
-  }
-  if (allowBotDelivery) {
-    for (let i = 0; i < botCandidates.length; i += 1) {
-      pushTokenAttempt(botCandidates[i], "bot");
-    }
+    const normalizedToken = normalizeSlackApiToken(userCandidates[i]);
+    if (!normalizedToken) continue;
+    if (tokenAttempts.includes(normalizedToken)) continue;
+    tokenAttempts.push(normalizedToken);
   }
   if (!tokenAttempts.length) {
     const sessionFallback = await slackSendMarkdownToSelfViaWorkspaceSession(body, "slack_api_token_missing");
@@ -1563,10 +2212,8 @@ async function slackSendMarkdownToSelfViaApi(input) {
   let lastFailureError = "Unable to send Slack self-DM.";
 
   for (let i = 0; i < tokenAttempts.length; i += 1) {
-    const attempt = tokenAttempts[i];
-    const attemptToken = normalizeSlackApiToken(attempt && attempt.token);
+    const attemptToken = normalizeSlackApiToken(tokenAttempts[i]);
     if (!attemptToken) continue;
-    const isBotToken = String(attempt && attempt.mode || "") === "bot";
 
     const auth = await postSlackApiWithBearerToken(webApiOrigin, "/api/auth.test", {
       _x_reason: "zip-slack-it-to-me-auth-bg"
@@ -1582,14 +2229,9 @@ async function slackSendMarkdownToSelfViaApi(input) {
 
     const authPayload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
     const teamId = normalizeSlackTeamId(authPayload.team_id || authPayload.team);
-    if (expectedTeamId && teamId && teamId !== expectedTeamId) {
-      lastFailureCode = "slack_workspace_mismatch";
-      lastFailureError = "Slack workspace mismatch. Connected team " + teamId + ", expected team " + expectedTeamId + ".";
-      continue;
-    }
 
     const authUserId = normalizeSlackUserId(authPayload.user_id || authPayload.user);
-    const userId = (requestedUserId || openIdUserId || (isBotToken ? "" : authUserId));
+    const userId = (requestedUserId || openIdUserId || authUserId);
     if (!userId) {
       lastFailureCode = "slack_user_identity_missing";
       lastFailureError = "Unable to resolve Slack user identity for @ME delivery.";
@@ -1641,15 +2283,35 @@ async function slackSendMarkdownToSelfViaApi(input) {
       continue;
     }
     const postPayload = post.payload && typeof post.payload === "object" ? post.payload : {};
+    const postedTs = String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim();
+    let unreadMarked = false;
+    if (postChannel && postedTs) {
+      unreadMarked = await markSlackMessageUnreadViaApiToken(
+        webApiOrigin,
+        attemptToken,
+        postChannel,
+        postedTs
+      );
+      if (!unreadMarked) {
+        const workspaceUnreadFallback = await slackMarkUnreadViaWorkspaceSession({
+          workspaceOrigin,
+          channelId: postChannel,
+          ts: postedTs,
+          autoBootstrapSlackTab: true
+        }, "workspace_mark_unread_fallback");
+        unreadMarked = !!(workspaceUnreadFallback && workspaceUnreadFallback.ok && workspaceUnreadFallback.unread_marked === true);
+      }
+    }
     return {
       ok: true,
       channel: String(postPayload.channel || postChannel || userId).trim(),
-      ts: String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim(),
+      ts: postedTs,
       user_id: userId,
-      team_id: teamId || expectedTeamId || "",
+      team_id: teamId || "",
       user_name: resolvedUserName,
       avatar_url: resolvedAvatarUrl,
-      delivery_mode: isBotToken ? "bot_direct_channel" : "user_direct_channel"
+      unread_marked: unreadMarked,
+      delivery_mode: "user_direct_channel"
     };
   }
 
@@ -1832,14 +2494,12 @@ function normalizeSlackOpenIdAuthConfig(input) {
   const clientSecret = String(configInput.clientSecret || "").trim();
   const redirectPath = String(configInput.redirectPath || SLACK_OPENID_DEFAULT_REDIRECT_PATH).trim() || SLACK_OPENID_DEFAULT_REDIRECT_PATH;
   const redirectUriRaw = String(configInput.redirectUri || "").trim();
-  const expectedTeamId = normalizeSlackTeamId(configInput.expectedTeamId);
   return {
     clientId,
     clientSecret,
     scope: normalizeSlackOpenIdScopes(configInput.scope || configInput.scopes || ""),
     redirectPath,
-    redirectUriRaw,
-    expectedTeamId
+    redirectUriRaw
   };
 }
 
@@ -1943,13 +2603,6 @@ async function exchangeSlackOpenIdCodeForSession(input) {
   if (!profile.accessToken) {
     return { ok: false, error: "Slack OpenID token response did not include an access token." };
   }
-  if (config.expectedTeamId && profile.teamId && profile.teamId !== config.expectedTeamId) {
-    return {
-      ok: false,
-      error: "Slack workspace mismatch. Connected team " + profile.teamId + ", expected team " + config.expectedTeamId + "."
-    };
-  }
-
   const session = {
     accessToken: profile.accessToken,
     idToken: profile.idToken,
@@ -1998,9 +2651,6 @@ async function runSlackOpenIdAuth(input) {
   params.set("redirect_uri", redirectUri);
   params.set("state", state);
   params.set("nonce", nonce);
-  if (config.expectedTeamId) {
-    params.set("team", config.expectedTeamId);
-  }
 
   const authorizeUrl = SLACK_OPENID_AUTHORIZE_URL + "?" + params.toString();
   let callbackUrl = "";
@@ -2044,7 +2694,6 @@ async function runSlackOpenIdAuth(input) {
 
 async function getSlackOpenIdStatus(input) {
   const request = input && typeof input === "object" ? input : {};
-  const expectedTeamId = normalizeSlackTeamId(request.expectedTeamId);
   const session = await readSlackOpenIdSession();
   if (!session) {
     return { ok: false, error: "No cached Slack OpenID session." };
@@ -2086,13 +2735,6 @@ async function getSlackOpenIdStatus(input) {
       verifiedAtMs: nowMs
     };
     await writeSlackOpenIdSession(verifiedSession);
-  }
-
-  if (expectedTeamId && verifiedSession.teamId && normalizeSlackTeamId(verifiedSession.teamId) !== expectedTeamId) {
-    return {
-      ok: false,
-      error: "Slack workspace mismatch. Connected team " + verifiedSession.teamId + ", expected team " + expectedTeamId + "."
-    };
   }
 
   return {
@@ -2261,6 +2903,18 @@ async function createGroupedContextMenus(currentSide, shouldShowGetLatest) {
       contexts: MENU_CONTEXTS
     });
   }
+  await createContextMenuItem({
+    id: MENU_CLEAR_KEY_SEPARATOR,
+    parentId: MENU_ROOT,
+    type: "separator",
+    contexts: MENU_CONTEXTS
+  });
+  await createContextMenuItem({
+    id: MENU_CLEAR_KEY,
+    parentId: MENU_ROOT,
+    title: getClearKeyMenuTitle(),
+    contexts: MENU_CONTEXTS
+  });
 }
 
 async function createFlatContextMenus(currentSide, shouldShowGetLatest) {
@@ -2282,6 +2936,16 @@ async function createFlatContextMenus(currentSide, shouldShowGetLatest) {
       contexts: MENU_CONTEXTS
     });
   }
+  await createContextMenuItem({
+    id: MENU_CLEAR_KEY_SEPARATOR,
+    type: "separator",
+    contexts: MENU_CONTEXTS
+  });
+  await createContextMenuItem({
+    id: MENU_CLEAR_KEY,
+    title: getClearKeyMenuTitle(),
+    contexts: MENU_CONTEXTS
+  });
 }
 
 async function createContextMenus() {
@@ -2595,6 +3259,7 @@ async function getSidePanelContext() {
 }
 
 async function bootstrap() {
+  await runChromeStorageLegacyMigration().catch(() => {});
   await configureSidePanelDefaults();
   await refreshLayoutState();
   await syncAllTabOptions();
@@ -2653,6 +3318,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     openGetLatestFlow().catch(() => {});
     return;
   }
+  if (info.menuItemId === MENU_CLEAR_KEY) {
+    clearZipSecrets().catch(() => {});
+    return;
+  }
   if (info.menuItemId === MENU_ASK_ERIC) {
     openAskEricEmail(tab).catch(() => {});
   }
@@ -2689,6 +3358,63 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         error: err && err.message ? err.message : "Session check failed.",
         payload: getAuthStatePayload()
       }));
+    return true;
+  }
+  if (msg.type === "ZIP_CHECK_SECRETS") {
+    readZipSecretsStatus()
+      .then((status) => sendResponse(status))
+      .catch(() => sendResponse({
+        ok: false,
+        loaded: false,
+        missing: ZIP_REQUIRED_SECRET_KEYS.slice()
+      }));
+    return true;
+  }
+  if (msg.type === "ZIP_IMPORT_KEY_PAYLOAD") {
+    storeZipSecrets(msg && msg.config && typeof msg.config === "object" ? msg.config : {})
+      .then((status) => sendResponse(status))
+      .catch((err) => sendResponse({
+        ok: false,
+        loaded: false,
+        error: err && err.message ? err.message : "Unable to import ZIP.KEY payload."
+      }));
+    return true;
+  }
+  if (msg.type === "ZIP_RUN_LOCALSTORAGE_MIGRATION") {
+    runLocalStorageMigration(msg && msg.legacy && typeof msg.legacy === "object" ? msg.legacy : {})
+      .then((status) => sendResponse(status))
+      .catch((err) => sendResponse({
+        ok: false,
+        error: err && err.message ? err.message : "LocalStorage migration failed.",
+        clearLocalStorageKeys: ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS.slice()
+      }));
+    return true;
+  }
+  if (msg.type === "ZIP_CLEAR_KEY") {
+    clearZipSecrets()
+      .then((result) => sendResponse(result))
+      .catch((err) => sendResponse({
+        ok: false,
+        error: err && err.message ? err.message : "Unable to clear ZIP.KEY secrets."
+      }));
+    return true;
+  }
+  if (msg.type === "ZIP_OPEN_OPTIONS") {
+    (async () => {
+      try {
+        if (chrome.runtime && typeof chrome.runtime.openOptionsPage === "function") {
+          await chrome.runtime.openOptionsPage();
+        } else if (chrome.tabs && typeof chrome.tabs.create === "function") {
+          await chrome.tabs.create({ url: chrome.runtime.getURL("options.html"), active: true });
+        }
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err && err.message ? err.message : "Unable to open ZIP settings."
+        };
+      }
+    })().then((result) => sendResponse(result));
     return true;
   }
   if (msg.type === "ZD_SESSION_OK") {
@@ -2837,6 +3563,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       if (action === "getLatest") {
         return openGetLatestFlow();
+      }
+      if (action === "clearZipKey") {
+        return clearZipSecrets();
       }
       return { ok: false, error: "Unknown context menu action" };
     })()

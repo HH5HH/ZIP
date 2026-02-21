@@ -2,7 +2,7 @@
   "use strict";
 
   const BASE = "https://adobeprimetime.zendesk.com";
-  const ZENDESK_DASHBOARD_URL = BASE + "/agent/dashboard";
+  const ZENDESK_DASHBOARD_URL = BASE + "/agent/dashboard?brand_id=2379046";
   const ZENDESK_LOGIN_WITH_RETURN_URL = BASE
     + "/access/login?return_to="
     + encodeURIComponent(ZENDESK_DASHBOARD_URL);
@@ -16,8 +16,7 @@
   const PASS_AI_SLACK_API_ENDPOINT = PASS_AI_SLACK_WORKSPACE_ORIGIN + "/api";
   const PASS_AI_SLACK_APP_ID = "A0AGPACM3UG";
   const PASS_AI_SLACK_SINGULARITY_USER_ID = "U05PQCUFN0H";
-  // Keep empty by default; only enforce a team when explicitly configured.
-  const PASS_AI_SLACK_TEAM_ID = "";
+  // Legacy cleanup key only. Team pinning is no longer part of ZIP.KEY validation.
   const PASS_AI_SLACK_TEAM_STORAGE_KEY = "zip.passAi.expectedSlackTeamId";
   const PASS_AI_SLACK_OIDC_CLIENT_ID_STORAGE_KEY = "zip.passAi.slackOidc.clientId";
   const PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY = "zip.passAi.slackOidc.clientSecret";
@@ -26,11 +25,46 @@
   const PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.botToken";
   const PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.userToken";
   const PASS_AI_SLACK_OIDC_DEFAULT_SCOPE = "openid profile email";
-  const PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH = "slack-openid";
+  const PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH = "slack-user";
+  const ZIP_KEY_FILE_PREFIX = "ZIPKEY1:";
+  const ZIP_CONFIG_META_STORAGE_KEY = "zip.config.meta.v1";
+  const ZIP_SLACKTIVATION_SERVICE_KEY = "slacktivation";
+  const ZIP_REQUIRED_CONFIG_FIELDS = Object.freeze([
+    "slacktivation.client_id",
+    "slacktivation.client_secret",
+    "slacktivation.user_token"
+  ]);
   const PASS_AI_SLACK_CHANNEL_STORAGE_KEY = "zip.passAi.singularityChannelId";
   const PASS_AI_SLACK_CHANNEL_DEFAULT = "C08SX9ZR891";
   const PASS_AI_SINGULARITY_MENTION_STORAGE_KEY = "zip.passAi.singularityMention";
   const PASS_AI_SINGULARITY_MENTION_DEFAULT = "@Singularity";
+  const ZIP_SLACK_CLIENT_ID_STORAGE_KEY = "zip_slack_client_id";
+  const ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY = "zip_slack_client_secret";
+  const ZIP_SLACK_SCOPE_STORAGE_KEY = "zip_slack_scope";
+  const ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY = "zip_slack_redirect_path";
+  const ZIP_SLACK_BOT_TOKEN_STORAGE_KEY = "zip_slack_bot_token";
+  const ZIP_SLACK_USER_TOKEN_STORAGE_KEY = "zip_slack_user_token";
+  const ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY = "zip_slack_oauth_token";
+  const ZIP_SLACK_KEY_LOADED_STORAGE_KEY = "zip_slack_key_loaded";
+  const ZIP_SLACK_KEY_META_STORAGE_KEY = "zip_slack_key_meta";
+  const ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY = "zip_singularity_channel_id";
+  const ZIP_SINGULARITY_MENTION_STORAGE_KEY = "zip_singularity_mention";
+  const ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS = Object.freeze([
+    PASS_AI_SLACK_OIDC_CLIENT_ID_STORAGE_KEY,
+    PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY,
+    PASS_AI_SLACK_OIDC_SCOPE_STORAGE_KEY,
+    PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY,
+    PASS_AI_SLACK_TEAM_STORAGE_KEY,
+    PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY,
+    PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY,
+    "zip.passAi.slackBotToken",
+    "zip.passAi.slackUserToken",
+    PASS_AI_SLACK_CHANNEL_STORAGE_KEY,
+    PASS_AI_SINGULARITY_MENTION_STORAGE_KEY,
+    "slack_client_id",
+    "slack_client_secret",
+    "slack_token"
+  ]);
   const PASS_AI_SINGULARITY_NAME_PATTERN = "singularity";
   const SLACKTIVATED_PENDING_ICON_URL = "icons/icon128.png";
   const SLACKTIVATED_LOGIN_TOOLTIP = "ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/";
@@ -113,6 +147,22 @@
     passAiDeleteInFlight: false,
     passAiPanelVisible: false,
     slackItToMeLoading: false,
+    zipConfigReady: false,
+    zipConfigReason: "",
+    zipConfigMissingFields: [],
+    zipSecretConfigLoaded: false,
+    zipSecretConfig: {
+      keyLoaded: false,
+      clientId: "",
+      clientSecret: "",
+      scope: PASS_AI_SLACK_OIDC_DEFAULT_SCOPE,
+      redirectPath: PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH,
+      userToken: "",
+      oauthToken: "",
+      singularityChannelId: PASS_AI_SLACK_CHANNEL_DEFAULT,
+      singularityMention: PASS_AI_SINGULARITY_MENTION_DEFAULT,
+      meta: null
+    },
     ticketEmailCopyBusyById: Object.create(null),
     ticketEmailUserEmailCacheById: Object.create(null),
     ticketEmailRequesterByTicketId: Object.create(null),
@@ -603,7 +653,12 @@
 
   function handleZendeskLoggedOut() {
     showLogin();
-    setStatus("User is logged out of Zendesk. Please sign in.", true);
+    const gateStatus = enforceZipConfigGate({ reportStatus: false });
+    if (gateStatus.ready) {
+      setStatus("User is logged out of Zendesk. Please sign in.", true);
+    } else {
+      setStatus(getZipConfigGateMessage(gateStatus), gateStatus.reason === "missing_fields");
+    }
   }
 
   async function runAuthCheckTick(options) {
@@ -657,6 +712,12 @@
     loginScreen: $("zipLoginScreen"),
     appDescription: $("zipAppDescription"),
     appScreen: $("zipAppScreen"),
+    configGate: $("zipConfigGate"),
+    configGateMessage: $("zipConfigGateMessage"),
+    configGateMeta: $("zipConfigGateMeta"),
+    configDropZone: $("zipConfigDropZone"),
+    configDropAction: $("zipConfigDropAction"),
+    configFileInput: $("zipConfigFileInput"),
     loginBtn: $("zipLoginBtn"),
     docsMenu: $("zipDocsMenu"),
     appVersionLink: $("zipAppVersionLink"),
@@ -670,6 +731,7 @@
     contextMenuToggleZdApi: $("zipContextMenuToggleZdApi"),
     contextMenuToggleSide: $("zipContextMenuToggleSide"),
     contextMenuAskEric: $("zipContextMenuAskEric"),
+    contextMenuClearKey: $("zipContextMenuClearKey"),
     contextMenuGetLatest: $("zipContextMenuGetLatest"),
     contextMenuAppearanceRow: $("zipContextMenuAppearanceRow"),
     contextMenuThemeStopToggle: $("zipContextMenuThemeStopToggle"),
@@ -863,7 +925,6 @@
 
     const full = parsed.toString();
     const path = String(parsed.pathname || "").toLowerCase();
-    const expectedTeamId = getExpectedPassAiSlackTeamId();
     let score = 0;
 
     if (tab.active) score += 2200;
@@ -875,7 +936,6 @@
     else if (full.startsWith(PASS_AI_SLACK_WORKSPACE_ORIGIN + "/")) score += 900;
     else score += 600;
 
-    if (expectedTeamId && full.includes("/client/" + expectedTeamId + "/")) score += 900;
     if (isSlackAuthLikePathname(path)) score -= 5000;
     if (path.includes("/signout")) score -= 800;
 
@@ -2006,6 +2066,15 @@
         setStatus("Opening latest ZIP package and chrome://extensions…", false);
         return;
       }
+      if (action === "clearZipKey") {
+        if (response && response.ok === false) {
+          setStatus("Clear ZIP.KEY failed: " + (response.error || "Unknown error"), true);
+          return;
+        }
+        await refreshZipSecretConfigFromStorage().catch(() => {});
+        showLogin();
+        return;
+      }
     } catch (err) {
       setStatus("Context menu action failed: " + (err && err.message ? err.message : "Unknown error"), true);
     }
@@ -3075,18 +3144,14 @@
     setStatus("Sending visible ticket list to @ME in Slack…", false);
     try {
       const markdownText = buildSlackItToMeMarkdown(rows);
-      const expectedTeamId = getExpectedPassAiSlackTeamId();
       const slackApiTokens = getPassAiSlackApiTokenConfig();
       await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
       const sendPayload = {
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
-        expectedTeamId,
         userId: state.passAiSlackUserId || "",
         userName: state.passAiSlackUserName || "",
         avatarUrl: state.passAiSlackAvatarUrl || "",
         markdownText,
-        allowBotDelivery: false,
-        botToken: slackApiTokens.botToken || "",
         userToken: slackApiTokens.userToken || ""
       };
 
@@ -3111,13 +3176,10 @@
 
       const sentRows = Math.min(rows.length, SLACK_IT_TO_ME_MAX_ROWS);
       const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
-      setStatus("SLACK_IT_TO_ME delivered to @" + getSlacktivatedDisplayName() + summarySuffix + ".", false);
+      const unreadSuffix = response.unread_marked === true ? " Marked as new in Slack." : "";
+      setStatus("SLACK_IT_TO_ME delivered to @" + getSlacktivatedDisplayName() + summarySuffix + "." + unreadSuffix, false);
     } catch (err) {
       const message = normalizePassAiCommentBody(err && err.message) || "Unable to send visible ticket list.";
-      const lowered = message.toLowerCase();
-      if (lowered.includes("workspace mismatch") || lowered.includes("connected team")) {
-        setPassAiSlackAuthState({ ready: false, error: message });
-      }
       setStatus("SLACK_IT_TO_ME failed: " + message, true);
     } finally {
       state.slackItToMeLoading = false;
@@ -3779,7 +3841,12 @@
     els.appScreen.classList.add("hidden");
     document.body.classList.add("zip-logged-out");
     syncContextMenuAuthVisibility();
-    setStatus("", false);
+    const gateStatus = enforceZipConfigGate({ reportStatus: false });
+    if (gateStatus.ready) {
+      setStatus("", false);
+    } else {
+      setStatus(getZipConfigGateMessage(gateStatus), gateStatus.reason === "missing_fields");
+    }
   }
 
   function showApp() {
@@ -4367,38 +4434,735 @@
     return /^[CGD][A-Z0-9]{8,}$/.test(channelId) ? channelId : "";
   }
 
-  function getExpectedPassAiSlackTeamId() {
-    let configured = "";
-    try {
-      configured = String(window.localStorage.getItem(PASS_AI_SLACK_TEAM_STORAGE_KEY) || "").trim();
-    } catch (_) {}
-    if (!configured && typeof window !== "undefined") {
-      configured = String(
-        window.ZIP_PASS_AI_EXPECTED_SLACK_TEAM_ID
-        || window.ZIP_PASS_AI_EXPECTED_TEAM_ID
-        || window.ZIP_PASS_AI_SLACK_TEAM_ID
-        || ""
-      ).trim();
-    }
-    const normalizedConfigured = normalizePassAiSlackTeamId(configured);
-    if (normalizedConfigured) return normalizedConfigured;
-    return normalizePassAiSlackTeamId(PASS_AI_SLACK_TEAM_ID);
+  function normalizeZipConfigServiceName(value) {
+    const raw = String(value || "").trim().toLowerCase();
+    if (!raw) return "";
+    return raw.replace(/[^a-z0-9._-]/g, "");
   }
 
-  function readPassAiSlackOpenIdSetting(storageKey, windowKeys) {
-    let value = "";
+  function normalizeZipConfigServices(value) {
+    const next = [];
+    const seen = new Set();
+    const add = (entry) => {
+      const normalized = normalizeZipConfigServiceName(entry);
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      next.push(normalized);
+    };
+    if (Array.isArray(value)) {
+      value.forEach(add);
+    } else if (typeof value === "string") {
+      value.split(/[\s,]+/).forEach(add);
+    } else if (value && typeof value === "object") {
+      Object.keys(value).forEach((key) => {
+        if (value[key]) add(key);
+      });
+    }
+    return next;
+  }
+
+  function normalizeZipConfigMetaShape(input) {
+    const payload = input && typeof input === "object" ? input : {};
+    const services = normalizeZipConfigServices(
+      payload.services || payload.service || payload.features
+    );
+    return {
+      services,
+      keyVersion: String(payload.keyVersion || "").trim(),
+      importedAt: String(payload.importedAt || "").trim(),
+      importedBuild: String(payload.importedBuild || "").trim(),
+      source: String(payload.source || "").trim() || "zip-key"
+    };
+  }
+
+  function readZipConfigMeta() {
+    const fromState = state && state.zipSecretConfig && state.zipSecretConfig.meta;
+    if (fromState && typeof fromState === "object") {
+      return normalizeZipConfigMetaShape(fromState);
+    }
+    const globalMeta = typeof window !== "undefined"
+      ? (window.ZIP_CONFIG_META || null)
+      : null;
+    if (!globalMeta || typeof globalMeta !== "object") return null;
+    return normalizeZipConfigMetaShape(globalMeta);
+  }
+
+  function writeZipConfigMeta(meta) {
+    const payload = meta && typeof meta === "object" ? meta : {};
+    const next = normalizeZipConfigMetaShape({
+      ...payload,
+      services: normalizeZipConfigServices(payload.services).length
+        ? payload.services
+        : [ZIP_SLACKTIVATION_SERVICE_KEY],
+      importedAt: String(payload.importedAt || "").trim() || new Date().toISOString()
+    });
+    if (typeof window !== "undefined") {
+      window.ZIP_CONFIG_META = { ...next };
+    }
+    if (state && state.zipSecretConfig && typeof state.zipSecretConfig === "object") {
+      state.zipSecretConfig.meta = { ...next };
+    }
+    return true;
+  }
+
+  function getCurrentZipBuildVersion() {
     try {
-      value = String(window.localStorage.getItem(storageKey) || "").trim();
-    } catch (_) {}
-    if (value) return value;
-    const keys = Array.isArray(windowKeys) ? windowKeys : [];
-    for (let i = 0; i < keys.length; i += 1) {
-      const key = String(keys[i] || "").trim();
-      if (!key || typeof window === "undefined") continue;
-      const candidate = String(window[key] || "").trim();
-      if (candidate) return candidate;
+      const manifest = (typeof chrome !== "undefined" && chrome.runtime && typeof chrome.runtime.getManifest === "function")
+        ? chrome.runtime.getManifest()
+        : null;
+      return String((manifest && manifest.version) || "").trim();
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function getZipKeyValueByPath(payload, pathExpr) {
+    if (!payload || typeof payload !== "object") return undefined;
+    const expr = String(pathExpr || "").trim();
+    if (!expr) return undefined;
+    if (Object.prototype.hasOwnProperty.call(payload, expr)) {
+      return payload[expr];
+    }
+    const parts = expr.split(".").map((part) => part.trim()).filter(Boolean);
+    if (!parts.length) return undefined;
+    let node = payload;
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i];
+      if (!node || typeof node !== "object" || !Object.prototype.hasOwnProperty.call(node, part)) {
+        return undefined;
+      }
+      node = node[part];
+    }
+    return node;
+  }
+
+  function readZipKeyValue(payload, candidates) {
+    const list = Array.isArray(candidates) ? candidates : [];
+    for (let i = 0; i < list.length; i += 1) {
+      const value = getZipKeyValueByPath(payload, list[i]);
+      if (value == null) continue;
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed) return trimmed;
+        continue;
+      }
+      if (typeof value === "number" && Number.isFinite(value)) return String(value);
+      if (typeof value === "boolean") return value ? "true" : "false";
     }
     return "";
+  }
+
+  function parseZipKeyValueText(rawText) {
+    const payload = {};
+    const rows = String(rawText || "").split(/\r?\n/);
+    for (let i = 0; i < rows.length; i += 1) {
+      const line = rows[i];
+      const match = line.match(/^\s*([^=:\s]+)\s*[:=]\s*(.+)\s*$/);
+      if (!match) continue;
+      payload[String(match[1] || "").trim()] = String(match[2] || "").trim();
+    }
+    return payload;
+  }
+
+  function normalizeZipKeyRedirectPath(value) {
+    const raw = String(value || "").trim().replace(/^\/+/, "");
+    if (!raw) return PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH;
+    const normalized = raw.replace(/[^a-zA-Z0-9._/-]/g, "");
+    if (!normalized || normalized.includes("..")) return PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH;
+    return normalized;
+  }
+
+  function decodeZipKeyPayloadBase64(value) {
+    const compact = String(value || "")
+      .replace(/\s+/g, "")
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    if (!compact) return "";
+    const remainder = compact.length % 4;
+    const padded = remainder === 0 ? compact : (compact + "=".repeat(4 - remainder));
+    const binary = atob(padded);
+    try {
+      const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    } catch (_) {
+      return binary;
+    }
+  }
+
+  function parseZipKeyPayload(rawText) {
+    const raw = String(rawText || "").trim();
+    if (!raw) {
+      throw new Error("ZIP.KEY file is empty.");
+    }
+    let payloadBody = raw;
+    if (raw.slice(0, ZIP_KEY_FILE_PREFIX.length).toUpperCase() === ZIP_KEY_FILE_PREFIX) {
+      payloadBody = raw.slice(ZIP_KEY_FILE_PREFIX.length).trim();
+    }
+    if (!payloadBody) {
+      throw new Error("ZIP.KEY payload is empty.");
+    }
+    let jsonText = payloadBody;
+    let decodedPayload = "";
+    if (!payloadBody.startsWith("{")) {
+      try {
+        decodedPayload = decodeZipKeyPayloadBase64(payloadBody).trim();
+      } catch (_) {
+        decodedPayload = "";
+      }
+      if (decodedPayload.startsWith("{")) {
+        jsonText = decodedPayload;
+      } else {
+        const keyValuePayload = parseZipKeyValueText(payloadBody);
+        if (Object.keys(keyValuePayload).length) return keyValuePayload;
+        const decodedKeyValuePayload = parseZipKeyValueText(decodedPayload);
+        if (Object.keys(decodedKeyValuePayload).length) return decodedKeyValuePayload;
+      }
+    }
+    if (!jsonText.startsWith("{")) {
+      throw new Error("ZIP.KEY payload format is invalid.");
+    }
+    let parsed = null;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (_) {
+      parsed = null;
+    }
+    if (!parsed || typeof parsed !== "object") {
+      const fallbackKeyValuePayload = parseZipKeyValueText(decodedPayload || payloadBody);
+      if (Object.keys(fallbackKeyValuePayload).length) return fallbackKeyValuePayload;
+      throw new Error("ZIP.KEY payload is not valid JSON.");
+    }
+    return parsed;
+  }
+
+  function normalizeZipKeyConfig(rawConfig) {
+    const payload = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
+    const declaredServices = normalizeZipConfigServices(
+      getZipKeyValueByPath(payload, "services")
+      || getZipKeyValueByPath(payload, "meta.services")
+      || getZipKeyValueByPath(payload, "service")
+      || null
+    );
+    const clientId = readZipKeyValue(payload, [
+      "services.slacktivation.client_id",
+      "services.slacktivation.clientId",
+      "services.slacktivation.oidc.client_id",
+      "services.slacktivation.oidc.clientId",
+      "slacktivation.client_id",
+      "slacktivation.clientId",
+      "slacktivation.oidc.client_id",
+      "slacktivation.oidc.clientId",
+      "slack.oidc.clientId",
+      "slackOidc.clientId",
+      ZIP_SLACK_CLIENT_ID_STORAGE_KEY,
+      PASS_AI_SLACK_OIDC_CLIENT_ID_STORAGE_KEY,
+      "ZIP_PASS_AI_SLACK_OIDC_CLIENT_ID",
+      "client_id",
+      "clientId"
+    ]);
+    const clientSecret = readZipKeyValue(payload, [
+      "services.slacktivation.client_secret",
+      "services.slacktivation.clientSecret",
+      "services.slacktivation.oidc.client_secret",
+      "services.slacktivation.oidc.clientSecret",
+      "slacktivation.client_secret",
+      "slacktivation.clientSecret",
+      "slacktivation.oidc.client_secret",
+      "slacktivation.oidc.clientSecret",
+      "slack.oidc.clientSecret",
+      "slackOidc.clientSecret",
+      ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY,
+      PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY,
+      "ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET",
+      "client_secret",
+      "clientSecret"
+    ]);
+    const scope = normalizePassAiSlackOpenIdScope(readZipKeyValue(payload, [
+      "services.slacktivation.scope",
+      "services.slacktivation.oidc.scope",
+      "slacktivation.scope",
+      "slacktivation.oidc.scope",
+      "slack.oidc.scope",
+      "slackOidc.scope",
+      ZIP_SLACK_SCOPE_STORAGE_KEY,
+      PASS_AI_SLACK_OIDC_SCOPE_STORAGE_KEY,
+      "ZIP_PASS_AI_SLACK_OIDC_SCOPE",
+      "scope"
+    ]));
+    const redirectPath = normalizeZipKeyRedirectPath(readZipKeyValue(payload, [
+      "services.slacktivation.redirect_path",
+      "services.slacktivation.redirectPath",
+      "services.slacktivation.oidc.redirect_path",
+      "services.slacktivation.oidc.redirectPath",
+      "slacktivation.redirect_path",
+      "slacktivation.redirectPath",
+      "slacktivation.oidc.redirect_path",
+      "slacktivation.oidc.redirectPath",
+      "slack.oidc.redirectPath",
+      "slackOidc.redirectPath",
+      ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY,
+      PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY,
+      "ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH",
+      "redirect_path",
+      "redirectPath"
+    ]));
+    const userToken = normalizePassAiSlackApiToken(readZipKeyValue(payload, [
+      "services.slacktivation.user_token",
+      "services.slacktivation.userToken",
+      "services.slacktivation.api.user_token",
+      "services.slacktivation.api.userToken",
+      "slacktivation.user_token",
+      "slacktivation.userToken",
+      "slacktivation.api.user_token",
+      "slacktivation.api.userToken",
+      "slack.api.userToken",
+      "slackApi.userToken",
+      ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
+      ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
+      PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY,
+      "oauth_token",
+      "user_token",
+      "userToken"
+    ]));
+    const singularityChannelId = normalizePassAiSlackChannelId(readZipKeyValue(payload, [
+      "services.slacktivation.singularity_channel_id",
+      "services.slacktivation.singularityChannelId",
+      "slacktivation.singularity_channel_id",
+      "slacktivation.singularityChannelId",
+      "slack.singularity.channelId",
+      "singularity.channelId",
+      ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY,
+      PASS_AI_SLACK_CHANNEL_STORAGE_KEY,
+      "singularity_channel_id",
+      "singularityChannelId"
+    ]));
+    const singularityMention = String(readZipKeyValue(payload, [
+      "services.slacktivation.singularity_mention",
+      "services.slacktivation.singularityMention",
+      "slacktivation.singularity_mention",
+      "slacktivation.singularityMention",
+      "slack.singularity.mention",
+      "singularity.mention",
+      ZIP_SINGULARITY_MENTION_STORAGE_KEY,
+      PASS_AI_SINGULARITY_MENTION_STORAGE_KEY,
+      "singularity_mention",
+      "singularityMention"
+    ]) || "").trim();
+
+    const missingFields = [];
+    if (!clientId) missingFields.push("slacktivation.client_id");
+    if (!clientSecret) missingFields.push("slacktivation.client_secret");
+    if (!userToken) missingFields.push("slacktivation.user_token");
+    if (missingFields.length) {
+      throw new Error("ZIP.KEY is missing required SLACKTIVATION fields: " + missingFields.join(", ") + ".");
+    }
+
+    return {
+      keyVersion: String(readZipKeyValue(payload, ["keyVersion", "version", "meta.version"]) || "").trim(),
+      services: declaredServices.length
+        ? declaredServices
+        : [ZIP_SLACKTIVATION_SERVICE_KEY],
+      oidc: {
+        clientId,
+        clientSecret,
+        scope,
+        redirectPath
+      },
+      api: {
+        userToken
+      },
+      singularity: {
+        channelId: singularityChannelId,
+        mention: singularityMention
+      }
+    };
+  }
+
+  function getZipSecretStorageReadKeys() {
+    return [
+      ZIP_SLACK_CLIENT_ID_STORAGE_KEY,
+      ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY,
+      ZIP_SLACK_SCOPE_STORAGE_KEY,
+      ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY,
+      ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
+      ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
+      ZIP_SLACK_KEY_LOADED_STORAGE_KEY,
+      ZIP_SLACK_KEY_META_STORAGE_KEY,
+      ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY,
+      ZIP_SINGULARITY_MENTION_STORAGE_KEY,
+      PASS_AI_SLACK_OIDC_CLIENT_ID_STORAGE_KEY,
+      PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY,
+      PASS_AI_SLACK_OIDC_SCOPE_STORAGE_KEY,
+      PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY,
+      PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY,
+      PASS_AI_SLACK_CHANNEL_STORAGE_KEY,
+      PASS_AI_SINGULARITY_MENTION_STORAGE_KEY,
+      ZIP_CONFIG_META_STORAGE_KEY
+    ];
+  }
+
+  function normalizeZipSecretConfigShape(storedValues) {
+    const stored = storedValues && typeof storedValues === "object" ? storedValues : {};
+    const clientId = String(
+      stored[ZIP_SLACK_CLIENT_ID_STORAGE_KEY]
+      || stored[PASS_AI_SLACK_OIDC_CLIENT_ID_STORAGE_KEY]
+      || ""
+    ).trim();
+    const clientSecret = String(
+      stored[ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY]
+      || stored[PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY]
+      || ""
+    ).trim();
+    const scope = normalizePassAiSlackOpenIdScope(
+      stored[ZIP_SLACK_SCOPE_STORAGE_KEY]
+      || stored[PASS_AI_SLACK_OIDC_SCOPE_STORAGE_KEY]
+      || PASS_AI_SLACK_OIDC_DEFAULT_SCOPE
+    );
+    const redirectPath = normalizeZipKeyRedirectPath(
+      stored[ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY]
+      || stored[PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY]
+      || PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH
+    );
+    const userToken = normalizePassAiSlackApiToken(
+      stored[ZIP_SLACK_USER_TOKEN_STORAGE_KEY]
+      || stored[PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY]
+      || ""
+    );
+    const oauthToken = normalizePassAiSlackApiToken(
+      stored[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY]
+      || userToken
+      || ""
+    );
+    const singularityChannelId = normalizePassAiSlackChannelId(
+      stored[ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY]
+      || stored[PASS_AI_SLACK_CHANNEL_STORAGE_KEY]
+      || PASS_AI_SLACK_CHANNEL_DEFAULT
+    ) || normalizePassAiSlackChannelId(PASS_AI_SLACK_CHANNEL_DEFAULT);
+    const singularityMention = (function normalizeMention(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return PASS_AI_SINGULARITY_MENTION_DEFAULT;
+      if (/^<@[UW][A-Z0-9]{8,}>$/i.test(raw)) return raw;
+      const plain = raw.startsWith("@") ? raw.slice(1).trim() : raw;
+      if (!plain) return PASS_AI_SINGULARITY_MENTION_DEFAULT;
+      if (plain.toLowerCase() === "singularity") return PASS_AI_SINGULARITY_MENTION_DEFAULT;
+      return "@" + plain;
+    })(
+      stored[ZIP_SINGULARITY_MENTION_STORAGE_KEY]
+      || stored[PASS_AI_SINGULARITY_MENTION_STORAGE_KEY]
+      || PASS_AI_SINGULARITY_MENTION_DEFAULT
+    );
+    const hasRequired = !!(clientId && clientSecret && oauthToken);
+    const keyLoaded = stored[ZIP_SLACK_KEY_LOADED_STORAGE_KEY] === true
+      || (
+        stored[ZIP_SLACK_KEY_LOADED_STORAGE_KEY] == null
+        && hasRequired
+      );
+    const rawMeta = (
+      stored[ZIP_SLACK_KEY_META_STORAGE_KEY]
+      || stored[ZIP_CONFIG_META_STORAGE_KEY]
+      || (typeof window !== "undefined" ? window.ZIP_CONFIG_META : null)
+      || null
+    );
+    const meta = rawMeta && typeof rawMeta === "object"
+      ? normalizeZipConfigMetaShape(rawMeta)
+      : (
+        hasRequired
+          ? normalizeZipConfigMetaShape({ services: [ZIP_SLACKTIVATION_SERVICE_KEY] })
+          : null
+      );
+
+    return {
+      keyLoaded,
+      clientId,
+      clientSecret,
+      scope,
+      redirectPath,
+      userToken,
+      oauthToken,
+      singularityChannelId,
+      singularityMention,
+      meta
+    };
+  }
+
+  function getChromeStorageLocal(keys) {
+    return new Promise((resolve) => {
+      if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local || typeof chrome.storage.local.get !== "function") {
+        resolve({});
+        return;
+      }
+      chrome.storage.local.get(keys, (items) => {
+        void chrome.runtime.lastError;
+        resolve(items && typeof items === "object" ? items : {});
+      });
+    });
+  }
+
+  function setChromeStorageLocal(values) {
+    const payload = values && typeof values === "object" ? values : {};
+    const keys = Object.keys(payload);
+    if (!keys.length) return Promise.resolve();
+    return new Promise((resolve) => {
+      if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local || typeof chrome.storage.local.set !== "function") {
+        resolve();
+        return;
+      }
+      chrome.storage.local.set(payload, () => {
+        void chrome.runtime.lastError;
+        resolve();
+      });
+    });
+  }
+
+  function removeChromeStorageLocal(keys) {
+    const list = Array.isArray(keys) ? keys.filter(Boolean) : [];
+    if (!list.length) return Promise.resolve();
+    return new Promise((resolve) => {
+      if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local || typeof chrome.storage.local.remove !== "function") {
+        resolve();
+        return;
+      }
+      chrome.storage.local.remove(list, () => {
+        void chrome.runtime.lastError;
+        resolve();
+      });
+    });
+  }
+
+  async function refreshZipSecretConfigFromStorage() {
+    const stored = await getChromeStorageLocal(getZipSecretStorageReadKeys());
+    const normalized = normalizeZipSecretConfigShape(stored);
+    state.zipSecretConfig = normalized;
+    state.zipSecretConfigLoaded = true;
+    if (typeof window !== "undefined") {
+      window.ZIP_CONFIG_META = normalized.meta ? { ...normalized.meta } : null;
+    }
+    return normalized;
+  }
+
+  function collectLegacyZipLocalStorageValues() {
+    const out = {};
+    if (typeof window === "undefined" || !window.localStorage) return out;
+    ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS.forEach((key) => {
+      try {
+        const value = String(window.localStorage.getItem(key) || "").trim();
+        if (value) out[key] = value;
+      } catch (_) {}
+    });
+    return out;
+  }
+
+  function clearLegacyZipLocalStorageKeys(keys) {
+    const rows = Array.isArray(keys) && keys.length
+      ? keys
+      : ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS;
+    if (typeof window === "undefined" || !window.localStorage) return;
+    rows.forEach((key) => {
+      try { window.localStorage.removeItem(String(key || "")); } catch (_) {}
+    });
+  }
+
+  async function runZipLocalStorageMigration() {
+    const legacy = collectLegacyZipLocalStorageValues();
+    let response = null;
+    try {
+      response = await sendBackgroundRequest("ZIP_RUN_LOCALSTORAGE_MIGRATION", { legacy });
+    } catch (_) {
+      response = null;
+    }
+    const clearKeys = Array.isArray(response && response.clearLocalStorageKeys)
+      ? response.clearLocalStorageKeys
+      : ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS;
+    clearLegacyZipLocalStorageKeys(clearKeys);
+    return response;
+  }
+
+  async function persistZipKeyConfig(config) {
+    const normalized = config && typeof config === "object" ? config : null;
+    if (!normalized) throw new Error("ZIP.KEY configuration payload is invalid.");
+
+    const services = normalizeZipConfigServices(
+      normalized.services || (normalized.meta && normalized.meta.services) || null
+    );
+    const meta = normalizeZipConfigMetaShape({
+      keyVersion: normalized.keyVersion || "",
+      services: services.length ? services : [ZIP_SLACKTIVATION_SERVICE_KEY],
+      importedAt: new Date().toISOString(),
+      importedBuild: getCurrentZipBuildVersion(),
+      source: "zip-key"
+    });
+    const payload = {
+      oidc: {
+        clientId: String(normalized.oidc && normalized.oidc.clientId || "").trim(),
+        clientSecret: String(normalized.oidc && normalized.oidc.clientSecret || "").trim(),
+        scope: normalizePassAiSlackOpenIdScope(normalized.oidc && normalized.oidc.scope),
+        redirectPath: normalizeZipKeyRedirectPath(normalized.oidc && normalized.oidc.redirectPath)
+      },
+      api: {
+        userToken: normalizePassAiSlackApiToken(normalized.api && normalized.api.userToken)
+      },
+      singularity: {
+        channelId: normalizePassAiSlackChannelId(normalized.singularity && normalized.singularity.channelId),
+        mention: String(normalized.singularity && normalized.singularity.mention || "").trim()
+      },
+      meta
+    };
+    const response = await sendBackgroundRequest("ZIP_IMPORT_KEY_PAYLOAD", { config: payload });
+    if (!response || response.ok !== true) {
+      throw new Error(String(response && response.error || "Unable to persist ZIP.KEY secrets."));
+    }
+    writeZipConfigMeta(meta);
+    await refreshZipSecretConfigFromStorage();
+  }
+
+  function getZipConfigGateStatus() {
+    const meta = readZipConfigMeta();
+    const secretConfig = state && state.zipSecretConfig ? state.zipSecretConfig : null;
+    const openIdConfig = getPassAiSlackOpenIdConfig();
+    const requiredFieldState = {
+      "slacktivation.client_id": !!String(openIdConfig.clientId || "").trim(),
+      "slacktivation.client_secret": !!String(openIdConfig.clientSecret || "").trim(),
+      "slacktivation.user_token": !!String(getPassAiSlackApiTokenConfig().userToken || "").trim()
+    };
+    const missingFields = ZIP_REQUIRED_CONFIG_FIELDS.filter((field) => !requiredFieldState[field]);
+
+    let reason = "";
+    if (!secretConfig || secretConfig.keyLoaded !== true) reason = "missing_meta";
+    else if (missingFields.length) reason = "missing_fields";
+
+    return {
+      ready: !reason,
+      reason,
+      missingFields,
+      meta
+    };
+  }
+
+  function getZipConfigGateMessage(status) {
+    const gateStatus = status && typeof status === "object" ? status : getZipConfigGateStatus();
+    if (gateStatus.reason === "missing_fields") {
+      return "ZIP.KEY is missing required SLACKTIVATION settings. Please drop an updated ZIP.KEY to activate ZIP.";
+    }
+    if (gateStatus.ready) {
+      return "ZIP.KEY loaded. You can now sign in with Zendesk.";
+    }
+    return "Please drop ZIP.KEY to activate ZIP.";
+  }
+
+  function getZipConfigGateMetaText(status) {
+    const gateStatus = status && typeof status === "object" ? status : getZipConfigGateStatus();
+    if (gateStatus.reason === "missing_fields" && gateStatus.missingFields.length) {
+      return "Missing: " + gateStatus.missingFields.join(", ");
+    }
+    const importedAt = String(gateStatus.meta && gateStatus.meta.importedAt || "").trim();
+    const services = normalizeZipConfigServices(gateStatus.meta && gateStatus.meta.services);
+    if (gateStatus.ready && importedAt) {
+      return services.length
+        ? ("Loaded " + importedAt + ". Services: " + services.join(", ") + ".")
+        : ("Loaded " + importedAt + ".");
+    }
+    return "Supports ZIPKEY1 files (JSON or KEY=VALUE).";
+  }
+
+  function applyZipConfigGate(status) {
+    const gateStatus = status && typeof status === "object" ? status : getZipConfigGateStatus();
+    state.zipConfigReady = !!gateStatus.ready;
+    state.zipConfigReason = gateStatus.reason || "";
+    state.zipConfigMissingFields = Array.isArray(gateStatus.missingFields)
+      ? gateStatus.missingFields.slice()
+      : [];
+    document.body.classList.toggle("zip-config-locked", !gateStatus.ready);
+    if (els.loginBtn) {
+      els.loginBtn.disabled = !gateStatus.ready;
+      els.loginBtn.classList.toggle("hidden", !gateStatus.ready);
+    }
+    if (els.configGate) {
+      els.configGate.classList.toggle("hidden", gateStatus.ready);
+    }
+    if (els.configGateMessage) {
+      els.configGateMessage.textContent = getZipConfigGateMessage(gateStatus);
+    }
+    if (els.configGateMeta) {
+      els.configGateMeta.textContent = getZipConfigGateMetaText(gateStatus);
+      els.configGateMeta.classList.toggle("is-error", !gateStatus.ready && gateStatus.reason !== "missing_meta");
+    }
+    return gateStatus;
+  }
+
+  function enforceZipConfigGate(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const status = applyZipConfigGate(getZipConfigGateStatus());
+    if (!status.ready && opts.reportStatus !== false) {
+      setStatus(getZipConfigGateMessage(status), status.reason === "missing_fields");
+    }
+    return status;
+  }
+
+  function applyZipConfigAfterStorageRefresh(options) {
+    const status = enforceZipConfigGate(options && typeof options === "object"
+      ? options
+      : { reportStatus: false });
+    if (!status.ready && state.user) {
+      showLogin();
+    }
+    return status;
+  }
+
+  function setZipConfigDropBusy(on) {
+    const busy = !!on;
+    if (els.configDropZone) {
+      els.configDropZone.disabled = busy;
+      els.configDropZone.classList.toggle("is-processing", busy);
+    }
+    if (els.configDropAction) {
+      els.configDropAction.textContent = busy
+        ? "Importing ZIP.KEY…"
+        : "DROP ZIP.KEY TO ACTIVATE";
+    }
+  }
+
+  function pickZipConfigFile(fileList) {
+    if (!fileList || typeof fileList.length !== "number") return null;
+    for (let i = 0; i < fileList.length; i += 1) {
+      const file = fileList[i];
+      if (file && typeof file.text === "function") return file;
+    }
+    return null;
+  }
+
+  async function importZipKeyFromFile(file) {
+    if (!file || typeof file.text !== "function") {
+      throw new Error("No ZIP.KEY file was provided.");
+    }
+    setZipConfigDropBusy(true);
+    try {
+      const fileText = await file.text();
+      const parsed = parseZipKeyPayload(fileText);
+      const normalized = normalizeZipKeyConfig(parsed);
+      await persistZipKeyConfig(normalized);
+      const gateStatus = enforceZipConfigGate({ reportStatus: false });
+      if (!gateStatus.ready) {
+        throw new Error("ZIP.KEY loaded, but required ZIP configuration is still incomplete.");
+      }
+      setStatus("ZIP.KEY loaded. Checking Zendesk session…", false);
+      await hydrateAuthStateFromBackground({
+        forceCheck: true,
+        reason: "zip_key_import",
+        reportLockedStatus: false
+      });
+    } catch (err) {
+      const message = String((err && err.message) || "Unable to import ZIP.KEY.").trim() || "Unable to import ZIP.KEY.";
+      enforceZipConfigGate({ reportStatus: false });
+      if (els.configGateMeta) {
+        els.configGateMeta.textContent = message;
+        els.configGateMeta.classList.add("is-error");
+      }
+      setStatus(message, true);
+      throw err;
+    } finally {
+      setZipConfigDropBusy(false);
+      if (els.configFileInput) els.configFileInput.value = "";
+    }
   }
 
   function normalizePassAiSlackOpenIdScope(value) {
@@ -4417,41 +5181,20 @@
   }
 
   function getPassAiSlackOpenIdConfig() {
-    const clientId = readPassAiSlackOpenIdSetting(
-      PASS_AI_SLACK_OIDC_CLIENT_ID_STORAGE_KEY,
-      [
-        "ZIP_PASS_AI_SLACK_OIDC_CLIENT_ID",
-        "ZIP_PASS_AI_SLACK_CLIENT_ID"
-      ]
+    const secretConfig = state && state.zipSecretConfig && typeof state.zipSecretConfig === "object"
+      ? state.zipSecretConfig
+      : null;
+    const clientId = String(secretConfig && secretConfig.clientId || "").trim();
+    const clientSecret = String(secretConfig && secretConfig.clientSecret || "").trim();
+    const scope = normalizePassAiSlackOpenIdScope(secretConfig && secretConfig.scope);
+    const redirectPath = normalizeZipKeyRedirectPath(
+      secretConfig && secretConfig.redirectPath
     );
-    const clientSecret = readPassAiSlackOpenIdSetting(
-      PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY,
-      [
-        "ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET",
-        "ZIP_PASS_AI_SLACK_CLIENT_SECRET"
-      ]
-    );
-    const scope = normalizePassAiSlackOpenIdScope(
-      readPassAiSlackOpenIdSetting(
-        PASS_AI_SLACK_OIDC_SCOPE_STORAGE_KEY,
-        [
-          "ZIP_PASS_AI_SLACK_OIDC_SCOPE",
-          "ZIP_PASS_AI_SLACK_OIDC_SCOPES"
-        ]
-      )
-    );
-    const redirectPath = String(
-      readPassAiSlackOpenIdSetting(
-        PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY,
-        ["ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH"]
-      ) || PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH
-    ).trim() || PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH;
     return {
       clientId,
       clientSecret,
       scope,
-      redirectPath,
-      expectedTeamId: getExpectedPassAiSlackTeamId()
+      redirectPath
     };
   }
 
@@ -4466,59 +5209,43 @@
     return /^xox[a-z]-/i.test(token) ? token : "";
   }
 
-  function readPassAiSlackApiTokenSetting(storageKey, windowKeys) {
-    const keys = Array.isArray(windowKeys) ? windowKeys : [];
-    for (let i = 0; i < keys.length; i += 1) {
-      const key = String(keys[i] || "").trim();
-      if (!key || typeof window === "undefined") continue;
-      const candidate = normalizePassAiSlackApiToken(window[key]);
-      if (candidate) return candidate;
-    }
-    let localValue = "";
-    try {
-      localValue = String(window.localStorage.getItem(storageKey) || "").trim();
-    } catch (_) {}
-    const normalizedLocalValue = normalizePassAiSlackApiToken(localValue);
-    if (normalizedLocalValue) return normalizedLocalValue;
-    return "";
-  }
-
   function getPassAiSlackApiTokenConfig() {
-    const botToken = readPassAiSlackApiTokenSetting(
-      PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY,
-      [
-        "ZIP_PASS_AI_SLACK_BOT_TOKEN",
-        "ZIP_PASS_AI_SLACK_TOKEN"
-      ]
+    const secretConfig = state && state.zipSecretConfig && typeof state.zipSecretConfig === "object"
+      ? state.zipSecretConfig
+      : null;
+    const userToken = normalizePassAiSlackApiToken(
+      (secretConfig && (secretConfig.userToken || secretConfig.oauthToken)) || ""
     );
-    const userToken = readPassAiSlackApiTokenSetting(
-      PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY,
-      ["ZIP_PASS_AI_SLACK_USER_TOKEN"]
-    );
-    return { botToken, userToken };
+    return { userToken };
   }
 
   function hasPassAiSlackApiTokenConfig(config) {
     const cfg = config && typeof config === "object" ? config : getPassAiSlackApiTokenConfig();
-    return !!(cfg.botToken || cfg.userToken);
+    return !!cfg.userToken;
   }
 
   function persistPassAiSlackApiTokenConfig(config) {
     const cfg = config && typeof config === "object" ? config : getPassAiSlackApiTokenConfig();
     const updates = {};
-    if (cfg.botToken) updates[PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY] = cfg.botToken;
-    if (cfg.userToken) updates[PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY] = cfg.userToken;
-    if (!Object.keys(updates).length) return Promise.resolve(false);
-    return new Promise((resolve) => {
-      if (!chrome || !chrome.storage || !chrome.storage.local || typeof chrome.storage.local.set !== "function") {
-        resolve(false);
-        return;
-      }
-      chrome.storage.local.set(updates, () => {
-        void chrome.runtime.lastError;
-        resolve(true);
-      });
-    });
+    const removals = [
+      PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY,
+      PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY,
+      "zip.passAi.slackBotToken",
+      "zip.passAi.slackUserToken"
+    ];
+    const userToken = normalizePassAiSlackApiToken(cfg.userToken);
+    removals.push(ZIP_SLACK_BOT_TOKEN_STORAGE_KEY);
+    if (userToken) {
+      updates[ZIP_SLACK_USER_TOKEN_STORAGE_KEY] = userToken;
+      updates[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY] = userToken;
+    } else {
+      removals.push(ZIP_SLACK_USER_TOKEN_STORAGE_KEY);
+      removals.push(ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY);
+    }
+    return Promise.all([
+      setChromeStorageLocal(updates),
+      removeChromeStorageLocal(removals)
+    ]).then(() => refreshZipSecretConfigFromStorage().then(() => true).catch(() => true));
   }
 
   function normalizePassAiSlackOpenIdAuthResponse(response) {
@@ -4541,9 +5268,7 @@
     const config = getPassAiSlackOpenIdConfig();
     if (!hasPassAiSlackOpenIdConfig(config)) return false;
     try {
-      const response = await sendBackgroundRequest("ZIP_SLACK_OPENID_STATUS", {
-        expectedTeamId: config.expectedTeamId
-      });
+      const response = await sendBackgroundRequest("ZIP_SLACK_OPENID_STATUS", {});
       const nextState = normalizePassAiSlackOpenIdAuthResponse(response);
       if (!nextState) return false;
       setPassAiSlackAuthState(nextState);
@@ -4566,7 +5291,6 @@
       clientSecret: config.clientSecret,
       scope: config.scope,
       redirectPath: config.redirectPath,
-      expectedTeamId: config.expectedTeamId,
       interactive
     });
     const nextState = normalizePassAiSlackOpenIdAuthResponse(response);
@@ -4581,25 +5305,6 @@
   function buildPassAiSlackWorkspaceLandingUrl() {
     // Use workspace root to let Slack resolve the active account/team automatically.
     return PASS_AI_SLACK_WORKSPACE_ORIGIN + "/";
-  }
-
-  function buildPassAiSlackTeamMismatchError(actualTeamId, actualEnterpriseId) {
-    const expectedTeamId = getExpectedPassAiSlackTeamId();
-    const actual = normalizePassAiSlackTeamId(actualTeamId);
-    const enterprise = normalizePassAiSlackTeamId(actualEnterpriseId);
-    if (!expectedTeamId) {
-      return "Slack workspace validation is not configured.";
-    }
-    if (!actual && !enterprise) {
-      return "Slack workspace could not be verified. Expected workspace/team " + expectedTeamId + ".";
-    }
-    if (actual && enterprise) {
-      return "Slack workspace mismatch. Connected team " + actual + " (enterprise " + enterprise + "), expected team " + expectedTeamId + ".";
-    }
-    if (actual) {
-      return "Slack workspace mismatch. Connected team " + actual + ", expected team " + expectedTeamId + ".";
-    }
-    return "Slack workspace mismatch. Connected enterprise " + enterprise + ", expected team " + expectedTeamId + ".";
   }
 
   function normalizeExistingTicketComments(comments) {
@@ -4758,18 +5463,6 @@
     const requestedWebReady = hasRequestedWebReady
       ? !!(nextState && nextState.webReady)
       : (requestedMode ? requestedMode === "web" : ready);
-    const expectedTeamId = getExpectedPassAiSlackTeamId();
-    const reportedTeamId = normalizePassAiSlackTeamId(nextState && nextState.teamId);
-    const reportedEnterpriseId = normalizePassAiSlackTeamId(nextState && nextState.enterpriseId);
-    const hasExpectedTeam = !!expectedTeamId;
-    const hasObservedTeam = !!(reportedTeamId || reportedEnterpriseId);
-    const teamMatchesExpected = !hasExpectedTeam
-      || !hasObservedTeam
-      || reportedTeamId === expectedTeamId
-      || reportedEnterpriseId === expectedTeamId;
-    const teamMismatch = !!(ready && !teamMatchesExpected);
-
-    // Team mismatch is treated as advisory so existing Adobe DX sessions are not dropped.
     state.passAiSlackReady = ready;
     state.passAiSlackWebReady = state.passAiSlackReady && !!requestedWebReady;
     state.passAiSlackUserId = state.passAiSlackReady ? String((nextState && nextState.userId) || "").trim() : "";
@@ -4784,8 +5477,6 @@
       : "";
     if (state.passAiSlackReady) {
       state.passAiSlackAuthError = "";
-    } else if (teamMismatch) {
-      state.passAiSlackAuthError = buildPassAiSlackTeamMismatchError(reportedTeamId, reportedEnterpriseId);
     } else {
       state.passAiSlackAuthError = String((nextState && nextState.error) || "").trim();
     }
@@ -4818,12 +5509,10 @@
       }
     }
 
-    const expectedTeamId = getExpectedPassAiSlackTeamId();
     const requestSlackAuthTest = async () => {
       const response = await sendToSlackTabWithAutoBootstrap({
         action: "slackAuthTest",
-        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
-        expectedTeamId
+        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN
       }, {
         bootstrap: allowSlackTabBootstrap,
         onBootstrap: () => {
@@ -4860,9 +5549,7 @@
         )
       );
       if (capturedWebToken) {
-        const currentTokens = getPassAiSlackApiTokenConfig();
         await persistPassAiSlackApiTokenConfig({
-          botToken: currentTokens.botToken || "",
           userToken: capturedWebToken
         }).catch(() => {});
       }
@@ -4877,7 +5564,7 @@
         enterpriseId: response.enterprise_id || response.enterpriseId || ""
       });
       if (!state.passAiSlackReady) {
-        const message = state.passAiSlackAuthError || "Slack workspace mismatch.";
+        const message = state.passAiSlackAuthError || "Slack sign-in is required.";
         if (!silent) setStatus(message, true);
         return false;
       }
@@ -4929,11 +5616,13 @@
     state.passAiSlackAuthPolling = true;
     applyGlobalBusyUi();
     passAiSlackAuthPollAttempt = 0;
+    // After a user-initiated Slack login click, allow an immediate silent OpenID probe.
+    slackOpenIdSilentProbeLastAt = 0;
     updateTicketActionButtons();
 
     const poll = () => {
       passAiSlackAuthPollAttempt += 1;
-      refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false, allowSlackTabBootstrap: true })
+      refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: true, allowSlackTabBootstrap: true })
         .then((ready) => {
           if (ready) {
             stopPassAiSlackAuthPolling();
@@ -4997,7 +5686,9 @@
         state.slackTabId = openedTabId;
       }
       await wait(450);
-      const readyNow = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false });
+      // Re-arm silent probe after opening/focusing Slack so auto-login can be picked up immediately.
+      slackOpenIdSilentProbeLastAt = 0;
+      const readyNow = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: true });
       if (readyNow) {
         setStatus("ZIP is now SLACKTIVATED.", false);
         return;
@@ -5570,12 +6261,15 @@
   function getPassAiSingularityChannelId() {
     const locked = normalizePassAiSlackChannelId(PASS_AI_SLACK_CHANNEL_DEFAULT);
     if (!locked) return "";
-    try {
-      const configured = normalizePassAiSlackChannelId(window.localStorage.getItem(PASS_AI_SLACK_CHANNEL_STORAGE_KEY) || "");
-      if (configured && configured !== locked) {
-        window.localStorage.setItem(PASS_AI_SLACK_CHANNEL_STORAGE_KEY, locked);
-      }
-    } catch (_) {}
+    const secretConfig = state && state.zipSecretConfig && typeof state.zipSecretConfig === "object"
+      ? state.zipSecretConfig
+      : null;
+    const configured = normalizePassAiSlackChannelId(
+      secretConfig && secretConfig.singularityChannelId
+    );
+    if (configured && configured !== locked) {
+      return locked;
+    }
     return locked;
   }
 
@@ -5595,18 +6289,11 @@
     };
 
     let configured = "";
-    try {
-      configured = String(window.localStorage.getItem(PASS_AI_SINGULARITY_MENTION_STORAGE_KEY) || "").trim();
-    } catch (_) {}
-    if (!configured && typeof window !== "undefined") {
-      configured = String(window.ZIP_PASS_AI_SINGULARITY_MENTION || "").trim();
-    }
+    const secretConfig = state && state.zipSecretConfig && typeof state.zipSecretConfig === "object"
+      ? state.zipSecretConfig
+      : null;
+    configured = String(secretConfig && secretConfig.singularityMention || "").trim();
     const normalized = canonicalize(configured || PASS_AI_SINGULARITY_MENTION_DEFAULT);
-    try {
-      if (configured && configured !== normalized) {
-        window.localStorage.setItem(PASS_AI_SINGULARITY_MENTION_STORAGE_KEY, normalized);
-      }
-    } catch (_) {}
     return normalized;
   }
 
@@ -5620,7 +6307,6 @@
         + "phase: " + String(diagnostics.phase || "unknown") + "\n"
         + "classification: " + String(diagnostics.classification || "unknown") + "\n"
         + "issueSource: " + String(diagnostics.issueSource || "unknown") + "\n"
-        + "expectedTeam: " + String(diagnostics.expectedTeamId || "") + "\n"
         + "actualTeam: " + String(diagnostics.actualTeamId || "") + "\n"
         + "enterprise: " + String(diagnostics.actualEnterpriseId || "") + "\n"
         + "channel: " + String(diagnostics.channelId || "") + "\n"
@@ -5727,7 +6413,6 @@
     const frontendClientId = generatePassAiClientId();
     state.passAiActiveClientId = frontendClientId;
     const channelId = getPassAiSingularityChannelId();
-    const expectedTeamId = getExpectedPassAiSlackTeamId();
     if (!channelId) throw new Error("Singularity channel ID is not configured.");
     const mention = getPassAiSingularityMention();
     const messageText = (mention + " " + question).trim();
@@ -5737,7 +6422,6 @@
     appendPassAiDebugLine(debugLines, "serviceId=" + getPassAiServiceId(ticketContext && ticketContext.product));
     appendPassAiDebugLine(debugLines, "workspaceOrigin=" + PASS_AI_SLACK_WORKSPACE_ORIGIN);
     appendPassAiDebugLine(debugLines, "slackAppId=" + PASS_AI_SLACK_APP_ID);
-    appendPassAiDebugLine(debugLines, "teamId=" + (expectedTeamId || "(unset)"));
     appendPassAiDebugLine(debugLines, "channelId=" + channelId);
     appendPassAiDebugLine(debugLines, "POST " + PASS_AI_SLACK_API_ENDPOINT + "/chat.postMessage");
 
@@ -5745,7 +6429,6 @@
       action: "slackSendToSingularity",
       workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
       channelId,
-      expectedTeamId,
       ticketId,
       question,
       messageText,
@@ -5797,7 +6480,6 @@
         action: "slackPollSingularityThread",
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
         channelId: postedChannel,
-        expectedTeamId,
         parentTs,
         singularityUserId: PASS_AI_SLACK_SINGULARITY_USER_ID,
         singularityNamePattern: PASS_AI_SINGULARITY_NAME_PATTERN,
@@ -7528,6 +8210,8 @@
   }
 
   async function startLogin() {
+    const gateStatus = enforceZipConfigGate({ reportStatus: true });
+    if (!gateStatus.ready) return;
     setStatus("Opening Zendesk in main browser tab…", false);
     try {
       // Strict policy: login only in the Zendesk main tab. No popup/OAuth flows in ZIP sidepanel.
@@ -7651,6 +8335,11 @@
   }
 
   async function refreshAll() {
+    const gateStatus = enforceZipConfigGate({ reportStatus: false });
+    if (!gateStatus.ready) {
+      showLogin();
+      return;
+    }
     setBusy(true);
     try {
       const me = await sendToZendeskTab({ action: "getMe" });
@@ -7682,6 +8371,11 @@
   }
 
   function refreshFromAuthenticatedEvent(reason) {
+    const gateStatus = enforceZipConfigGate({ reportStatus: false });
+    if (!gateStatus.ready) {
+      showLogin();
+      return;
+    }
     if (authRefreshInFlight) return;
     authRefreshInFlight = true;
     setStatus("Zendesk session detected. Loading…", false);
@@ -7704,8 +8398,7 @@
       return true;
     }
     if (msg.type === "LOGGED_OUT") {
-      showLogin();
-      setStatus("User is logged out of Zendesk. Please sign in.", true);
+      handleZendeskLoggedOut();
       return true;
     }
     if (msg.type === "ABOUT_TO_EXPIRE") {
@@ -7714,13 +8407,26 @@
       }
       return true;
     }
+    if (msg.type === "ZIP_KEY_CLEARED") {
+      refreshZipSecretConfigFromStorage()
+        .catch(() => {})
+        .then(() => {
+          showLogin();
+        });
+      return true;
+    }
     return false;
   }
 
   async function hydrateAuthStateFromBackground(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const gateStatus = enforceZipConfigGate({ reportStatus: opts.reportLockedStatus !== false });
+    if (!gateStatus.ready) {
+      showLogin();
+      return;
+    }
     if (authHydrationInFlight) return;
     authHydrationInFlight = true;
-    const opts = options && typeof options === "object" ? options : {};
     try {
       const auth = await sendBackgroundRequest("ZIP_GET_AUTH_STATE");
       if (auth && auth.loggedIn) {
@@ -7770,11 +8476,14 @@
     }
     if (typeof window !== "undefined") {
       window.addEventListener("focus", () => {
+        refreshZipSecretConfigFromStorage()
+          .then(() => applyZipConfigAfterStorageRefresh({ reportStatus: false }))
+          .catch(() => {});
         loadSidePanelContext();
         loadContextMenuUpdateState(false).catch(() => {});
         loadThemeState().catch(() => {});
         if (state.user) refreshSlacktivatedState({ silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
-        triggerAuthCheckNow();
+        if (state.zipConfigReady) triggerAuthCheckNow();
       });
       window.addEventListener("resize", () => {
         refreshThemeFlyoutPosition();
@@ -7782,11 +8491,14 @@
       window.addEventListener("blur", () => { hideContextMenu(); });
       document.addEventListener("visibilitychange", () => {
         if (!document.hidden) {
+          refreshZipSecretConfigFromStorage()
+            .then(() => applyZipConfigAfterStorageRefresh({ reportStatus: false }))
+            .catch(() => {});
           loadSidePanelContext();
           loadContextMenuUpdateState(false).catch(() => {});
           loadThemeState().catch(() => {});
           if (state.user) refreshSlacktivatedState({ silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
-          triggerAuthCheckNow();
+          if (state.zipConfigReady) triggerAuthCheckNow();
         }
       });
     }
@@ -7836,6 +8548,11 @@
         runContextMenuAction("getLatest");
       });
     }
+    if (els.contextMenuClearKey) {
+      els.contextMenuClearKey.addEventListener("click", () => {
+        runContextMenuAction("clearZipKey");
+      });
+    }
     if (els.contextMenuThemeStopToggle) {
       els.contextMenuThemeStopToggle.addEventListener("click", (event) => {
         event.preventDefault();
@@ -7858,6 +8575,55 @@
         const url = value;
         openExternalUrl(url);
         target.value = "";
+      });
+    }
+    if (els.configDropZone && els.configFileInput) {
+      const pickFile = () => {
+        if (!state.zipConfigReady) els.configFileInput.click();
+      };
+      const preventDefault = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      const setDragOver = (on) => {
+        els.configDropZone.classList.toggle("is-dragover", !!on);
+      };
+      els.configDropZone.addEventListener("click", (event) => {
+        event.preventDefault();
+        pickFile();
+      });
+      els.configDropZone.addEventListener("dragenter", (event) => {
+        if (state.zipConfigReady) return;
+        preventDefault(event);
+        setDragOver(true);
+      });
+      els.configDropZone.addEventListener("dragover", (event) => {
+        if (state.zipConfigReady) return;
+        preventDefault(event);
+        if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+        setDragOver(true);
+      });
+      els.configDropZone.addEventListener("dragleave", (event) => {
+        if (state.zipConfigReady) return;
+        preventDefault(event);
+        setDragOver(false);
+      });
+      els.configDropZone.addEventListener("drop", (event) => {
+        if (state.zipConfigReady) return;
+        preventDefault(event);
+        setDragOver(false);
+        const file = pickZipConfigFile(event.dataTransfer && event.dataTransfer.files);
+        if (!file) {
+          setStatus("No ZIP.KEY file detected in drop payload.", true);
+          return;
+        }
+        importZipKeyFromFile(file).catch(() => {});
+      });
+      els.configFileInput.addEventListener("change", (event) => {
+        const target = event && event.target;
+        const file = pickZipConfigFile(target && target.files);
+        if (!file) return;
+        importZipKeyFromFile(file).catch(() => {});
       });
     }
     if (els.loginBtn) els.loginBtn.addEventListener("click", (e) => { e.preventDefault(); startLogin(); });
@@ -8112,6 +8878,8 @@
     document.body.classList.add("zip-logged-out");
     if (els.status) els.status.title = FOOTER_HINT_TOOLTIP;
     wireEvents();
+    await runZipLocalStorageMigration().catch(() => {});
+    await refreshZipSecretConfigFromStorage().catch(() => {});
     await loadThemeState().catch(() => {});
     await loadSidePanelContext().catch(() => {});
     initializeZdApiContainerVisibility();
@@ -8122,6 +8890,11 @@
     updateTicketActionButtons();
     resetTopIdentity();
     setStatus("", false);
+    const gateStatus = enforceZipConfigGate({ reportStatus: false });
+    if (!gateStatus.ready) {
+      showLogin();
+      return;
+    }
     await hydrateAuthStateFromBackground({ forceCheck: true, reason: "sidepanel_init" });
   }
 

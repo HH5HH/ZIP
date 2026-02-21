@@ -8,7 +8,7 @@
 
 - `Login with Zendesk` in the sidepanel only does one of two things:
 - Focus an existing Zendesk tab (`https://{subdomain}.zendesk.com/*`) in the main browser context.
-- Open a normal browser tab to `https://{subdomain}.zendesk.com/access/login?return_to=<encoded https://{subdomain}.zendesk.com/agent/dashboard>` when no Zendesk tab exists.
+- Open a normal browser tab to `https://{subdomain}.zendesk.com/access/login?return_to=<encoded https://{subdomain}.zendesk.com/agent/dashboard?brand_id=2379046>` when no Zendesk tab exists.
 - ZIP has no local `Sign out` control. Session state is fully synchronized to Zendesk session state.
 - Session authority is `GET /api/v2/users/me/session` from the Zendesk content script, with background fallback only when the content script is unavailable.
 
@@ -24,34 +24,78 @@
 - Q&AI (Singularity button) and `@ME` are shown for ticket-selected workflows and stay disabled until SLACKTIVATED.
 - `@ME` (`SLACK_IT_TO_ME`) sends the visible ticket table as Markdown to the logged-in Slack user via DM.
 - `@ME` now uses strict background Slack API delivery only (no Slack tab relay). End users should only see the resulting DM arrive in Slack.
-- Git-tracked source keeps sensitive Slack values empty. Internal distribution ZIPs inject local secrets at package time.
+- Git-tracked source keeps sensitive Slack values empty. ZIP.KEY secrets are stored in `chrome.storage.local` only.
 
-Slack OpenID config keys (set in sidepanel page context or `localStorage`):
-- `zip.passAi.slackOidc.clientId` / `ZIP_PASS_AI_SLACK_OIDC_CLIENT_ID`
-- `zip.passAi.slackOidc.clientSecret` / `ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET`
-- `zip.passAi.slackOidc.scope` / `ZIP_PASS_AI_SLACK_OIDC_SCOPE` (default `openid profile email`)
-- `zip.passAi.slackOidc.redirectPath` / `ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH` (default `slack-openid`)
+Slack ZIP.KEY config keys (`chrome.storage.local`):
+- `zip_slack_client_id`
+- `zip_slack_client_secret`
+- `zip_slack_oauth_token` (required user token)
+- `zip_slack_scope` (default `openid profile email`)
+- `zip_slack_redirect_path` (default `slack-user`)
+- `zip_slack_user_token`
+- `zip_slack_key_loaded` (required gate flag)
 
-Optional Slack API token keys for no-tab `@ME` delivery:
-- `zip.passAi.slackApi.botToken` / `ZIP_PASS_AI_SLACK_BOT_TOKEN`
-- `zip.passAi.slackApi.userToken` / `ZIP_PASS_AI_SLACK_USER_TOKEN`
+Legacy `localStorage` Slack keys are migrated to `chrome.storage.local` and removed.
 
-## Internal Distribution with Local Secrets
+## ZIP.KEY Unlock Flow
 
-Use this flow when building the ZIP your internal team installs:
+ZIP sidepanel now requires a one-time `ZIP.KEY` import before showing `Sign in with Zendesk`.
 
-1. Create local secrets file (git-ignored):
-   - `cp /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/slack-runtime-config.local.example.js /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/slack-runtime-config.local.js`
-   - Fill in real Slack values in `slack-runtime-config.local.js`.
-2. Build internal package with secrets injected:
-   - `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/scripts/build_internal_distribution.sh`
-3. Output ZIP defaults to:
-   - `/Users/minnick/Documents/PASS/ZIP/ZIP_TEAM_DISTRIBUTION_v<manifest-version>.zip`
+Key envelope format:
+- Prefix: `ZIPKEY1:`
+- Payload: base64-encoded JSON
 
-Notes:
-- `slack-runtime-config.local.js` is git-ignored and never committed.
-- The build script also supports existing local file `slack-oidc.local.js` as fallback.
-- Public GitHub source remains token-free, while your internal ZIP contains required runtime values.
+Required fields in payload:
+- `slacktivation.client_id`
+- `slacktivation.client_secret`
+- `slacktivation.user_token`
+
+Optional payload fields (only if you need overrides):
+- `slacktivation.scope`
+- `slacktivation.redirect_path`
+- `slacktivation.singularity_channel_id`
+- `slacktivation.singularity_mention`
+
+Example payload JSON:
+```json
+{
+  "services": {
+    "slacktivation": {
+      "client_id": "YOUR_CLIENT_ID",
+      "client_secret": "YOUR_CLIENT_SECRET",
+      "user_token": "xoxp-REQUIRED_USER_TOKEN"
+    }
+  }
+}
+```
+
+Create `ZIP.KEY` from payload JSON:
+```bash
+printf 'ZIPKEY1:%s\n' "$(base64 < zip-key-payload.json | tr -d '\n')" > ZIP.KEY
+```
+
+Minimal `KEY=VALUE` format (recommended) is also supported:
+```ini
+slacktivation.client_id=YOUR_SLACK_OIDC_CLIENT_ID
+slacktivation.client_secret=YOUR_SLACK_OIDC_CLIENT_SECRET
+slacktivation.user_token=xoxp-YOUR_REQUIRED_USER_TOKEN
+```
+
+Optional override keys are still supported if needed:
+- `slacktivation.scope`
+- `slacktivation.redirect_path`
+- `slacktivation.singularity_channel_id`
+- `slacktivation.singularity_mention`
+
+Template file:
+- `zip-chrome-extension/ZIP.KEY.template`
+
+Admin and developer controls:
+- Sidepanel unlock card supports drag-and-drop `ZIP.KEY` import.
+- Extension settings page (`options.html`) supports file import, paste import, and one-click `Clear ZIP.KEY`.
+- Clear/reset is available from both menus:
+  - Chrome action context menu: `Clear ZIP.KEY`
+  - ZIP in-app avatar menu: `Clear ZIP.KEY`
 
 ## Quick Start (Urgent Line Paged)
 
@@ -60,8 +104,8 @@ If the urgent line just paged, do this now:
 2. Toggle **Developer mode** ON.
 3. Click **Load unpacked**.
 4. Select `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`.
-5. Open `https://adobeprimetime.zendesk.com/agent/dashboard`.
-6. Click ZIP, then click `Login with Zendesk` if prompted.
+5. Open `https://adobeprimetime.zendesk.com/agent/dashboard?brand_id=2379046`.
+6. Click ZIP, drop `ZIP.KEY` on the unlock card, then click `Login with Zendesk` if prompted.
 7. Click `Assigned Tickets` and start triage.
 
 ![ZIP Master Brand Preview](docs/assets/brand/zeek-info-peek-master-preview-1024.png)
@@ -104,8 +148,9 @@ After one-time install, runtime flow is:
 
 1. Open Zendesk page
 2. Click the ZIP bubble
-3. If logged out, click Login with Zendesk
-4. After sign-in, ZIP loads profile + assigned tickets automatically
+3. Import `ZIP.KEY` on the login card (one-time per required service settings)
+4. If logged out, click Login with Zendesk
+5. After sign-in, ZIP loads profile + assigned tickets automatically
 
 Logged-out behavior:
 
@@ -134,7 +179,7 @@ Current release:
 4. Select this folder:
    - `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
 5. Open Zendesk:
-   - `https://adobeprimetime.zendesk.com/agent/dashboard`
+   - `https://adobeprimetime.zendesk.com/agent/dashboard?brand_id=2379046`
 6. ZIP opens and checks session automatically (floating panel button is available if collapsed).
 
 ## Team Handoff

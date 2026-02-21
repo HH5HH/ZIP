@@ -15,11 +15,11 @@
   const JIRA_BROWSE_URL_PREFIX = "https://jira.corp.adobe.com/browse/";
   const SLACK_DEFAULT_WORKSPACE_ORIGIN = "https://adobedx.slack.com";
   const SLACK_DEFAULT_FINAL_MARKER_REGEX = "FINAL_RESPONSE";
-  const SLACK_CAPTURE_TOKEN_STORAGE_KEY = "__zipSlackCapturedXoxcTokenV1";
   const SLACK_BRIDGE_EVENT_NAME = "zip-slack-token";
   const SLACK_BRIDGE_MESSAGE_TYPE = "ZIP_SLACK_TOKEN_BRIDGE";
   const SLACK_TOKEN_BRIDGE_SCRIPT_ID = "zip-slack-token-bridge-script";
   const SLACK_TOKEN_BRIDGE_SCRIPT_PATH = "slack-token-bridge.js";
+  const ZIP_KEY_BANNER_ID = "zip-key-required-banner";
 
   let slackTokenBridgeInstalled = false;
   let slackTokenBridgeListenerInstalled = false;
@@ -36,6 +36,13 @@
   const ZENDESK_SESSION_SIGNAL_DEDUPE_MS = 1500;
   const ZENDESK_PROBE_MIN_INTERVAL_MS = 1500;
   const ZENDESK_LOGGED_OUT_PROBE_COOLDOWN_MS = 12000;
+
+  function waitMs(delayMs) {
+    const timeout = Math.max(0, Math.trunc(Number(delayMs) || 0));
+    return new Promise((resolve) => {
+      setTimeout(resolve, timeout);
+    });
+  }
 
   async function fetchJson(url) {
     const res = await fetch(url, {
@@ -1000,14 +1007,10 @@
     return match ? match[0] : "";
   }
 
-  function cacheSlackCapturedToken(token, persist) {
+  function cacheSlackCapturedToken(token) {
     const normalized = extractXoxcToken(token);
     if (!normalized) return "";
     slackCapturedToken = normalized;
-    if (persist === false) return normalized;
-    try {
-      window.localStorage.setItem(SLACK_CAPTURE_TOKEN_STORAGE_KEY, normalized);
-    } catch (_) {}
     return normalized;
   }
 
@@ -1017,14 +1020,6 @@
       slackCapturedToken = cached;
       return cached;
     }
-    try {
-      const fromLocal = extractXoxcToken(window.localStorage.getItem(SLACK_CAPTURE_TOKEN_STORAGE_KEY) || "");
-      if (fromLocal) return cacheSlackCapturedToken(fromLocal, false);
-    } catch (_) {}
-    try {
-      const fromSession = extractXoxcToken(window.sessionStorage.getItem(SLACK_CAPTURE_TOKEN_STORAGE_KEY) || "");
-      if (fromSession) return cacheSlackCapturedToken(fromSession, true);
-    } catch (_) {}
     return "";
   }
 
@@ -1037,7 +1032,7 @@
         if (!event || event.source !== window) return;
         const data = event.data;
         if (!data || typeof data !== "object" || data.type !== SLACK_BRIDGE_MESSAGE_TYPE) return;
-        cacheSlackCapturedToken(data.token || data.value || "", true);
+        cacheSlackCapturedToken(data.token || data.value || "");
       } catch (_) {}
     });
 
@@ -1045,7 +1040,7 @@
       try {
         const detail = event && event.detail && typeof event.detail === "object" ? event.detail : null;
         if (!detail) return;
-        cacheSlackCapturedToken(detail.token || detail.value || "", true);
+        cacheSlackCapturedToken(detail.token || detail.value || "");
       } catch (_) {}
     });
   }
@@ -1066,7 +1061,6 @@
       script.id = SLACK_TOKEN_BRIDGE_SCRIPT_ID;
       script.src = chrome.runtime.getURL(SLACK_TOKEN_BRIDGE_SCRIPT_PATH);
       script.async = false;
-      script.dataset.storageKey = SLACK_CAPTURE_TOKEN_STORAGE_KEY;
       script.dataset.eventName = SLACK_BRIDGE_EVENT_NAME;
       script.dataset.messageType = SLACK_BRIDGE_MESSAGE_TYPE;
       script.onload = () => {
@@ -1203,14 +1197,14 @@
     if (captured) return captured;
 
     const fromGlobals = findSlackTokenInGlobals();
-    if (fromGlobals) return cacheSlackCapturedToken(fromGlobals, true);
+    if (fromGlobals) return cacheSlackCapturedToken(fromGlobals);
     try {
       const fromLocalStorage = findSlackTokenInStorage(window.localStorage);
-      if (fromLocalStorage) return cacheSlackCapturedToken(fromLocalStorage, true);
+      if (fromLocalStorage) return cacheSlackCapturedToken(fromLocalStorage);
     } catch (_) {}
     try {
       const fromSessionStorage = findSlackTokenInStorage(window.sessionStorage);
-      if (fromSessionStorage) return cacheSlackCapturedToken(fromSessionStorage, true);
+      if (fromSessionStorage) return cacheSlackCapturedToken(fromSessionStorage);
     } catch (_) {}
     return "";
   }
@@ -1269,7 +1263,7 @@
     if (!token) {
       return { ok: false, error: "No Slack web session token found. Open Slack and complete login first." };
     }
-    cacheSlackCapturedToken(token, true);
+    cacheSlackCapturedToken(token);
 
     const path = String(endpointPath || "").startsWith("/") ? String(endpointPath) : ("/" + String(endpointPath || ""));
     const body = fields && typeof fields === "object" ? fields : {};
@@ -1508,6 +1502,27 @@
       .toLowerCase();
   }
 
+  function toPriorSlackTs(value) {
+    const raw = String(value || "").trim();
+    const match = raw.match(/^(\d+)\.(\d+)$/);
+    if (!match) {
+      const asInt = Number.parseInt(raw, 10);
+      if (Number.isFinite(asInt) && asInt > 0) return String(asInt - 1) + ".999999";
+      return "0.000000";
+    }
+    let seconds = Number.parseInt(match[1], 10);
+    let micros = Number.parseInt(match[2].slice(0, 6).padEnd(6, "0"), 10);
+    if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
+    if (!Number.isFinite(micros) || micros < 0) micros = 0;
+    if (micros > 0) {
+      micros -= 1;
+    } else if (seconds > 0) {
+      seconds -= 1;
+      micros = 999999;
+    }
+    return String(seconds) + "." + String(micros).padStart(6, "0");
+  }
+
   function isSingularityAckMessageText(value) {
     const text = normalizeSlackTextForDedup(value);
     if (!text) return false;
@@ -1545,6 +1560,49 @@
       read: read ? "true" : "false",
       _x_reason: "marking-thread"
     });
+  }
+
+  async function markSlackMessageUnread(workspaceOrigin, channelId, messageTs, reasonPrefix) {
+    const targetChannel = String(channelId || "").trim();
+    const targetTs = String(messageTs || "").trim();
+    if (!targetChannel || !targetTs) return false;
+
+    const reasonBase = String(reasonPrefix || "zip-slack-mark-unread").trim() || "zip-slack-mark-unread";
+    const delays = [0, 260, 840];
+    for (let pass = 0; pass < delays.length; pass += 1) {
+      if (delays[pass] > 0) await waitMs(delays[pass]);
+      const priorTs = toPriorSlackTs(targetTs);
+      const attempts = [];
+      attempts.push(() => slackConversationsMark(
+        workspaceOrigin,
+        targetChannel,
+        priorTs,
+        reasonBase + "-mark-prior"
+      ));
+      if (priorTs !== "0.000000") {
+        attempts.push(() => slackConversationsMark(
+          workspaceOrigin,
+          targetChannel,
+          "0.000000",
+          reasonBase + "-mark-zero"
+        ));
+      }
+      attempts.push(() => slackThreadMark(
+        workspaceOrigin,
+        targetChannel,
+        targetTs,
+        targetTs,
+        false
+      ));
+
+      for (let i = 0; i < attempts.length; i += 1) {
+        try {
+          const result = await attempts[i]();
+          if (result && result.ok) return true;
+        } catch (_) {}
+      }
+    }
+    return false;
   }
 
   function normalizeSlackTeamId(value) {
@@ -1898,14 +1956,50 @@
       };
     }
     const postPayload = post.payload && typeof post.payload === "object" ? post.payload : {};
+    const postedTs = String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim();
+    const unreadMarked = await markSlackMessageUnread(
+      workspaceOrigin,
+      channelId,
+      postedTs,
+      "zip-slack-it-to-me"
+    );
     return {
       ok: true,
       channel: String(postPayload.channel || channelId || userId).trim(),
-      ts: String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim(),
+      ts: postedTs,
       user_id: userId,
       team_id: teamId,
       user_name: userName,
-      avatar_url: avatarUrl
+      avatar_url: avatarUrl,
+      unread_marked: unreadMarked
+    };
+  }
+
+  async function slackMarkUnreadAction(inner) {
+    if (!isSlackPage()) {
+      return { ok: false, error: "Not a Slack tab. Open Slack login first." };
+    }
+    ensureSlackTokenBridgeInstalled();
+    const workspaceOrigin = normalizeSlackWorkspaceOrigin(inner && inner.workspaceOrigin);
+    const channelId = String((inner && (inner.channelId || inner.channel_id || inner.channel)) || "").trim();
+    const messageTs = String((inner && (inner.ts || inner.messageTs || inner.message_ts)) || "").trim();
+    if (!channelId || !messageTs) {
+      return { ok: false, error: "Slack unread marker requires channel and ts." };
+    }
+    const unreadMarked = await markSlackMessageUnread(
+      workspaceOrigin,
+      channelId,
+      messageTs,
+      "zip-slack-it-to-me-bg-fallback"
+    );
+    if (!unreadMarked) {
+      return { ok: false, error: "Unable to mark Slack DM as unread." };
+    }
+    return {
+      ok: true,
+      channel: channelId,
+      ts: messageTs,
+      unread_marked: true
     };
   }
 
@@ -1939,7 +2033,7 @@
     const text = mentionPrefix ? (mentionPrefix + " " + bodyText).trim() : bodyText;
     const session = extractSlackSessionIdentity();
     const clientContextTeamId = normalizeSlackTeamId(
-      (inner && (inner.expectedTeamId || inner.teamId || inner.team_id))
+      (inner && (inner.teamId || inner.team_id))
       || session.teamId
     );
     const urlsForUnfurl = extractUrlsFromText(bodyText);
@@ -2254,6 +2348,89 @@
     };
   }
 
+  function openZipOptionsFromContent() {
+    try {
+      chrome.runtime.sendMessage({ type: "ZIP_OPEN_OPTIONS" }, () => {
+        void chrome.runtime.lastError;
+      });
+    } catch (_) {}
+  }
+
+  function removeZipKeyBanner() {
+    const existing = document.getElementById(ZIP_KEY_BANNER_ID);
+    if (existing && existing.parentNode) {
+      existing.parentNode.removeChild(existing);
+    }
+  }
+
+  function ensureZipKeyBanner() {
+    if (document.getElementById(ZIP_KEY_BANNER_ID)) return;
+    if (!document || !document.body) return;
+
+    const banner = document.createElement("div");
+    banner.id = ZIP_KEY_BANNER_ID;
+    banner.setAttribute("role", "status");
+    banner.style.position = "fixed";
+    banner.style.top = "12px";
+    banner.style.right = "12px";
+    banner.style.zIndex = "2147483647";
+    banner.style.background = "#f5f5f5";
+    banner.style.color = "#202020";
+    banner.style.border = "1px solid #b8b8b8";
+    banner.style.borderRadius = "8px";
+    banner.style.boxShadow = "0 6px 20px rgba(0,0,0,0.18)";
+    banner.style.fontFamily = "Adobe Clean, Segoe UI, system-ui, sans-serif";
+    banner.style.fontSize = "12px";
+    banner.style.lineHeight = "1.35";
+    banner.style.maxWidth = "320px";
+    banner.style.padding = "10px 12px";
+    banner.style.display = "flex";
+    banner.style.alignItems = "center";
+    banner.style.gap = "8px";
+
+    const text = document.createElement("button");
+    text.type = "button";
+    text.style.all = "unset";
+    text.style.cursor = "pointer";
+    text.style.color = "#1473e6";
+    text.style.textDecoration = "underline";
+    text.textContent = "ZipTool: Please drop ZIP.KEY - click to configure";
+    text.addEventListener("click", () => openZipOptionsFromContent());
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.setAttribute("aria-label", "Dismiss ZIP.KEY banner");
+    close.style.border = "none";
+    close.style.background = "transparent";
+    close.style.color = "#505050";
+    close.style.cursor = "pointer";
+    close.style.fontSize = "14px";
+    close.style.lineHeight = "1";
+    close.textContent = "x";
+    close.addEventListener("click", () => removeZipKeyBanner());
+
+    banner.appendChild(text);
+    banner.appendChild(close);
+    document.body.appendChild(banner);
+  }
+
+  function syncZipKeyBanner() {
+    if (!isZendeskPage()) return;
+    try {
+      chrome.runtime.sendMessage({ type: "ZIP_CHECK_SECRETS" }, (response) => {
+        if (chrome.runtime.lastError) {
+          ensureZipKeyBanner();
+          return;
+        }
+        const ok = !!(response && response.ok);
+        if (ok) removeZipKeyBanner();
+        else ensureZipKeyBanner();
+      });
+    } catch (_) {
+      ensureZipKeyBanner();
+    }
+  }
+
   if (isSlackPage()) {
     // Defer bridge injection until a Slack action requires API access.
     readCapturedSlackToken();
@@ -2261,9 +2438,18 @@
 
   if (isZendeskPage()) {
     installZendeskSessionObservers();
+    syncZipKeyBanner();
+    window.addEventListener("focus", () => syncZipKeyBanner());
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) syncZipKeyBanner();
+    });
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg && msg.type === "ZIP_KEY_CLEARED") {
+      syncZipKeyBanner();
+      return;
+    }
     if (msg && msg.type === "ZIP_SESSION_PROBE") {
       // Authoritative Zendesk auth probe used by background/sidepanel coordination.
       probeZendeskSession({
@@ -2298,6 +2484,10 @@
         }
         if (inner.action === "slackSendMarkdownToSelf") {
           const result = await slackSendMarkdownToSelfAction(inner);
+          return { type: "ZIP_RESPONSE", requestId, result };
+        }
+        if (inner.action === "slackMarkUnread") {
+          const result = await slackMarkUnreadAction(inner);
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "slackSendToSingularity") {

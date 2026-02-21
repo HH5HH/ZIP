@@ -7,7 +7,6 @@
 
     var currentScript = document.currentScript;
     var dataset = currentScript && currentScript.dataset ? currentScript.dataset : {};
-    var STORAGE_KEY = dataset.storageKey || "__zipSlackCapturedXoxcTokenV1";
     var EVENT_NAME = dataset.eventName || "zip-slack-token";
     var TYPE = dataset.messageType || "ZIP_SLACK_TOKEN_BRIDGE";
     var TOKEN_REGEX = /xox[a-z]-[A-Za-z0-9-]+/i;
@@ -22,9 +21,6 @@
     function emit(token) {
       var normalized = extract(token);
       if (!normalized) return;
-      try {
-        window.localStorage.setItem(STORAGE_KEY, normalized);
-      } catch (_) {}
       try {
         window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: { token: normalized } }));
       } catch (_) {}
@@ -145,10 +141,6 @@
           return beacon(url, data);
         };
       }
-    } catch (_) {}
-
-    try {
-      emit(window.localStorage.getItem(STORAGE_KEY));
     } catch (_) {}
 
     if (currentScript && currentScript.dataset) {

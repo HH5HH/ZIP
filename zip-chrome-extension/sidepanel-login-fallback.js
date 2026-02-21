@@ -5,7 +5,7 @@
   window.__ZIP_LOGIN_FALLBACK_LOADED__ = true;
 
   const ZENDESK_BASE_URL = "https://adobeprimetime.zendesk.com";
-  const ZENDESK_DASHBOARD_URL = ZENDESK_BASE_URL + "/agent/dashboard";
+  const ZENDESK_DASHBOARD_URL = ZENDESK_BASE_URL + "/agent/dashboard?brand_id=2379046";
   const ZENDESK_LOGIN_WITH_RETURN_URL = ZENDESK_BASE_URL
     + "/access/login?return_to="
     + encodeURIComponent(ZENDESK_DASHBOARD_URL);

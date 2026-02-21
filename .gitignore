@@ -5,5 +5,3 @@ dist/
 node_modules/
 ZIP_TEAM_DISTRIBUTION_v*.zip
 ZIP_APP_ICON_PACK_*.zip
-zip-chrome-extension/slack-oidc.local.js
-zip-chrome-extension/slack-runtime-config.local.js

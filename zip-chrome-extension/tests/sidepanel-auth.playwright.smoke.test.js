@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
 const BACKGROUND_PATH = path.join(ROOT, "background.js");
-const ZENDESK_DASHBOARD_URL = "https://adobeprimetime.zendesk.com/agent/dashboard";
+const ZENDESK_DASHBOARD_URL = "https://adobeprimetime.zendesk.com/agent/dashboard?brand_id=2379046";
 const ZENDESK_LOGIN_WITH_RETURN_URL = "https://adobeprimetime.zendesk.com/access/login?return_to="
   + encodeURIComponent(ZENDESK_DASHBOARD_URL);
 
@@ -265,7 +265,7 @@ test("Playwright smoke: LOGIN_CLICKED does not create popup windows", async (t) 
   await page.evaluate(() => {
     window.__zipPlaywrightHarness.resetCalls();
     window.__zipPlaywrightHarness.mutable.zendeskTabs = [
-      { id: 701, windowId: 88, active: true, highlighted: true, url: "https://adobeprimetime.zendesk.com/agent/dashboard" }
+      { id: 701, windowId: 88, active: true, highlighted: true, url: "https://adobeprimetime.zendesk.com/agent/dashboard?brand_id=2379046" }
     ];
   });
   const existingTabResponse = await page.evaluate(async () => {

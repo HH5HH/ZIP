@@ -1129,6 +1129,22 @@ body.zip-busy-cursor * {
   outline: none;
 }
 
+.zip-context-menu-item-danger {
+  color: var(--spectrum-semantic-negative-color-default);
+  font-weight: var(--spectrum-font-weight-medium);
+}
+
+.zip-context-menu-item-danger .zip-context-menu-item-icon {
+  color: var(--spectrum-semantic-negative-color-default);
+}
+
+.zip-context-menu-item-danger:hover,
+.zip-context-menu-item-danger:focus-visible {
+  background: var(--zip-feedback-danger-bg);
+  color: var(--spectrum-semantic-negative-color-default);
+  border-color: var(--zip-feedback-danger-border);
+}
+
 .zip-context-menu-divider {
   height: 1px;
   margin: 5px 4px;
@@ -1581,7 +1597,10 @@ body.zip-busy-cursor * {
   min-width: 0;
   max-width: none;
   display: flex;
+  flex-direction: column;
   justify-content: center;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
 .login-card-left .btn.primary {
@@ -1593,6 +1612,82 @@ body.zip-busy-cursor * {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.zip-config-gate {
+  width: min(100%, 420px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(180deg, var(--zip-section-grad-a) 0%, var(--zip-surface-strong) 100%),
+    var(--bg-default);
+  padding: var(--space-sm);
+  display: grid;
+  gap: var(--space-xs);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spectrum-body-color) 10%, transparent);
+}
+
+.zip-config-gate-title {
+  margin: 0;
+  color: var(--fg-default);
+  font-size: var(--spectrum-font-size-200);
+  line-height: 1.3;
+  font-weight: var(--spectrum-font-weight-bold);
+}
+
+.zip-config-gate-message {
+  margin: 0;
+  color: var(--fg-default);
+  font-size: var(--spectrum-font-size-100);
+  line-height: 1.45;
+}
+
+.zip-config-dropzone {
+  width: 100%;
+  min-height: 52px;
+  border-style: dashed;
+  border-width: 1px;
+  border-color: color-mix(in srgb, var(--spectrum-focus-color) 55%, var(--border-default));
+  background: color-mix(in srgb, var(--zip-control-bg) 84%, var(--zip-feedback-info-bg) 16%);
+  color: var(--fg-default);
+}
+
+.zip-config-dropzone.spectrum-Button .spectrum-Button-label {
+  white-space: normal;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.zip-config-dropzone:hover {
+  border-color: var(--spectrum-focus-color);
+  background: color-mix(in srgb, var(--zip-control-hover-bg) 78%, var(--zip-feedback-info-bg) 22%);
+}
+
+.zip-config-dropzone:focus-visible {
+  outline: 2px solid var(--spectrum-focus-ring-color);
+  outline-offset: 1px;
+}
+
+.zip-config-dropzone.is-dragover {
+  border-color: var(--spectrum-focus-color);
+  background: color-mix(in srgb, var(--zip-feedback-info-bg) 32%, var(--zip-control-bg) 68%);
+  box-shadow: 0 0 0 2px var(--spectrum-focus-ring-color);
+}
+
+.zip-config-dropzone.is-processing {
+  opacity: 0.76;
+  pointer-events: none;
+}
+
+.zip-config-gate-meta {
+  margin: 0;
+  color: var(--fg-subtle);
+  font-size: var(--spectrum-font-size-75);
+  line-height: 1.4;
+}
+
+.zip-config-gate-meta.is-error {
+  color: var(--spectrum-semantic-negative-color-default);
 }
 
 .login-card-right {
@@ -3373,12 +3468,122 @@ body.zip-logged-out .login-wrap {
 
 body.zip-logged-out .login-card { padding: var(--space-md); }
 
-body.zip-logged-out .login-card .btn.primary { display: inline-flex !important; }
-body.zip-logged-out #zipLoginBtn {
-  visibility: visible !important;
-  opacity: 1 !important;
+body.zip-logged-out #zipLoginBtn:not(.hidden) {
+  display: inline-flex !important;
+  visibility: visible;
+  opacity: 1;
 }
+
 body.zip-logged-out .login-card-description { display: block !important; }
+
+body.zip-logged-out.zip-config-locked #zipLoginBtn {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+body.zip-logged-out.zip-config-locked #zipConfigGate {
+  display: grid !important;
+}
+
+body.zip-logged-out:not(.zip-config-locked) #zipConfigGate {
+  display: none !important;
+}
+
+body.zip-logged-out.zip-config-locked .login-card {
+  width: min(100%, 760px);
+  min-height: clamp(360px, 72vh, 560px);
+  grid-template-areas: "cta";
+  gap: 0;
+  padding: clamp(var(--space-sm), 2.6vw, var(--space-md));
+  border: 2px solid #000;
+  border-radius: var(--radius-lg);
+  background: #fff;
+  box-shadow: none;
+}
+
+body.zip-logged-out.zip-config-locked .login-card-right,
+body.zip-logged-out.zip-config-locked .login-card-description {
+  display: none !important;
+}
+
+body.zip-logged-out.zip-config-locked .login-card-left {
+  align-items: stretch;
+  justify-content: stretch;
+  gap: 0;
+}
+
+body.zip-logged-out.zip-config-locked #zipConfigGate {
+  width: 100%;
+  min-height: clamp(320px, 64vh, 500px);
+  padding: clamp(var(--space-sm), 2.8vw, var(--space-lg));
+  border: 4px solid #000;
+  border-radius: var(--radius-lg);
+  background: #fff;
+  box-shadow: inset 0 0 0 2px #000;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-sm);
+  text-align: center;
+}
+
+body.zip-logged-out.zip-config-locked .zip-config-gate-title {
+  margin: 0;
+  color: #000;
+  font-size: clamp(20px, 3.6vw, 32px);
+  line-height: 1.12;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+body.zip-logged-out.zip-config-locked .zip-config-gate-message {
+  margin: 0;
+  color: #000;
+  max-width: 48ch;
+  font-size: clamp(13px, 2.2vw, 16px);
+  line-height: 1.45;
+  font-weight: var(--spectrum-font-weight-medium);
+}
+
+body.zip-logged-out.zip-config-locked .zip-config-dropzone {
+  width: 100%;
+  max-width: 100%;
+  min-height: clamp(140px, 30vh, 220px);
+  border: 4px dashed #000;
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: #000;
+  box-shadow: none;
+}
+
+body.zip-logged-out.zip-config-locked .zip-config-dropzone.spectrum-Button .spectrum-Button-label {
+  color: currentColor;
+  font-size: clamp(18px, 3.3vw, 32px);
+  letter-spacing: 0.06em;
+  line-height: 1.12;
+  text-transform: uppercase;
+  font-weight: var(--spectrum-font-weight-bold);
+}
+
+body.zip-logged-out.zip-config-locked .zip-config-dropzone:hover {
+  border-color: #000;
+  background: #000;
+  color: #fff;
+}
+
+body.zip-logged-out.zip-config-locked .zip-config-dropzone.is-dragover {
+  border-color: #000;
+  background: #000;
+  color: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #000 25%, transparent);
+}
+
+body.zip-logged-out.zip-config-locked .zip-config-gate-meta {
+  color: #000;
+  font-size: var(--spectrum-font-size-100);
+  line-height: 1.35;
+  font-weight: var(--spectrum-font-weight-medium);
+}
 
 .btn:disabled,
 .org-select:disabled,

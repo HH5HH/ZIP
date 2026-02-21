@@ -4,7 +4,7 @@
   if (typeof window === "undefined") return;
 
   // Copy this file to slack-runtime-config.local.js (git-ignored),
-  // then replace placeholders with internal Slack values.
+  // then replace placeholders with internal Slack OpenID values.
   if (!window.ZIP_PASS_AI_SLACK_APP_ID) {
     window.ZIP_PASS_AI_SLACK_APP_ID = "A0XXXXXXX";
   }
@@ -21,12 +21,7 @@
     window.ZIP_PASS_AI_SLACK_OIDC_SCOPE = "openid profile email";
   }
   if (!window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH) {
-    window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH = "slack-openid";
+    window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH = "slack-user";
   }
-  if (!window.ZIP_PASS_AI_SLACK_BOT_TOKEN) {
-    window.ZIP_PASS_AI_SLACK_BOT_TOKEN = "xoxb-REPLACE_ME";
-  }
-  if (!window.ZIP_PASS_AI_SLACK_USER_TOKEN) {
-    window.ZIP_PASS_AI_SLACK_USER_TOKEN = "xoxp-REPLACE_ME";
-  }
+  // Slack API user token is now loaded from ZIP.KEY into chrome.storage.local.
 })();
