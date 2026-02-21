@@ -31,6 +31,7 @@
 - `zip_slack_oauth_token` (required)
 - `zip_slack_scope`
 - `zip_slack_redirect_path`
+- `zip_slack_redirect_uri`
 - `zip_slack_user_token`
 - `zip_slack_key_loaded`
 

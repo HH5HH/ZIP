@@ -32,6 +32,7 @@ Slack ZIP.KEY config keys (`chrome.storage.local`):
 - `zip_slack_oauth_token` (required user token)
 - `zip_slack_scope` (default `openid profile email`)
 - `zip_slack_redirect_path` (default `slack-user`)
+- `zip_slack_redirect_uri` (optional explicit `https://<extension-id>.chromiumapp.org/...` override)
 - `zip_slack_user_token`
 - `zip_slack_key_loaded` (required gate flag)
 
@@ -53,6 +54,7 @@ Required fields in payload:
 Optional payload fields (only if you need overrides):
 - `slacktivation.scope`
 - `slacktivation.redirect_path`
+- `slacktivation.redirect_uri`
 - `slacktivation.singularity_channel_id`
 - `slacktivation.singularity_mention`
 
@@ -84,6 +86,7 @@ slacktivation.user_token=xoxp-YOUR_REQUIRED_USER_TOKEN
 Optional override keys are still supported if needed:
 - `slacktivation.scope`
 - `slacktivation.redirect_path`
+- `slacktivation.redirect_uri`
 - `slacktivation.singularity_channel_id`
 - `slacktivation.singularity_mention`
 
