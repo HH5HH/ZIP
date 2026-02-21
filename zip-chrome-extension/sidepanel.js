@@ -5261,7 +5261,11 @@
 
   function hasPassAiSlackOpenIdConfig(config) {
     const cfg = config && typeof config === "object" ? config : getPassAiSlackOpenIdConfig();
-    return !!(String(cfg.clientId || "").trim() && String(cfg.clientSecret || "").trim());
+    return !!(
+      String(cfg.clientId || "").trim()
+      && String(cfg.clientSecret || "").trim()
+      && String(cfg.redirectUri || "").trim()
+    );
   }
 
   function normalizePassAiSlackApiToken(value) {
@@ -5550,23 +5554,24 @@
     const silent = !!opts.silent;
     const allowOpenIdSilentProbe = opts.allowOpenIdSilentProbe !== false;
     const allowSlackTabBootstrap = opts.allowSlackTabBootstrap === true;
-    const openIdReady = await refreshPassAiSlackOpenIdStatus({ silent: true }).catch(() => false);
-    if (openIdReady) {
-      if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
-      return true;
+    const openIdConfig = getPassAiSlackOpenIdConfig();
+    const openIdEnabled = hasPassAiSlackOpenIdConfig(openIdConfig);
+    if (openIdEnabled) {
+      const openIdReady = await refreshPassAiSlackOpenIdStatus({ silent: true }).catch(() => false);
+      if (openIdReady) {
+        if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
+        return true;
+      }
     }
 
-    if (allowOpenIdSilentProbe) {
-      const openIdConfig = getPassAiSlackOpenIdConfig();
-      if (hasPassAiSlackOpenIdConfig(openIdConfig)) {
-        const nowMs = Date.now();
-        if (nowMs - Number(slackOpenIdSilentProbeLastAt || 0) >= SLACK_OPENID_SILENT_PROBE_MIN_GAP_MS) {
-          slackOpenIdSilentProbeLastAt = nowMs;
-          const silentOpenId = await runPassAiSlackOpenIdAuth({ interactive: false }).catch(() => null);
-          if (silentOpenId && silentOpenId.ok === true && isPassAiSlacktivated()) {
-            if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
-            return true;
-          }
+    if (allowOpenIdSilentProbe && openIdEnabled) {
+      const nowMs = Date.now();
+      if (nowMs - Number(slackOpenIdSilentProbeLastAt || 0) >= SLACK_OPENID_SILENT_PROBE_MIN_GAP_MS) {
+        slackOpenIdSilentProbeLastAt = nowMs;
+        const silentOpenId = await runPassAiSlackOpenIdAuth({ interactive: false }).catch(() => null);
+        if (silentOpenId && silentOpenId.ok === true && isPassAiSlacktivated()) {
+          if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
+          return true;
         }
       }
     }
@@ -5684,7 +5689,7 @@
 
     const poll = () => {
       passAiSlackAuthPollAttempt += 1;
-      refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: true, allowSlackTabBootstrap: true })
+      refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false, allowSlackTabBootstrap: false })
         .then((ready) => {
           if (ready) {
             stopPassAiSlackAuthPolling();
@@ -5717,7 +5722,7 @@
     updateTicketActionButtons();
     setStatus("Checking adobedx.slack.com session…", false);
     try {
-      const alreadyReady = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: true });
+      const alreadyReady = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false });
       if (alreadyReady && state.passAiSlackReady) {
         setStatus("ZIP is now SLACKTIVATED.", false);
         return;
@@ -5750,7 +5755,7 @@
       await wait(450);
       // Re-arm silent probe after opening/focusing Slack so auto-login can be picked up immediately.
       slackOpenIdSilentProbeLastAt = 0;
-      const readyNow = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: true });
+      const readyNow = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false, allowSlackTabBootstrap: false });
       if (readyNow) {
         setStatus("ZIP is now SLACKTIVATED.", false);
         return;

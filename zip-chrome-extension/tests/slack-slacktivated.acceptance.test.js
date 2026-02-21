@@ -39,7 +39,7 @@ test("sidepanel uses SLACKTIVATED indicator + @ME action and removes legacy Slac
   assert.match(js, /contextMenuClearKey:\s*\$\("zipContextMenuClearKey"\)/);
   assert.match(js, /const ready = await refreshSlacktivatedState\(\{ force: true, silent: true, allowOpenIdSilentProbe: false \}\)/);
   assert.match(js, /beginSlackLoginFlow\(\)\.catch/);
-  assert.match(js, /const alreadyReady = await refreshPassAiSlackAuth\(\{ silent: true, allowOpenIdSilentProbe: true \}\)/);
+  assert.match(js, /const alreadyReady = await refreshPassAiSlackAuth\(\{ silent: true, allowOpenIdSilentProbe: false \}\)/);
   assert.match(js, /const openIdConfig = getPassAiSlackOpenIdConfig\(\);/);
   assert.match(js, /runPassAiSlackOpenIdAuth\(\{ interactive: false \}\)/);
   assert.match(js, /runPassAiSlackOpenIdAuth\(\{ interactive: true \}\)/);
