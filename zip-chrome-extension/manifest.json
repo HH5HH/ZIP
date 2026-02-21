@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ZIP",
-  "version": "1.3.74",
+  "version": "1.3.76",
   "description": "ZIP = Zeek Info Peek — ZIP into INFO from the Zendesk API. Mission: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. Don't get stuck wasting cycles on blockers. If ZIP can make your job faster, better, or more enjoyable, please share feedback.",
   "permissions": [
     "sidePanel",
