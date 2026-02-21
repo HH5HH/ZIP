@@ -24,7 +24,7 @@
 - Q&AI (Singularity button) and `@ME` are shown for ticket-selected workflows and stay disabled until SLACKTIVATED.
 - `@ME` (`SLACK_IT_TO_ME`) sends the visible ticket table as Markdown to the logged-in Slack user via DM.
 - `@ME` now uses strict background Slack API delivery only (no Slack tab relay). End users should only see the resulting DM arrive in Slack.
-- Packaged ZIP builds now include `slack-runtime-config.js` so Slack defaults ship with the extension and do not depend on local-only config files.
+- Git-tracked source keeps sensitive Slack values empty. Internal distribution ZIPs inject local secrets at package time.
 
 Slack OpenID config keys (set in sidepanel page context or `localStorage`):
 - `zip.passAi.slackOidc.clientId` / `ZIP_PASS_AI_SLACK_OIDC_CLIENT_ID`
@@ -35,6 +35,23 @@ Slack OpenID config keys (set in sidepanel page context or `localStorage`):
 Optional Slack API token keys for no-tab `@ME` delivery:
 - `zip.passAi.slackApi.botToken` / `ZIP_PASS_AI_SLACK_BOT_TOKEN`
 - `zip.passAi.slackApi.userToken` / `ZIP_PASS_AI_SLACK_USER_TOKEN`
+
+## Internal Distribution with Local Secrets
+
+Use this flow when building the ZIP your internal team installs:
+
+1. Create local secrets file (git-ignored):
+   - `cp /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/slack-runtime-config.local.example.js /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/slack-runtime-config.local.js`
+   - Fill in real Slack values in `slack-runtime-config.local.js`.
+2. Build internal package with secrets injected:
+   - `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/scripts/build_internal_distribution.sh`
+3. Output ZIP defaults to:
+   - `/Users/minnick/Documents/PASS/ZIP/ZIP_TEAM_DISTRIBUTION_v<manifest-version>.zip`
+
+Notes:
+- `slack-runtime-config.local.js` is git-ignored and never committed.
+- The build script also supports existing local file `slack-oidc.local.js` as fallback.
+- Public GitHub source remains token-free, while your internal ZIP contains required runtime values.
 
 ## Quick Start (Urgent Line Paged)
 

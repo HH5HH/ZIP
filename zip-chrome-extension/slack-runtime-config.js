@@ -14,7 +14,9 @@
     window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_ID = "2418816376.10567352717968";
   }
   if (!window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET) {
-    window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET = "31520173933cb712899d53c26e36a936";
+    // Keep empty in git-tracked source. Internal distribution ZIP injects this
+    // from git-ignored slack-runtime-config.local.js.
+    window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET = "";
   }
   if (!window.ZIP_PASS_AI_SLACK_OIDC_SCOPE) {
     window.ZIP_PASS_AI_SLACK_OIDC_SCOPE = "openid profile email";
