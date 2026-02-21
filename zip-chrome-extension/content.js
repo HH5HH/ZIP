@@ -13,6 +13,7 @@
   const TICKET_URL_PREFIX = BASE + "/agent/tickets/";
   const JIRA_ENG_TICKET_FIELD_ID = "22790243";
   const JIRA_BROWSE_URL_PREFIX = "https://jira.corp.adobe.com/browse/";
+  const SLACK_WEB_API_ORIGIN = "https://slack.com";
   const SLACK_DEFAULT_WORKSPACE_ORIGIN = "https://adobedx.slack.com";
   const SLACK_DEFAULT_FINAL_MARKER_REGEX = "FINAL_RESPONSE";
   const SLACK_BRIDGE_EVENT_NAME = "zip-slack-token";
@@ -1637,22 +1638,10 @@
 
   function pickSlackSessionUserName(candidate) {
     if (!candidate || typeof candidate !== "object") return "";
-    const directUserId = normalizeSlackUserId(
-      candidate.user_id
-      || candidate.userId
-      || (candidate.user && candidate.user.id)
-      || (candidate.user && candidate.user.user_id)
-      || candidate.id
-    );
-    const allowDirectFields = !!directUserId;
     const user = candidate.user && typeof candidate.user === "object" ? candidate.user : null;
     const profile = user && user.profile && typeof user.profile === "object" ? user.profile : null;
     const directProfile = candidate.profile && typeof candidate.profile === "object" ? candidate.profile : null;
     const values = [
-      allowDirectFields ? candidate.user_name : "",
-      allowDirectFields ? candidate.username : "",
-      allowDirectFields ? candidate.real_name : "",
-      allowDirectFields ? candidate.display_name : "",
       user && user.real_name,
       user && user.name,
       user && user.display_name,
@@ -1674,21 +1663,10 @@
 
   function pickSlackSessionAvatarUrl(candidate) {
     if (!candidate || typeof candidate !== "object") return "";
-    const directUserId = normalizeSlackUserId(
-      candidate.user_id
-      || candidate.userId
-      || (candidate.user && candidate.user.id)
-      || (candidate.user && candidate.user.user_id)
-      || candidate.id
-    );
-    const allowDirectFields = !!directUserId;
     const user = candidate.user && typeof candidate.user === "object" ? candidate.user : null;
     const profile = user && user.profile && typeof user.profile === "object" ? user.profile : null;
     const directProfile = candidate.profile && typeof candidate.profile === "object" ? candidate.profile : null;
     const values = [
-      allowDirectFields ? candidate.avatar_url : "",
-      allowDirectFields ? candidate.image_192 : "",
-      allowDirectFields ? candidate.image_72 : "",
       user && user.image_192,
       user && user.image_72,
       profile && profile.image_192,
@@ -1727,7 +1705,6 @@
           || candidate.userId
           || (candidate.user && candidate.user.id)
           || (candidate.user && candidate.user.user_id)
-          || candidate.id
         );
       }
       if (!userName) {
@@ -1801,21 +1778,82 @@
     return "";
   }
 
-  async function getSlackUserProfile(workspaceOrigin, userId) {
-    const normalizedUserId = normalizeSlackUserId(userId);
-    if (!normalizedUserId) return null;
-    const info = await postSlackApi(workspaceOrigin, "/api/users.info", {
-      user: normalizedUserId,
-      _x_reason: "zip-auth-profile"
-    });
-    if (!info || !info.ok) return null;
-    const payload = info.payload && typeof info.payload === "object" ? info.payload : null;
-    const user = payload && payload.user && typeof payload.user === "object" ? payload.user : null;
+  function extractSlackIdentityFromUsersProfilePayload(payload) {
+    const source = payload && typeof payload === "object" ? payload : null;
+    const profile = source && source.profile && typeof source.profile === "object"
+      ? source.profile
+      : null;
+    if (!profile) return null;
+    return {
+      userName: getSlackUserDisplayName({ profile }),
+      avatarUrl: getSlackUserAvatar({ profile })
+    };
+  }
+
+  function extractSlackIdentityFromUsersInfoPayload(payload) {
+    const source = payload && typeof payload === "object" ? payload : null;
+    const user = source && source.user && typeof source.user === "object"
+      ? source.user
+      : null;
     if (!user) return null;
     return {
       userName: getSlackUserDisplayName(user),
       avatarUrl: getSlackUserAvatar(user)
     };
+  }
+
+  async function getSlackUserProfile(workspaceOrigin, userId) {
+    const identity = { userName: "", avatarUrl: "" };
+    const applyIdentity = (nextIdentity) => {
+      const candidate = nextIdentity && typeof nextIdentity === "object" ? nextIdentity : null;
+      if (!candidate) return;
+      if (!identity.userName) identity.userName = String(candidate.userName || "").trim();
+      if (!identity.avatarUrl) identity.avatarUrl = normalizeSlackAvatarUrl(candidate.avatarUrl || "");
+    };
+    const normalizedUserId = normalizeSlackUserId(userId);
+    const targetOrigins = [];
+    const pushOrigin = (value) => {
+      const normalized = normalizeSlackWorkspaceOrigin(value);
+      if (!normalized) return;
+      if (!targetOrigins.includes(normalized)) targetOrigins.push(normalized);
+    };
+    pushOrigin(workspaceOrigin);
+    pushOrigin(SLACK_WEB_API_ORIGIN);
+
+    for (let i = 0; i < targetOrigins.length; i += 1) {
+      const origin = targetOrigins[i];
+      const selfProfile = await postSlackApi(origin, "/api/users.profile.get", {
+        _x_reason: "zip-auth-profile-self"
+      });
+      if (selfProfile && selfProfile.ok) {
+        applyIdentity(extractSlackIdentityFromUsersProfilePayload(selfProfile.payload));
+      }
+
+      if ((!identity.userName || !identity.avatarUrl) && normalizedUserId) {
+        const profileById = await postSlackApi(origin, "/api/users.profile.get", {
+          user: normalizedUserId,
+          _x_reason: "zip-auth-profile-user"
+        });
+        if (profileById && profileById.ok) {
+          applyIdentity(extractSlackIdentityFromUsersProfilePayload(profileById.payload));
+        }
+      }
+
+      if ((!identity.userName || !identity.avatarUrl) && normalizedUserId) {
+        const info = await postSlackApi(origin, "/api/users.info", {
+          user: normalizedUserId,
+          _x_reason: "zip-auth-profile-info"
+        });
+        if (info && info.ok) {
+          applyIdentity(extractSlackIdentityFromUsersInfoPayload(info.payload));
+        }
+      }
+
+      if (identity.userName && identity.avatarUrl) break;
+    }
+
+    if (!identity.userName && !identity.avatarUrl) return null;
+    return identity;
   }
 
   async function slackAuthTestAction(inner) {
