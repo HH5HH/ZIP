@@ -39,6 +39,7 @@ Slack ZIP.KEY config keys (`chrome.storage.local`):
 OpenID behavior:
 - ZIP now treats Slack OpenID as opt-in. Interactive/silent OpenID auth is only attempted when `slacktivation.redirect_uri` (or `zip_slack_redirect_uri`) is explicitly configured.
 - Without an explicit redirect URI, ZIP uses adobedx workspace-session SLACKTIVATION only (no OpenID redirect page).
+- Production build fallback: when running under extension ID `ibijkkpjfgaocgmpafbcckhhdkpbldoc`, ZIP defaults OpenID redirect URI to `https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-user`.
 
 Legacy `localStorage` Slack keys are migrated to `chrome.storage.local` and removed.
 
