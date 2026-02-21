@@ -75,6 +75,7 @@ function createChromeHarness(options) {
     tabsUpdate: [],
     tabsCreate: [],
     tabsSendMessage: [],
+    scriptingExecuteScript: [],
     windowsUpdate: [],
     windowsCreate: [],
     windowsRemove: [],
@@ -144,7 +145,10 @@ function createChromeHarness(options) {
         return Promise.resolve(result);
       },
       get(tabId, callback) {
-        const tab = { id: tabId, url: "", windowId: 101 };
+        const matched = mutable.zendeskTabs.find((tab) => tab && Number(tab.id) === Number(tabId)) || null;
+        const tab = matched
+          ? { ...matched }
+          : { id: tabId, url: "", windowId: 101 };
         if (typeof callback === "function") {
           callback(tab);
           return;
@@ -153,6 +157,24 @@ function createChromeHarness(options) {
       },
       sendMessage(tabId, message, callback) {
         calls.tabsSendMessage.push({ tabId, message });
+        if (options && typeof options.tabsSendMessage === "function") {
+          const scripted = options.tabsSendMessage({ tabId, message, calls, mutable }) || {};
+          const runtimeError = String(scripted.runtimeError || "").trim();
+          if (runtimeError) {
+            chrome.runtime.lastError = { message: runtimeError };
+            if (typeof callback === "function") callback(undefined);
+            chrome.runtime.lastError = null;
+            return;
+          }
+          const scriptedResponse = Object.prototype.hasOwnProperty.call(scripted, "response")
+            ? scripted.response
+            : { ok: false, status: 0, payload: null };
+          if (typeof callback === "function") {
+            callback(scriptedResponse);
+            return;
+          }
+          return;
+        }
         if (typeof callback === "function") {
           callback({ ok: false, status: 0, payload: null });
           return;
@@ -160,6 +182,16 @@ function createChromeHarness(options) {
       },
       onUpdated: { addListener() {} },
       onActivated: { addListener() {} }
+    },
+    scripting: {
+      executeScript(injection, callback) {
+        calls.scriptingExecuteScript.push(injection);
+        if (typeof callback === "function") {
+          callback([]);
+          return;
+        }
+        return Promise.resolve([]);
+      }
     },
     windows: {
       update(windowId, updateInfo, callback) {
@@ -344,6 +376,42 @@ test("LOGIN_CLICKED still routes to login URL when background auth state is stal
     "login click should always route through Zendesk login URL to avoid stale-auth no-op clicks"
   );
   assert.equal(harness.calls.tabsCreate.length, 0, "no new tab should be created when existing Zendesk tab is present");
+});
+
+test("ZIP_REQUEST retries after injecting Zendesk content script when receiver is missing", async () => {
+  let attempt = 0;
+  const harness = createChromeHarness({
+    zendeskTabs: [{ id: 42, windowId: 7, url: ZENDESK_DASHBOARD_URL }],
+    tabsSendMessage: ({ message }) => {
+      if (!message || message.type !== "ZIP_FROM_BACKGROUND") {
+        return { response: { ok: false, status: 0, payload: null } };
+      }
+      attempt += 1;
+      if (attempt === 1) {
+        return { runtimeError: "Could not establish connection. Receiving end does not exist." };
+      }
+      return {
+        response: {
+          type: "ZIP_RESPONSE",
+          requestId: message.requestId,
+          result: { ok: true, status: 200 }
+        }
+      };
+    }
+  });
+
+  const response = await harness.sendRuntimeMessage({
+    type: "ZIP_REQUEST",
+    requestId: "r-test",
+    tabId: 42,
+    inner: { action: "getMe" }
+  });
+
+  assert.equal(response && response.type, "ZIP_RESPONSE");
+  assert.equal(response && response.error, undefined);
+  assert.equal(response && response.result && response.result.ok, true);
+  assert.equal(harness.calls.scriptingExecuteScript.length, 1, "content script should be injected once before retry");
+  assert.equal(harness.calls.tabsSendMessage.length, 2, "request should retry exactly once");
 });
 
 test("legacy idle storage never blocks session checks", async () => {

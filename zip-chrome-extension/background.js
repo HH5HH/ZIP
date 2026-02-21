@@ -57,6 +57,7 @@ const SLACK_OPENID_DEFAULT_SCOPES = "openid profile email";
 const SLACK_OPENID_DEFAULT_REDIRECT_PATH = "slack-user";
 const SLACK_OPENID_STATUS_VERIFY_TTL_MS = 60 * 1000;
 const ZIP_PANEL_PATH = "sidepanel.html";
+const ZIP_CONTENT_SCRIPT_FILE = "content.js";
 const ZENDESK_SUBDOMAIN = (() => {
   try {
     const hostname = new URL(ZENDESK_ORIGIN).hostname;
@@ -485,6 +486,82 @@ function isContentScriptUnavailableError(errorMessage) {
     || text.includes("message port closed");
 }
 
+function getTabById(tabId) {
+  return new Promise((resolve) => {
+    if (tabId == null) {
+      resolve(null);
+      return;
+    }
+    try {
+      chrome.tabs.get(tabId, (tab) => {
+        void chrome.runtime.lastError;
+        resolve(tab && typeof tab === "object" ? tab : null);
+      });
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+function sendMessageToTab(tabId, payload) {
+  return new Promise((resolve) => {
+    if (tabId == null) {
+      resolve({ ok: false, error: "Tab unavailable", response: null });
+      return;
+    }
+    try {
+      chrome.tabs.sendMessage(tabId, payload, (response) => {
+        const runtimeError = chrome.runtime && chrome.runtime.lastError
+          ? String(chrome.runtime.lastError.message || "")
+          : "";
+        if (runtimeError) {
+          resolve({ ok: false, error: runtimeError, response: null });
+          return;
+        }
+        resolve({
+          ok: true,
+          error: "",
+          response: response !== undefined ? response : null
+        });
+      });
+    } catch (err) {
+      resolve({
+        ok: false,
+        error: err && err.message ? err.message : "Unable to message tab.",
+        response: null
+      });
+    }
+  });
+}
+
+async function tryInjectZendeskContentScript(tabId) {
+  if (!chrome.scripting || typeof chrome.scripting.executeScript !== "function") return false;
+  const tab = await getTabById(tabId);
+  const tabUrl = String(tab && tab.url || "");
+  if (!isZendeskUrl(tabUrl)) return false;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: [ZIP_CONTENT_SCRIPT_FILE]
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function sendMessageToTabWithZendeskRecovery(tabId, payload) {
+  const first = await sendMessageToTab(tabId, payload);
+  if (first.ok) return first;
+  if (!isContentScriptUnavailableError(first.error)) return first;
+
+  const injected = await tryInjectZendeskContentScript(tabId);
+  if (!injected) return first;
+
+  const second = await sendMessageToTab(tabId, payload);
+  return second.ok ? second : first;
+}
+
 async function queryZendeskTabs() {
   try {
     const tabs = await chrome.tabs.query({ url: ZENDESK_TAB_QUERY_PATTERN });
@@ -504,37 +581,31 @@ function pickPreferredZendeskTab(tabs) {
 }
 
 function checkZendeskSessionViaTab(tabId) {
-  return new Promise((resolve, reject) => {
+  return (async () => {
     if (tabId == null) {
-      reject(new Error("Zendesk tab unavailable"));
-      return;
+      throw new Error("Zendesk tab unavailable");
     }
-    chrome.tabs.sendMessage(
-      tabId,
-      {
-        type: "ZIP_SESSION_PROBE",
-        url: ZENDESK_SESSION_URL,
-        source: "background"
-      },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message || "Zendesk content script unavailable"));
-          return;
-        }
-        if (!response || typeof response !== "object") {
-          reject(new Error("Zendesk content script did not return a session response"));
-          return;
-        }
-        resolve({
-          ok: !!response.ok,
-          status: Number(response.status) || 0,
-          payload: response.payload || null,
-          source: "content",
-          tabId
-        });
-      }
-    );
-  });
+    const request = {
+      type: "ZIP_SESSION_PROBE",
+      url: ZENDESK_SESSION_URL,
+      source: "background"
+    };
+    const sendResult = await sendMessageToTabWithZendeskRecovery(tabId, request);
+    if (!sendResult.ok) {
+      throw new Error(sendResult.error || "Zendesk content script unavailable");
+    }
+    const response = sendResult.response;
+    if (!response || typeof response !== "object") {
+      throw new Error("Zendesk content script did not return a session response");
+    }
+    return {
+      ok: !!response.ok,
+      status: Number(response.status) || 0,
+      payload: response.payload || null,
+      source: "content",
+      tabId
+    };
+  })();
 }
 
 async function checkZendeskSessionViaContentScript() {
@@ -3655,13 +3726,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === "ZIP_REQUEST") {
     const { requestId, tabId, inner } = msg;
-    chrome.tabs.sendMessage(tabId, { type: "ZIP_FROM_BACKGROUND", requestId, inner }, (response) => {
-      if (chrome.runtime.lastError) {
-        sendResponse({ type: "ZIP_RESPONSE", requestId, error: chrome.runtime.lastError.message });
-      } else {
-        sendResponse(response || { type: "ZIP_RESPONSE", requestId, error: "No response" });
-      }
-    });
+    sendMessageToTabWithZendeskRecovery(tabId, { type: "ZIP_FROM_BACKGROUND", requestId, inner })
+      .then((result) => {
+        if (!result.ok) {
+          sendResponse({ type: "ZIP_RESPONSE", requestId, error: result.error || "Tab message failed." });
+          return;
+        }
+        sendResponse(result.response || { type: "ZIP_RESPONSE", requestId, error: "No response" });
+      })
+      .catch((err) => sendResponse({
+        type: "ZIP_RESPONSE",
+        requestId,
+        error: err && err.message ? err.message : "Tab message failed."
+      }));
     return true;
   }
   if (msg.type === "ZIP_NAVIGATE") {
