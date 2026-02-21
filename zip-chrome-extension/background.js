@@ -1169,6 +1169,16 @@ function getSlackWorkspaceHost(value) {
   }
 }
 
+function isAllowedSlackWorkspaceHost(host, workspaceHost) {
+  const normalizedHost = String(host || "").toLowerCase();
+  if (!normalizedHost || !normalizedHost.endsWith(".slack.com")) return false;
+  if (!workspaceHost) return true;
+  if (normalizedHost === workspaceHost) return true;
+  // Slack workspace sessions frequently route through app.slack.com/client/*.
+  if (normalizedHost === "app.slack.com") return true;
+  return false;
+}
+
 async function queryInjectableSlackTabs(workspaceOrigin) {
   let tabs = [];
   try {
@@ -1186,7 +1196,7 @@ async function queryInjectableSlackTabs(workspaceOrigin) {
     if (expectedHost) {
       try {
         const tabHost = String(new URL(tabUrl).hostname || "").toLowerCase();
-        if (tabHost !== expectedHost) continue;
+        if (!isAllowedSlackWorkspaceHost(tabHost, expectedHost)) continue;
       } catch (_) {
         continue;
       }
@@ -2204,6 +2214,7 @@ async function slackSendMarkdownToSelfViaApi(input) {
     return primarySessionDelivery;
   }
   const primarySessionError = String((primarySessionDelivery && primarySessionDelivery.error) || "").trim();
+  const primarySessionCode = String((primarySessionDelivery && primarySessionDelivery.code) || "").trim().toLowerCase();
 
   // If no explicit Slack user OAuth token is available, rely on session guidance.
   if (!hasUserOAuthCandidate) {
@@ -2269,92 +2280,111 @@ async function slackSendMarkdownToSelfViaApi(input) {
     const teamId = normalizeSlackTeamId(authPayload.team_id || authPayload.team);
 
     const authUserId = normalizeSlackUserId(authPayload.user_id || authPayload.user);
-    const userId = (requestedUserId || openIdUserId || authUserId);
-    if (!userId) {
+    const userIdCandidates = [];
+    const pushUserIdCandidate = (value) => {
+      const normalized = normalizeSlackUserId(value);
+      if (!normalized) return;
+      if (!userIdCandidates.includes(normalized)) userIdCandidates.push(normalized);
+    };
+    pushUserIdCandidate(requestedUserId);
+    pushUserIdCandidate(openIdUserId);
+    pushUserIdCandidate(authUserId);
+    if (!userIdCandidates.length) {
       lastFailureCode = "slack_user_identity_missing";
       lastFailureError = "Unable to resolve Slack user identity for @ME delivery.";
       continue;
     }
-    if (requestedUserId && requestedUserId !== userId) {
-      lastFailureCode = "slack_user_mismatch";
-      lastFailureError = "Active Slack API user does not match the SLACKTIVATED user.";
-      continue;
-    }
+    let tokenInvalidated = false;
+    for (let userIdx = 0; userIdx < userIdCandidates.length; userIdx += 1) {
+      const userId = userIdCandidates[userIdx];
+      const dmOpen = await postSlackApiWithBearerToken(webApiOrigin, "/api/conversations.open", {
+        users: userId,
+        return_im: "true",
+        _x_reason: "zip-slack-it-to-me-open-dm-bg"
+      }, attemptToken);
+      if (!dmOpen.ok) {
+        lastFailureCode = dmOpen.code || "slack_open_dm_failed";
+        lastFailureError = dmOpen.error || "Unable to open Slack DM channel.";
+        if (isSlackTokenInvalidationCode(lastFailureCode)) {
+          await invalidateStoredSlackToken(attemptToken);
+          tokenInvalidated = true;
+          break;
+        }
+        continue;
+      }
+      const dmPayload = dmOpen.payload && typeof dmOpen.payload === "object" ? dmOpen.payload : {};
+      const dmChannel = dmPayload.channel && typeof dmPayload.channel === "object" ? dmPayload.channel : {};
+      const postChannel = String(dmChannel.id || dmPayload.channel_id || dmPayload.channel || "").trim();
+      if (!postChannel) {
+        lastFailureCode = "slack_dm_channel_missing";
+        lastFailureError = "Unable to resolve Slack DM channel.";
+        continue;
+      }
 
-    const dmOpen = await postSlackApiWithBearerToken(webApiOrigin, "/api/conversations.open", {
-      users: userId,
-      return_im: "true",
-      _x_reason: "zip-slack-it-to-me-open-dm-bg"
-    }, attemptToken);
-    if (!dmOpen.ok) {
-      lastFailureCode = dmOpen.code || "slack_open_dm_failed";
-      lastFailureError = dmOpen.error || "Unable to open Slack DM channel.";
-      if (isSlackTokenInvalidationCode(lastFailureCode)) {
-        await invalidateStoredSlackToken(attemptToken);
+      const messageText = markdownText;
+      const post = await postSlackApiWithBearerToken(webApiOrigin, "/api/chat.postMessage", {
+        channel: postChannel,
+        text: messageText,
+        mrkdwn: "true",
+        unfurl_links: "false",
+        unfurl_media: "false",
+        _x_reason: "zip-slack-it-to-me-bg"
+      }, attemptToken);
+      if (!post.ok) {
+        lastFailureCode = post.code || "slack_post_failed";
+        lastFailureError = post.error || "Unable to send Slack self-DM.";
+        if (isSlackTokenInvalidationCode(lastFailureCode)) {
+          await invalidateStoredSlackToken(attemptToken);
+          tokenInvalidated = true;
+          break;
+        }
+        continue;
       }
+      const postPayload = post.payload && typeof post.payload === "object" ? post.payload : {};
+      const postedTs = String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim();
+      let unreadMarked = false;
+      if (postChannel && postedTs) {
+        unreadMarked = await markSlackMessageUnreadViaApiToken(
+          webApiOrigin,
+          attemptToken,
+          postChannel,
+          postedTs
+        );
+        if (!unreadMarked) {
+          const workspaceUnreadFallback = await slackMarkUnreadViaWorkspaceSession({
+            workspaceOrigin,
+            channelId: postChannel,
+            ts: postedTs,
+            autoBootstrapSlackTab: true
+          }, "workspace_mark_unread_fallback");
+          unreadMarked = !!(workspaceUnreadFallback && workspaceUnreadFallback.ok && workspaceUnreadFallback.unread_marked === true);
+        }
+      }
+      return {
+        ok: true,
+        channel: String(postPayload.channel || postChannel || userId).trim(),
+        ts: postedTs,
+        user_id: userId,
+        team_id: teamId || "",
+        user_name: resolvedUserName,
+        avatar_url: resolvedAvatarUrl,
+        unread_marked: unreadMarked,
+        delivery_mode: "user_direct_channel"
+      };
+    }
+    if (tokenInvalidated) {
       continue;
     }
-    const dmPayload = dmOpen.payload && typeof dmOpen.payload === "object" ? dmOpen.payload : {};
-    const dmChannel = dmPayload.channel && typeof dmPayload.channel === "object" ? dmPayload.channel : {};
-    const postChannel = String(dmChannel.id || dmPayload.channel_id || dmPayload.channel || "").trim();
-    if (!postChannel) {
-      lastFailureCode = "slack_dm_channel_missing";
-      lastFailureError = "Unable to resolve Slack DM channel.";
-      continue;
-    }
-
-    const messageText = markdownText;
-    const post = await postSlackApiWithBearerToken(webApiOrigin, "/api/chat.postMessage", {
-      channel: postChannel,
-      text: messageText,
-      mrkdwn: "true",
-      unfurl_links: "false",
-      unfurl_media: "false",
-      _x_reason: "zip-slack-it-to-me-bg"
-    }, attemptToken);
-    if (!post.ok) {
-      lastFailureCode = post.code || "slack_post_failed";
-      lastFailureError = post.error || "Unable to send Slack self-DM.";
-      if (isSlackTokenInvalidationCode(lastFailureCode)) {
-        await invalidateStoredSlackToken(attemptToken);
-      }
-      continue;
-    }
-    const postPayload = post.payload && typeof post.payload === "object" ? post.payload : {};
-    const postedTs = String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim();
-    let unreadMarked = false;
-    if (postChannel && postedTs) {
-      unreadMarked = await markSlackMessageUnreadViaApiToken(
-        webApiOrigin,
-        attemptToken,
-        postChannel,
-        postedTs
-      );
-      if (!unreadMarked) {
-        const workspaceUnreadFallback = await slackMarkUnreadViaWorkspaceSession({
-          workspaceOrigin,
-          channelId: postChannel,
-          ts: postedTs,
-          autoBootstrapSlackTab: true
-        }, "workspace_mark_unread_fallback");
-        unreadMarked = !!(workspaceUnreadFallback && workspaceUnreadFallback.ok && workspaceUnreadFallback.unread_marked === true);
-      }
-    }
-    return {
-      ok: true,
-      channel: String(postPayload.channel || postChannel || userId).trim(),
-      ts: postedTs,
-      user_id: userId,
-      team_id: teamId || "",
-      user_name: resolvedUserName,
-      avatar_url: resolvedAvatarUrl,
-      unread_marked: unreadMarked,
-      delivery_mode: "user_direct_channel"
-    };
   }
 
-  const sessionFallback = await slackSendMarkdownToSelfViaWorkspaceSession(body, lastFailureCode);
-  if (sessionFallback && sessionFallback.ok) return sessionFallback;
+  const shouldRetryWorkspaceSession = !(
+    primarySessionCode === "slack_workspace_tab_missing"
+    || primarySessionCode === "slack_workspace_session_unavailable"
+  );
+  if (shouldRetryWorkspaceSession) {
+    const sessionFallback = await slackSendMarkdownToSelfViaWorkspaceSession(body, lastFailureCode);
+    if (sessionFallback && sessionFallback.ok) return sessionFallback;
+  }
   return {
     ok: false,
     code: lastFailureCode,
