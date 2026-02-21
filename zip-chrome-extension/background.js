@@ -1588,6 +1588,115 @@ function normalizeSlackUserId(value) {
   return /^[UW][A-Z0-9]{8,}$/.test(id) ? id : "";
 }
 
+function normalizeSlackAvatarUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "https:") return "";
+    return parsed.toString();
+  } catch (_) {
+    return "";
+  }
+}
+
+function pickSlackDisplayNameFromProfile(profile, userRecord) {
+  const user = userRecord && typeof userRecord === "object" ? userRecord : {};
+  const source = profile && typeof profile === "object" ? profile : {};
+  const candidates = [
+    source.display_name_normalized,
+    source.display_name,
+    source.real_name_normalized,
+    source.real_name,
+    user.real_name,
+    user.name
+  ];
+  for (let i = 0; i < candidates.length; i += 1) {
+    const candidate = String(candidates[i] || "").trim();
+    if (candidate) return candidate;
+  }
+  return "";
+}
+
+function pickSlackAvatarFromProfile(profile) {
+  const source = profile && typeof profile === "object" ? profile : {};
+  const candidates = [
+    source.image_original,
+    source.image_512,
+    source.image_192,
+    source.image_128,
+    source.image_72,
+    source.image_48,
+    source.image_32,
+    source.image_24
+  ];
+  for (let i = 0; i < candidates.length; i += 1) {
+    const avatar = normalizeSlackAvatarUrl(candidates[i]);
+    if (avatar) return avatar;
+  }
+  return "";
+}
+
+function extractSlackIdentityFromUsersProfilePayload(payload) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const profile = source.profile && typeof source.profile === "object" ? source.profile : {};
+  return {
+    userName: pickSlackDisplayNameFromProfile(profile, null),
+    avatarUrl: pickSlackAvatarFromProfile(profile)
+  };
+}
+
+function extractSlackIdentityFromUsersInfoPayload(payload) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const user = source.user && typeof source.user === "object" ? source.user : {};
+  const profile = user.profile && typeof user.profile === "object" ? user.profile : {};
+  return {
+    userName: pickSlackDisplayNameFromProfile(profile, user),
+    avatarUrl: pickSlackAvatarFromProfile(profile)
+  };
+}
+
+async function fetchSlackIdentityViaApi(workspaceOrigin, token, userId) {
+  const resolvedUserId = normalizeSlackUserId(userId);
+  const identity = { userName: "", avatarUrl: "" };
+  const applyIdentity = (nextIdentity) => {
+    const candidate = nextIdentity && typeof nextIdentity === "object" ? nextIdentity : {};
+    if (!identity.userName) identity.userName = String(candidate.userName || "").trim();
+    if (!identity.avatarUrl) identity.avatarUrl = normalizeSlackAvatarUrl(candidate.avatarUrl || "");
+  };
+
+  const profileFields = {
+    _x_reason: "zip-slacktivation-profile-bg"
+  };
+  if (resolvedUserId) profileFields.user = resolvedUserId;
+  const profileResult = await postSlackApiWithBearerToken(
+    workspaceOrigin,
+    "/api/users.profile.get",
+    profileFields,
+    token
+  );
+  if (profileResult && profileResult.ok === true) {
+    applyIdentity(extractSlackIdentityFromUsersProfilePayload(profileResult.payload));
+  }
+
+  if ((!identity.userName || !identity.avatarUrl) && resolvedUserId) {
+    const userInfoResult = await postSlackApiWithBearerToken(
+      workspaceOrigin,
+      "/api/users.info",
+      {
+        user: resolvedUserId,
+        _x_reason: "zip-slacktivation-users-info-bg"
+      },
+      token
+    );
+    if (userInfoResult && userInfoResult.ok === true) {
+      applyIdentity(extractSlackIdentityFromUsersInfoPayload(userInfoResult.payload));
+    }
+  }
+
+  return identity;
+}
+
 function normalizeSlackApiToken(value) {
   const token = String(value || "").trim();
   if (!token) return "";
@@ -2330,8 +2439,13 @@ async function slackSendMarkdownToSelfViaApi(input) {
   const requestedUserId = normalizeSlackUserId(body.userId || body.user_id);
   const openIdUserId = normalizeSlackUserId(openIdSession && openIdSession.userId);
 
-  const resolvedUserName = String(body.userName || body.user_name || (openIdSession && openIdSession.userName) || "").trim();
-  const resolvedAvatarUrl = String(body.avatarUrl || body.avatar_url || (openIdSession && openIdSession.avatarUrl) || "").trim();
+  let resolvedUserName = String(body.userName || body.user_name || (openIdSession && openIdSession.userName) || "").trim();
+  let resolvedAvatarUrl = normalizeSlackAvatarUrl(
+    body.avatarUrl
+    || body.avatar_url
+    || (openIdSession && openIdSession.avatarUrl)
+    || ""
+  );
 
   let lastFailureCode = "slack_send_failed";
   let lastFailureError = "Unable to send Slack self-DM.";
@@ -2354,8 +2468,25 @@ async function slackSendMarkdownToSelfViaApi(input) {
 
     const authPayload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
     const teamId = normalizeSlackTeamId(authPayload.team_id || authPayload.team);
+    const authFallbackName = String(authPayload.user || "").trim();
 
     const authUserId = normalizeSlackUserId(authPayload.user_id || authPayload.user);
+    if (!resolvedUserName || !resolvedAvatarUrl) {
+      const identity = await fetchSlackIdentityViaApi(
+        webApiOrigin,
+        attemptToken,
+        authUserId || requestedUserId || openIdUserId
+      );
+      if (!resolvedUserName) {
+        resolvedUserName = String(identity.userName || authFallbackName || "").trim();
+      }
+      if (!resolvedAvatarUrl) {
+        resolvedAvatarUrl = normalizeSlackAvatarUrl(identity.avatarUrl || "");
+      }
+    }
+    if (!resolvedUserName) {
+      resolvedUserName = authFallbackName;
+    }
     const userIdCandidates = [];
     const pushUserIdCandidate = (value) => {
       const normalized = normalizeSlackUserId(value);
@@ -2512,18 +2643,30 @@ async function slackAuthTestViaApi(input) {
     const payload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
     const userId = normalizeSlackUserId(payload.user_id || payload.user || body.userId || body.user_id);
     const teamId = normalizeSlackTeamId(payload.team_id || payload.team);
-    const userName = String(
+    let userName = String(
       body.userName
       || body.user_name
       || (openIdSession && openIdSession.userName)
       || ""
     ).trim();
-    const avatarUrl = String(
+    let avatarUrl = normalizeSlackAvatarUrl(
       body.avatarUrl
       || body.avatar_url
       || (openIdSession && openIdSession.avatarUrl)
       || ""
-    ).trim();
+    );
+    if (!userName || !avatarUrl) {
+      const identity = await fetchSlackIdentityViaApi(workspaceOrigin, attemptToken, userId);
+      if (!userName) {
+        userName = String(identity.userName || payload.user || "").trim();
+      }
+      if (!avatarUrl) {
+        avatarUrl = normalizeSlackAvatarUrl(identity.avatarUrl || "");
+      }
+    }
+    if (!userName) {
+      userName = String(payload.user || "").trim();
+    }
     return {
       ok: true,
       ready: true,
