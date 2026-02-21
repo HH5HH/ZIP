@@ -92,6 +92,7 @@ test("sidepanel uses SLACKTIVATED indicator + @ME action and removes legacy Slac
   assert.doesNotMatch(js, /PASS_AI_SLACK_WORKSPACE_ORIGIN \+ \"\/signin\"/);
   assert.doesNotMatch(js, /datasetName:/);
   assert.match(js, /userToken:\s*slackApiTokens\.userToken \|\| ""/);
+  assert.match(js, /autoBootstrapSlackTab:\s*false/);
   assert.doesNotMatch(js, /allowBotDelivery:\s*false/);
   assert.doesNotMatch(js, /botToken:\s*slackApiTokens\.botToken/);
   assert.doesNotMatch(js, /csvFilename:/);
@@ -176,6 +177,7 @@ test("background removes legacy Slack OAuth and popup-login handlers", () => {
   assert.match(source, /action:\s*"slackMarkUnread"/);
   assert.match(source, /async function markSlackMessageUnreadViaApiToken\(workspaceOrigin, token, channelId, messageTs\)/);
   assert.match(source, /async function slackSendMarkdownToSelfViaApi\(input\)/);
+  assert.match(source, /const allowWorkspaceTabBootstrap = body\.autoBootstrapSlackTab !== false;/);
   assert.match(source, /async function slackSendMarkdownToSelfViaWorkspaceSession\(input, reasonCode\)/);
   assert.match(source, /function isAllowedSlackWorkspaceHost\(host, workspaceHost\)/);
   assert.match(source, /if \(!isAllowedSlackWorkspaceHost\(tabHost, expectedHost\)\) continue;/);
@@ -200,6 +202,7 @@ test("background removes legacy Slack OAuth and popup-login handlers", () => {
   assert.doesNotMatch(source, /if \(isBotToken\) \{/);
   assert.match(source, /delivery_mode:\s*"user_direct_channel"/);
   assert.match(source, /delivery_mode:\s*"workspace_session_dm"/);
+  assert.match(source, /autoBootstrapSlackTab:\s*allowWorkspaceTabBootstrap/);
   assert.doesNotMatch(source, /requires a Slack user token/);
   assert.doesNotMatch(source, /files\.getUploadURLExternal/);
   assert.doesNotMatch(source, /Download: <"\s*\+\s*csvPermalink\s*\+\s*"\|CSV>/);
