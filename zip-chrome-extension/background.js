@@ -1723,7 +1723,7 @@ function isSlackUserOAuthToken(value) {
   const token = normalizeSlackApiToken(value);
   if (!token) return false;
   // User/session-flavored tokens are eligible; bot tokens are not.
-  return !/^xoxb-/i.test(token);
+  return !/^xoxb-/i.test(token) && !/^xoxe\.xoxb-/i.test(token);
 }
 
 function toPriorSlackTs(value) {
