@@ -213,6 +213,7 @@ function buildSidepanelHarnessBootstrap(options) {
         zip_slack_oauth_token: "xoxp-mock-user-token",
         zip_slack_scope: "openid profile email",
         zip_slack_redirect_path: "slack-user",
+        zip_slack_redirect_uri: "https://hiecfnklcdpmkadljghekolopidedllo.chromiumapp.org/slack-user",
         zip_slack_key_loaded: true,
         zip_slack_key_meta: seededMeta
       });
