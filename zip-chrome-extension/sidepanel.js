@@ -4554,15 +4554,8 @@
     if (!raw) return "";
     try {
       const parsed = new URL(raw);
-      const hostname = String(parsed.hostname || "").toLowerCase();
-      if (
-        hostname === "slack-edge.com"
-        || hostname.endsWith(".slack-edge.com")
-        || hostname === "slack.com"
-        || hostname.endsWith(".slack.com")
-      ) {
-        return parsed.toString();
-      }
+      if (String(parsed.protocol || "").toLowerCase() !== "https:") return "";
+      return parsed.toString();
     } catch (_) {}
     return "";
   }
