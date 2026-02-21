@@ -191,6 +191,7 @@
   let authRefreshInFlight = false;
   let slackAuthCheckInFlight = false;
   let slackAuthCheckLastAt = 0;
+  let slackIdentityEnrichmentLastAt = 0;
   let slackSessionCacheHydrated = false;
   let slackOpenIdSilentProbeLastAt = 0;
   let slackBootstrapInFlight = false;
@@ -201,6 +202,7 @@
   const AUTH_CHECK_INTERVAL_HIDDEN_MS = 120 * 1000;
   const AUTH_CHECK_FORCE_GAP_MS = 1500;
   const SLACK_AUTH_AUTO_REFRESH_MIN_GAP_MS = 8000;
+  const SLACK_IDENTITY_ENRICH_MIN_GAP_MS = 30 * 1000;
   const SLACK_OPENID_SILENT_PROBE_MIN_GAP_MS = 60 * 1000;
   const VIEW_COUNT_CACHE_KEY = "zip.filter.viewCounts.v1";
   const ORG_COUNT_CACHE_KEY = "zip.filter.orgCounts.v1";
@@ -2296,6 +2298,47 @@
       || normalized === "not_authed";
   }
 
+  async function enrichPassAiSlackIdentityFromExistingTab(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const force = !!opts.force;
+    const nowMs = Date.now();
+    if (!force && nowMs - Number(slackIdentityEnrichmentLastAt || 0) < SLACK_IDENTITY_ENRICH_MIN_GAP_MS) {
+      return null;
+    }
+    slackIdentityEnrichmentLastAt = nowMs;
+    try {
+      const response = await sendToSlackTab({
+        action: "slackAuthTest",
+        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN
+      });
+      const ready = !!(
+        response
+        && response.ok === true
+        && (
+          response.ready === true
+          || response.ready == null
+        )
+      );
+      if (!ready) return null;
+      return {
+        userId: String(response.user_id || response.userId || "").trim(),
+        userName: String(response.user_name || response.userName || response.display_name || response.displayName || "").trim(),
+        avatarUrl: normalizePassAiSlackAvatarUrl(response.avatar_url || response.avatarUrl || ""),
+        teamId: String(response.team_id || response.teamId || "").trim(),
+        enterpriseId: String(response.enterprise_id || response.enterpriseId || "").trim(),
+        userToken: normalizePassAiSlackApiToken(
+          response.session_token
+          || response.web_token
+          || response.user_token
+          || response.token
+          || ""
+        )
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function bootstrapSlackWorkspaceForMessaging(options) {
     const opts = options && typeof options === "object" ? options : {};
     const allowCreateTab = opts.allowCreateTab !== false;
@@ -3879,6 +3922,7 @@
   function showLogin() {
     stopPassAiSlackAuthPolling();
     hideToast();
+    slackIdentityEnrichmentLastAt = 0;
     slackSessionCacheHydrated = false;
     state.user = null;
     state.zendeskTabId = null;
@@ -5677,6 +5721,16 @@
     const requestedMode = String(nextState && nextState.mode || "").trim().toLowerCase();
     const skipPersist = !!(nextState && nextState.skipPersist);
     const clearPersisted = !!(nextState && nextState.clearPersisted);
+    const priorUserId = String(state.passAiSlackUserId || "").trim();
+    const priorUserName = String(state.passAiSlackUserName || "").trim();
+    const priorAvatarUrl = normalizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "");
+    const requestedUserId = String((nextState && nextState.userId) || "").trim();
+    const requestedUserName = String(
+      (nextState && (nextState.userName || nextState.user_name || nextState.displayName || nextState.display_name))
+      || ""
+    ).trim();
+    const requestedAvatarUrl = normalizePassAiSlackAvatarUrl(nextState && (nextState.avatarUrl || nextState.avatar_url || ""));
+    const preservePreviousIdentity = !requestedUserId || !priorUserId || requestedUserId === priorUserId;
     const hasRequestedWebReady = !!(
       nextState
       && Object.prototype.hasOwnProperty.call(nextState, "webReady")
@@ -5686,15 +5740,14 @@
       : (requestedMode ? requestedMode === "web" : ready);
     state.passAiSlackReady = ready;
     state.passAiSlackWebReady = state.passAiSlackReady && !!requestedWebReady;
-    state.passAiSlackUserId = state.passAiSlackReady ? String((nextState && nextState.userId) || "").trim() : "";
+    state.passAiSlackUserId = state.passAiSlackReady
+      ? (requestedUserId || priorUserId)
+      : "";
     state.passAiSlackUserName = state.passAiSlackReady
-      ? String(
-        (nextState && (nextState.userName || nextState.user_name || nextState.displayName || nextState.display_name))
-        || ""
-      ).trim()
+      ? (requestedUserName || (preservePreviousIdentity ? priorUserName : ""))
       : "";
     state.passAiSlackAvatarUrl = state.passAiSlackReady
-      ? normalizePassAiSlackAvatarUrl(nextState && (nextState.avatarUrl || nextState.avatar_url || ""))
+      ? (requestedAvatarUrl || (preservePreviousIdentity ? priorAvatarUrl : ""))
       : "";
     if (state.passAiSlackReady) {
       state.passAiSlackAuthError = "";
@@ -5767,14 +5820,38 @@
         userToken: getPassAiSlackApiTokenConfig().userToken || ""
       });
       if (apiStatus && apiStatus.ok === true) {
+        let apiUserId = String(apiStatus.user_id || apiStatus.userId || state.passAiSlackUserId || "").trim();
+        let apiUserName = String(apiStatus.user_name || apiStatus.userName || state.passAiSlackUserName || "").trim();
+        let apiAvatarUrl = normalizePassAiSlackAvatarUrl(
+          apiStatus.avatar_url || apiStatus.avatarUrl || state.passAiSlackAvatarUrl || ""
+        );
+        let apiTeamId = String(apiStatus.team_id || apiStatus.teamId || "").trim();
+        let apiEnterpriseId = String(apiStatus.enterprise_id || apiStatus.enterpriseId || "").trim();
+
+        if (!apiAvatarUrl || !apiUserName) {
+          const identityFromTab = await enrichPassAiSlackIdentityFromExistingTab({ force: false });
+          if (identityFromTab) {
+            if (!apiUserId) apiUserId = String(identityFromTab.userId || "").trim();
+            if (!apiUserName) apiUserName = String(identityFromTab.userName || "").trim();
+            if (!apiAvatarUrl) apiAvatarUrl = normalizePassAiSlackAvatarUrl(identityFromTab.avatarUrl || "");
+            if (!apiTeamId) apiTeamId = String(identityFromTab.teamId || "").trim();
+            if (!apiEnterpriseId) apiEnterpriseId = String(identityFromTab.enterpriseId || "").trim();
+            if (identityFromTab.userToken) {
+              await persistPassAiSlackApiTokenConfig({
+                userToken: identityFromTab.userToken
+              }).catch(() => {});
+            }
+          }
+        }
         setPassAiSlackAuthState({
           ready: true,
           mode: "api",
           webReady: true,
-          userId: apiStatus.user_id || apiStatus.userId || state.passAiSlackUserId || "",
-          userName: apiStatus.user_name || apiStatus.userName || state.passAiSlackUserName || "",
-          avatarUrl: apiStatus.avatar_url || apiStatus.avatarUrl || state.passAiSlackAvatarUrl || "",
-          teamId: apiStatus.team_id || apiStatus.teamId || ""
+          userId: apiUserId,
+          userName: apiUserName,
+          avatarUrl: apiAvatarUrl,
+          teamId: apiTeamId,
+          enterpriseId: apiEnterpriseId
         });
         if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
         return true;
