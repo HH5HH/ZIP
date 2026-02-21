@@ -1638,10 +1638,22 @@
 
   function pickSlackSessionUserName(candidate) {
     if (!candidate || typeof candidate !== "object") return "";
+    const directUserId = normalizeSlackUserId(
+      candidate.user_id
+      || candidate.userId
+      || (candidate.user && candidate.user.id)
+      || (candidate.user && candidate.user.user_id)
+      || candidate.id
+    );
+    const allowDirectFields = !!directUserId;
     const user = candidate.user && typeof candidate.user === "object" ? candidate.user : null;
     const profile = user && user.profile && typeof user.profile === "object" ? user.profile : null;
     const directProfile = candidate.profile && typeof candidate.profile === "object" ? candidate.profile : null;
     const values = [
+      allowDirectFields ? candidate.user_name : "",
+      allowDirectFields ? candidate.username : "",
+      allowDirectFields ? candidate.real_name : "",
+      allowDirectFields ? candidate.display_name : "",
       user && user.real_name,
       user && user.name,
       user && user.display_name,
@@ -1663,10 +1675,21 @@
 
   function pickSlackSessionAvatarUrl(candidate) {
     if (!candidate || typeof candidate !== "object") return "";
+    const directUserId = normalizeSlackUserId(
+      candidate.user_id
+      || candidate.userId
+      || (candidate.user && candidate.user.id)
+      || (candidate.user && candidate.user.user_id)
+      || candidate.id
+    );
+    const allowDirectFields = !!directUserId;
     const user = candidate.user && typeof candidate.user === "object" ? candidate.user : null;
     const profile = user && user.profile && typeof user.profile === "object" ? user.profile : null;
     const directProfile = candidate.profile && typeof candidate.profile === "object" ? candidate.profile : null;
     const values = [
+      allowDirectFields ? candidate.avatar_url : "",
+      allowDirectFields ? candidate.image_192 : "",
+      allowDirectFields ? candidate.image_72 : "",
       user && user.image_192,
       user && user.image_72,
       profile && profile.image_192,
@@ -1681,6 +1704,67 @@
       if (url) return url;
     }
     return "";
+  }
+
+  function normalizeSlackDomIdentityName(value) {
+    let text = String(value || "").replace(/\s+/g, " ").trim();
+    if (!text) return "";
+    const lower = text.toLowerCase();
+    if (
+      lower === "you"
+      || lower === "profile"
+      || lower === "account"
+      || lower === "user menu"
+      || lower === "menu"
+      || lower === "zip"
+      || lower === "ziptool"
+    ) {
+      return "";
+    }
+    text = text.replace(/^profile(?:\s+menu)?(?:\s+for)?\s+/i, "");
+    text = text.replace(/^account(?:\s+menu)?(?:\s+for)?\s+/i, "");
+    text = text.replace(/^signed in as\s+/i, "");
+    text = text.replace(/\s+\b(menu|profile|account|settings)\b$/i, "");
+    text = text.trim();
+    return text.length > 80 ? "" : text;
+  }
+
+  function extractSlackIdentityFromDom() {
+    if (typeof document === "undefined" || !document.querySelectorAll) return { userName: "", avatarUrl: "" };
+    const selectors = [
+      'button[data-qa="user-button"] img',
+      '[data-qa="user-button"] img',
+      'button[data-qa*="user"] img',
+      '[id*="team_menu_user_menu"] img',
+      'button[aria-label*="profile" i] img',
+      'button[aria-label*="account" i] img',
+      'button[aria-label*="you" i] img'
+    ];
+    for (let i = 0; i < selectors.length; i += 1) {
+      const nodes = document.querySelectorAll(selectors[i]);
+      for (let j = 0; j < nodes.length; j += 1) {
+        const img = nodes[j];
+        if (!img) continue;
+        const avatarUrl = normalizeSlackAvatarUrl(
+          img.currentSrc
+          || img.src
+          || img.getAttribute("src")
+          || img.getAttribute("data-src")
+          || ""
+        );
+        if (!avatarUrl) continue;
+        const owner = img.closest("button, [role='button'], a, [aria-label], [title]");
+        const userName = normalizeSlackDomIdentityName(
+          (img.getAttribute("alt") || "")
+          || (owner && (owner.getAttribute("aria-label") || owner.getAttribute("title"))) || ""
+        );
+        return {
+          userName,
+          avatarUrl
+        };
+      }
+    }
+    return { userName: "", avatarUrl: "" };
   }
 
   function extractSlackSessionIdentity() {
@@ -1705,6 +1789,7 @@
           || candidate.userId
           || (candidate.user && candidate.user.id)
           || (candidate.user && candidate.user.user_id)
+          || candidate.id
         );
       }
       if (!userName) {
@@ -1734,6 +1819,12 @@
     for (let i = 0; i < candidates.length; i += 1) {
       assign(candidates[i]);
       if (teamId && userId) break;
+    }
+
+    if (!userName || !avatarUrl) {
+      const domIdentity = extractSlackIdentityFromDom();
+      if (!userName) userName = String(domIdentity.userName || "").trim();
+      if (!avatarUrl) avatarUrl = String(domIdentity.avatarUrl || "").trim();
     }
 
     return { teamId, userId, userName, avatarUrl };
@@ -1924,6 +2015,11 @@
       if (!userName) userName = String(profile.userName || "").trim();
       if (!avatarUrl) avatarUrl = String(profile.avatarUrl || "").trim();
     }
+    if (!userName || !avatarUrl) {
+      const domIdentity = extractSlackIdentityFromDom();
+      if (!userName) userName = String(domIdentity.userName || "").trim();
+      if (!avatarUrl) avatarUrl = String(domIdentity.avatarUrl || "").trim();
+    }
     return {
       ok: true,
       user_id: userId,
@@ -1975,6 +2071,11 @@
     if (profile) {
       if (!userName) userName = String(profile.userName || "").trim();
       if (!avatarUrl) avatarUrl = String(profile.avatarUrl || "").trim();
+    }
+    if (!userName || !avatarUrl) {
+      const domIdentity = extractSlackIdentityFromDom();
+      if (!userName) userName = String(domIdentity.userName || "").trim();
+      if (!avatarUrl) avatarUrl = String(domIdentity.avatarUrl || "").trim();
     }
 
     const dmOpen = await postSlackApi(workspaceOrigin, "/api/conversations.open", {
