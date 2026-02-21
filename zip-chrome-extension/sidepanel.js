@@ -2787,6 +2787,17 @@
     return byEmail || "there";
   }
 
+  function getCurrentZendeskAvatarUrl() {
+    const user = state && state.user && typeof state.user === "object" ? state.user : null;
+    if (!user || !user.photo || typeof user.photo !== "object") return "";
+    return normalizePassAiSlackAvatarUrl(
+      user.photo.content_url
+      || user.photo.url
+      || user.photo.mapped_content_url
+      || ""
+    );
+  }
+
   function syncSlacktivatedIndicator() {
     if (els.slacktivatedIcon) {
       const defaultSrc = String(
@@ -5717,6 +5728,12 @@
     const priorUserId = String(state.passAiSlackUserId || "").trim();
     const priorUserName = String(state.passAiSlackUserName || "").trim();
     const priorAvatarUrl = normalizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "");
+    const zendeskAvatarUrl = getCurrentZendeskAvatarUrl();
+    const priorAvatarIsZendesk = !!(
+      priorAvatarUrl
+      && zendeskAvatarUrl
+      && priorAvatarUrl === zendeskAvatarUrl
+    );
     const requestedUserId = String((nextState && nextState.userId) || "").trim();
     const requestedUserName = String(
       (nextState && (nextState.userName || nextState.user_name || nextState.displayName || nextState.display_name))
@@ -5740,7 +5757,7 @@
       ? (requestedUserName || (preservePreviousIdentity ? priorUserName : ""))
       : "";
     state.passAiSlackAvatarUrl = state.passAiSlackReady
-      ? (requestedAvatarUrl || (preservePreviousIdentity ? priorAvatarUrl : ""))
+      ? (requestedAvatarUrl || (preservePreviousIdentity && !priorAvatarIsZendesk ? priorAvatarUrl : ""))
       : "";
     if (state.passAiSlackReady) {
       state.passAiSlackAuthError = "";
@@ -5809,7 +5826,8 @@
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
         userId: state.passAiSlackUserId || "",
         userName: state.passAiSlackUserName || "",
-        avatarUrl: state.passAiSlackAvatarUrl || "",
+        // Avoid feeding back stale/non-Slack avatar URLs; let background resolve Slack profile avatar.
+        avatarUrl: "",
         userToken: getPassAiSlackApiTokenConfig().userToken || ""
       });
       if (apiStatus && apiStatus.ok === true) {
