@@ -1637,14 +1637,22 @@
 
   function pickSlackSessionUserName(candidate) {
     if (!candidate || typeof candidate !== "object") return "";
+    const directUserId = normalizeSlackUserId(
+      candidate.user_id
+      || candidate.userId
+      || (candidate.user && candidate.user.id)
+      || (candidate.user && candidate.user.user_id)
+      || candidate.id
+    );
+    const allowDirectFields = !!directUserId;
     const user = candidate.user && typeof candidate.user === "object" ? candidate.user : null;
     const profile = user && user.profile && typeof user.profile === "object" ? user.profile : null;
     const directProfile = candidate.profile && typeof candidate.profile === "object" ? candidate.profile : null;
     const values = [
-      candidate.user_name,
-      candidate.username,
-      candidate.real_name,
-      candidate.display_name,
+      allowDirectFields ? candidate.user_name : "",
+      allowDirectFields ? candidate.username : "",
+      allowDirectFields ? candidate.real_name : "",
+      allowDirectFields ? candidate.display_name : "",
       user && user.real_name,
       user && user.name,
       user && user.display_name,
@@ -1666,13 +1674,21 @@
 
   function pickSlackSessionAvatarUrl(candidate) {
     if (!candidate || typeof candidate !== "object") return "";
+    const directUserId = normalizeSlackUserId(
+      candidate.user_id
+      || candidate.userId
+      || (candidate.user && candidate.user.id)
+      || (candidate.user && candidate.user.user_id)
+      || candidate.id
+    );
+    const allowDirectFields = !!directUserId;
     const user = candidate.user && typeof candidate.user === "object" ? candidate.user : null;
     const profile = user && user.profile && typeof user.profile === "object" ? user.profile : null;
     const directProfile = candidate.profile && typeof candidate.profile === "object" ? candidate.profile : null;
     const values = [
-      candidate.avatar_url,
-      candidate.image_192,
-      candidate.image_72,
+      allowDirectFields ? candidate.avatar_url : "",
+      allowDirectFields ? candidate.image_192 : "",
+      allowDirectFields ? candidate.image_72 : "",
       user && user.image_192,
       user && user.image_72,
       profile && profile.image_192,
