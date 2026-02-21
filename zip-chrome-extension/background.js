@@ -1678,18 +1678,31 @@ async function fetchSlackIdentityViaApi(workspaceOrigin, token, userId) {
 
   for (let originIdx = 0; originIdx < targetOrigins.length; originIdx += 1) {
     const origin = targetOrigins[originIdx];
-    const profileFields = {
-      _x_reason: "zip-slacktivation-profile-bg"
-    };
-    if (resolvedUserId) profileFields.user = resolvedUserId;
-    const profileResult = await postSlackApiWithBearerToken(
+    const selfProfileResult = await postSlackApiWithBearerToken(
       origin,
       "/api/users.profile.get",
-      profileFields,
+      {
+        _x_reason: "zip-slacktivation-profile-self-bg"
+      },
       token
     );
-    if (profileResult && profileResult.ok === true) {
-      applyIdentity(extractSlackIdentityFromUsersProfilePayload(profileResult.payload));
+    if (selfProfileResult && selfProfileResult.ok === true) {
+      applyIdentity(extractSlackIdentityFromUsersProfilePayload(selfProfileResult.payload));
+    }
+
+    if ((!identity.userName || !identity.avatarUrl) && resolvedUserId) {
+      const profileByIdResult = await postSlackApiWithBearerToken(
+        origin,
+        "/api/users.profile.get",
+        {
+          user: resolvedUserId,
+          _x_reason: "zip-slacktivation-profile-user-bg"
+        },
+        token
+      );
+      if (profileByIdResult && profileByIdResult.ok === true) {
+        applyIdentity(extractSlackIdentityFromUsersProfilePayload(profileByIdResult.payload));
+      }
     }
 
     if ((!identity.userName || !identity.avatarUrl) && resolvedUserId) {
