@@ -68,6 +68,9 @@ test("sidepanel uses SLACKTIVATED indicator + @ME action and removes legacy Slac
   assert.match(js, /const PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY = "zip\.passAi\.slackApi\.botToken";/);
   assert.match(js, /const PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY = "zip\.passAi\.slackApi\.userToken";/);
   assert.match(js, /function isAllowedSlackWorkspaceHost\(host, workspaceHost\)/);
+  assert.match(js, /function normalizePassAiSlackAvatarUrl\(value\)/);
+  assert.match(js, /parsed\.protocol/);
+  assert.doesNotMatch(js, /hostname === "slack-edge\.com"/);
   assert.match(js, /function isTransientSlackAuthProbeFailureMessage\(message\)/);
   assert.match(js, /if \(wasReady && isTransientSlackAuthProbeFailureMessage\(message\)\) \{/);
   assert.match(js, /const allowSlackTabBootstrapCreate = opts\.allowSlackTabBootstrapCreate !== false;/);
