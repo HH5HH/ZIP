@@ -5634,6 +5634,18 @@
     return tokenLooksValid ? token : "";
   }
 
+  function isPassAiSlackBotApiToken(value) {
+    const token = normalizePassAiSlackApiToken(value);
+    if (!token) return false;
+    return /^xoxb-/i.test(token) || /^xoxe\.xoxb-/i.test(token);
+  }
+
+  function isPassAiSlackUserApiToken(value) {
+    const token = normalizePassAiSlackApiToken(value);
+    if (!token) return false;
+    return !isPassAiSlackBotApiToken(token);
+  }
+
   function getPassAiSlackApiTokenConfig() {
     const secretConfig = state && state.zipSecretConfig && typeof state.zipSecretConfig === "object"
       ? state.zipSecretConfig
@@ -5981,13 +5993,14 @@
     let apiFailureCode = "";
     let apiFailureMessage = "";
     try {
+      const configuredUserToken = getPassAiSlackApiTokenConfig().userToken || "";
       const apiStatus = await sendBackgroundRequest("ZIP_SLACK_API_AUTH_TEST", {
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
         userId: state.passAiSlackUserId || "",
         userName: state.passAiSlackUserName || "",
         // Avoid feeding back stale/non-Slack avatar URLs; let background resolve Slack profile avatar.
         avatarUrl: "",
-        userToken: getPassAiSlackApiTokenConfig().userToken || ""
+        userToken: isPassAiSlackUserApiToken(configuredUserToken) ? configuredUserToken : ""
       });
       if (apiStatus && apiStatus.ok === true) {
         let apiUserId = String(apiStatus.user_id || apiStatus.userId || state.passAiSlackUserId || "").trim();
@@ -6006,7 +6019,7 @@
             if (!apiAvatarUrl) apiAvatarUrl = normalizePassAiSlackAvatarUrl(identityFromTab.avatarUrl || "");
             if (!apiTeamId) apiTeamId = String(identityFromTab.teamId || "").trim();
             if (!apiEnterpriseId) apiEnterpriseId = String(identityFromTab.enterpriseId || "").trim();
-            if (identityFromTab.userToken) {
+            if (isPassAiSlackUserApiToken(identityFromTab.userToken || "")) {
               await persistPassAiSlackApiTokenConfig({
                 userToken: identityFromTab.userToken
               }).catch(() => {});
@@ -6021,7 +6034,7 @@
             if (!apiAvatarUrl) apiAvatarUrl = normalizePassAiSlackAvatarUrl(transientIdentity.avatarUrl || "");
             if (!apiTeamId) apiTeamId = String(transientIdentity.teamId || "").trim();
             if (!apiEnterpriseId) apiEnterpriseId = String(transientIdentity.enterpriseId || "").trim();
-            if (transientIdentity.userToken) {
+            if (isPassAiSlackUserApiToken(transientIdentity.userToken || "")) {
               await persistPassAiSlackApiTokenConfig({
                 userToken: transientIdentity.userToken
               }).catch(() => {});
@@ -6092,7 +6105,7 @@
           || response.token
         )
       );
-      if (capturedWebToken) {
+      if (isPassAiSlackUserApiToken(capturedWebToken)) {
         await persistPassAiSlackApiTokenConfig({
           userToken: capturedWebToken
         }).catch(() => {});
