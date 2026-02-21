@@ -2284,7 +2284,9 @@
     );
   }
 
-  async function bootstrapSlackWorkspaceForMessaging() {
+  async function bootstrapSlackWorkspaceForMessaging(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const allowCreateTab = opts.allowCreateTab !== false;
     const workspaceOrigin = normalizeSlackWorkspaceOriginForTabs(PASS_AI_SLACK_WORKSPACE_ORIGIN);
     const landingUrl = workspaceOrigin + "/";
     const findInjectableTab = async () => {
@@ -2325,12 +2327,14 @@
           });
         } catch (_) {}
       }
-    } else {
+    } else if (allowCreateTab) {
       const opened = await openSlackWorkspaceTab(landingUrl, { active: false }).catch(() => null);
       const openedTabId = Number(opened && opened.tabId);
       if (Number.isFinite(openedTabId) && openedTabId > 0) {
         candidateTabId = openedTabId;
       }
+    } else {
+      return false;
     }
 
     if (!Number.isFinite(candidateTabId) || candidateTabId <= 0) {
@@ -2353,6 +2357,7 @@
   async function sendToSlackTabWithAutoBootstrap(inner, options) {
     const opts = options && typeof options === "object" ? options : {};
     const canBootstrap = opts.bootstrap !== false;
+    const bootstrapAllowCreateTab = opts.allowCreateTab !== false;
     const onBootstrap = typeof opts.onBootstrap === "function" ? opts.onBootstrap : null;
     let bootstrapAttempted = false;
     const tryBootstrap = async () => {
@@ -2367,7 +2372,7 @@
         try { onBootstrap(); } catch (_) {}
       }
       try {
-        return await bootstrapSlackWorkspaceForMessaging();
+        return await bootstrapSlackWorkspaceForMessaging({ allowCreateTab: bootstrapAllowCreateTab });
       } finally {
         slackBootstrapInFlight = false;
       }
@@ -5617,6 +5622,7 @@
     const silent = !!opts.silent;
     const allowOpenIdSilentProbe = opts.allowOpenIdSilentProbe !== false;
     const allowSlackTabBootstrap = opts.allowSlackTabBootstrap === true;
+    const allowSlackTabBootstrapCreate = opts.allowSlackTabBootstrapCreate !== false;
     const openIdConfig = getPassAiSlackOpenIdConfig();
     const openIdEnabled = hasPassAiSlackOpenIdConfig(openIdConfig);
     if (openIdEnabled) {
@@ -5645,6 +5651,7 @@
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN
       }, {
         bootstrap: allowSlackTabBootstrap,
+        allowCreateTab: allowSlackTabBootstrapCreate,
         onBootstrap: () => {
           if (!silent) {
             setStatus("Preparing adobedx.slack.com web session for Slack auth…", false);
@@ -5736,7 +5743,8 @@
       return await refreshPassAiSlackAuth({
         silent: opts.silent !== false,
         allowOpenIdSilentProbe: opts.allowOpenIdSilentProbe !== false,
-        allowSlackTabBootstrap: opts.allowSlackTabBootstrap === true
+        allowSlackTabBootstrap: opts.allowSlackTabBootstrap === true,
+        allowSlackTabBootstrapCreate: opts.allowSlackTabBootstrapCreate !== false
       });
     } finally {
       slackAuthCheckInFlight = false;
@@ -8423,7 +8431,13 @@
     renderApiParams();
     setStatus("Hello " + (me.user.name || me.user.email || "agent") + ". Loading assigned tickets...", false);
     await loadTickets(me.user && me.user.id != null ? String(me.user.id) : "");
-    refreshSlacktivatedState({ force: true, silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
+    refreshSlacktivatedState({
+      force: true,
+      silent: true,
+      allowOpenIdSilentProbe: true,
+      allowSlackTabBootstrap: true,
+      allowSlackTabBootstrapCreate: false
+    }).catch(() => {});
     setStatus(
       "Assigned tickets loaded. " + state.filteredTickets.length + " rows shown. Loading filter menus…",
       false
