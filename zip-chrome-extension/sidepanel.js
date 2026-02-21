@@ -2787,17 +2787,6 @@
     return byEmail || "there";
   }
 
-  function getZendeskAvatarUrlForFallback() {
-    const user = state && state.user && typeof state.user === "object" ? state.user : null;
-    if (!user || !user.photo || typeof user.photo !== "object") return "";
-    return normalizePassAiSlackAvatarUrl(
-      user.photo.content_url
-      || user.photo.url
-      || user.photo.mapped_content_url
-      || ""
-    );
-  }
-
   function syncSlacktivatedIndicator() {
     if (els.slacktivatedIcon) {
       const defaultSrc = String(
@@ -2805,8 +2794,7 @@
         || els.slacktivatedIcon.getAttribute("src")
         || SLACKTIVATED_PENDING_ICON_URL
       ).trim() || SLACKTIVATED_PENDING_ICON_URL;
-      const slackAvatar = normalizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "");
-      const avatar = slackAvatar || getZendeskAvatarUrlForFallback();
+      const avatar = normalizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "");
       const useAvatar = !!(isPassAiSlacktivated() && avatar);
       els.slacktivatedIcon.src = useAvatar ? avatar : defaultSrc;
       els.slacktivatedIcon.alt = useAvatar

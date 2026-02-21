@@ -1665,33 +1665,49 @@ async function fetchSlackIdentityViaApi(workspaceOrigin, token, userId) {
     if (!identity.avatarUrl) identity.avatarUrl = normalizeSlackAvatarUrl(candidate.avatarUrl || "");
   };
 
-  const profileFields = {
-    _x_reason: "zip-slacktivation-profile-bg"
+  const targetOrigins = [];
+  const pushOrigin = (value) => {
+    const normalized = normalizeSlackWorkspaceOrigin(value);
+    if (!normalized) return;
+    if (!targetOrigins.includes(normalized)) targetOrigins.push(normalized);
   };
-  if (resolvedUserId) profileFields.user = resolvedUserId;
-  const profileResult = await postSlackApiWithBearerToken(
-    workspaceOrigin,
-    "/api/users.profile.get",
-    profileFields,
-    token
-  );
-  if (profileResult && profileResult.ok === true) {
-    applyIdentity(extractSlackIdentityFromUsersProfilePayload(profileResult.payload));
-  }
+  // Prefer canonical Slack API origin for user-token profile lookups.
+  pushOrigin(SLACK_WEB_API_ORIGIN);
+  // Keep workspace endpoint as fallback for legacy/session-adjacent tokens.
+  pushOrigin(workspaceOrigin);
 
-  if ((!identity.userName || !identity.avatarUrl) && resolvedUserId) {
-    const userInfoResult = await postSlackApiWithBearerToken(
-      workspaceOrigin,
-      "/api/users.info",
-      {
-        user: resolvedUserId,
-        _x_reason: "zip-slacktivation-users-info-bg"
-      },
+  for (let originIdx = 0; originIdx < targetOrigins.length; originIdx += 1) {
+    const origin = targetOrigins[originIdx];
+    const profileFields = {
+      _x_reason: "zip-slacktivation-profile-bg"
+    };
+    if (resolvedUserId) profileFields.user = resolvedUserId;
+    const profileResult = await postSlackApiWithBearerToken(
+      origin,
+      "/api/users.profile.get",
+      profileFields,
       token
     );
-    if (userInfoResult && userInfoResult.ok === true) {
-      applyIdentity(extractSlackIdentityFromUsersInfoPayload(userInfoResult.payload));
+    if (profileResult && profileResult.ok === true) {
+      applyIdentity(extractSlackIdentityFromUsersProfilePayload(profileResult.payload));
     }
+
+    if ((!identity.userName || !identity.avatarUrl) && resolvedUserId) {
+      const userInfoResult = await postSlackApiWithBearerToken(
+        origin,
+        "/api/users.info",
+        {
+          user: resolvedUserId,
+          _x_reason: "zip-slacktivation-users-info-bg"
+        },
+        token
+      );
+      if (userInfoResult && userInfoResult.ok === true) {
+        applyIdentity(extractSlackIdentityFromUsersInfoPayload(userInfoResult.payload));
+      }
+    }
+
+    if (identity.userName && identity.avatarUrl) break;
   }
 
   return identity;
