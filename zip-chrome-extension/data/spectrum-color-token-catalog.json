@@ -1,0 +1,2690 @@
+{
+  "source": "https://raw.githubusercontent.com/adobe/spectrum-design-data/main/packages/tokens/src/color-palette.json",
+  "generatedFrom": "/Users/minnick/.npm/_npx/d021cdf6be9025d1/node_modules/@adobe/spectrum-tokens/src/color-palette.json",
+  "generatedAt": "2026-02-19T23:49:48.332Z",
+  "total": 369,
+  "tokenNames": [
+    "black",
+    "blue-100",
+    "blue-1000",
+    "blue-1100",
+    "blue-1200",
+    "blue-1300",
+    "blue-1400",
+    "blue-1500",
+    "blue-1600",
+    "blue-200",
+    "blue-300",
+    "blue-400",
+    "blue-500",
+    "blue-600",
+    "blue-700",
+    "blue-800",
+    "blue-900",
+    "brown-100",
+    "brown-1000",
+    "brown-1100",
+    "brown-1200",
+    "brown-1300",
+    "brown-1400",
+    "brown-1500",
+    "brown-1600",
+    "brown-200",
+    "brown-300",
+    "brown-400",
+    "brown-500",
+    "brown-600",
+    "brown-700",
+    "brown-800",
+    "brown-900",
+    "celery-100",
+    "celery-1000",
+    "celery-1100",
+    "celery-1200",
+    "celery-1300",
+    "celery-1400",
+    "celery-1500",
+    "celery-1600",
+    "celery-200",
+    "celery-300",
+    "celery-400",
+    "celery-500",
+    "celery-600",
+    "celery-700",
+    "celery-800",
+    "celery-900",
+    "chartreuse-100",
+    "chartreuse-1000",
+    "chartreuse-1100",
+    "chartreuse-1200",
+    "chartreuse-1300",
+    "chartreuse-1400",
+    "chartreuse-1500",
+    "chartreuse-1600",
+    "chartreuse-200",
+    "chartreuse-300",
+    "chartreuse-400",
+    "chartreuse-500",
+    "chartreuse-600",
+    "chartreuse-700",
+    "chartreuse-800",
+    "chartreuse-900",
+    "cinnamon-100",
+    "cinnamon-1000",
+    "cinnamon-1100",
+    "cinnamon-1200",
+    "cinnamon-1300",
+    "cinnamon-1400",
+    "cinnamon-1500",
+    "cinnamon-1600",
+    "cinnamon-200",
+    "cinnamon-300",
+    "cinnamon-400",
+    "cinnamon-500",
+    "cinnamon-600",
+    "cinnamon-700",
+    "cinnamon-800",
+    "cinnamon-900",
+    "cyan-100",
+    "cyan-1000",
+    "cyan-1100",
+    "cyan-1200",
+    "cyan-1300",
+    "cyan-1400",
+    "cyan-1500",
+    "cyan-1600",
+    "cyan-200",
+    "cyan-300",
+    "cyan-400",
+    "cyan-500",
+    "cyan-600",
+    "cyan-700",
+    "cyan-800",
+    "cyan-900",
+    "fuchsia-100",
+    "fuchsia-1000",
+    "fuchsia-1100",
+    "fuchsia-1200",
+    "fuchsia-1300",
+    "fuchsia-1400",
+    "fuchsia-1500",
+    "fuchsia-1600",
+    "fuchsia-200",
+    "fuchsia-300",
+    "fuchsia-400",
+    "fuchsia-500",
+    "fuchsia-600",
+    "fuchsia-700",
+    "fuchsia-800",
+    "fuchsia-900",
+    "gray-100",
+    "gray-1000",
+    "gray-200",
+    "gray-25",
+    "gray-300",
+    "gray-400",
+    "gray-50",
+    "gray-500",
+    "gray-600",
+    "gray-700",
+    "gray-75",
+    "gray-800",
+    "gray-900",
+    "green-100",
+    "green-1000",
+    "green-1100",
+    "green-1200",
+    "green-1300",
+    "green-1400",
+    "green-1500",
+    "green-1600",
+    "green-200",
+    "green-300",
+    "green-400",
+    "green-500",
+    "green-600",
+    "green-700",
+    "green-800",
+    "green-900",
+    "indigo-100",
+    "indigo-1000",
+    "indigo-1100",
+    "indigo-1200",
+    "indigo-1300",
+    "indigo-1400",
+    "indigo-1500",
+    "indigo-1600",
+    "indigo-200",
+    "indigo-300",
+    "indigo-400",
+    "indigo-500",
+    "indigo-600",
+    "indigo-700",
+    "indigo-800",
+    "indigo-900",
+    "magenta-100",
+    "magenta-1000",
+    "magenta-1100",
+    "magenta-1200",
+    "magenta-1300",
+    "magenta-1400",
+    "magenta-1500",
+    "magenta-1600",
+    "magenta-200",
+    "magenta-300",
+    "magenta-400",
+    "magenta-500",
+    "magenta-600",
+    "magenta-700",
+    "magenta-800",
+    "magenta-900",
+    "orange-100",
+    "orange-1000",
+    "orange-1100",
+    "orange-1200",
+    "orange-1300",
+    "orange-1400",
+    "orange-1500",
+    "orange-1600",
+    "orange-200",
+    "orange-300",
+    "orange-400",
+    "orange-500",
+    "orange-600",
+    "orange-700",
+    "orange-800",
+    "orange-900",
+    "pink-100",
+    "pink-1000",
+    "pink-1100",
+    "pink-1200",
+    "pink-1300",
+    "pink-1400",
+    "pink-1500",
+    "pink-1600",
+    "pink-200",
+    "pink-300",
+    "pink-400",
+    "pink-500",
+    "pink-600",
+    "pink-700",
+    "pink-800",
+    "pink-900",
+    "purple-100",
+    "purple-1000",
+    "purple-1100",
+    "purple-1200",
+    "purple-1300",
+    "purple-1400",
+    "purple-1500",
+    "purple-1600",
+    "purple-200",
+    "purple-300",
+    "purple-400",
+    "purple-500",
+    "purple-600",
+    "purple-700",
+    "purple-800",
+    "purple-900",
+    "red-100",
+    "red-1000",
+    "red-1100",
+    "red-1200",
+    "red-1300",
+    "red-1400",
+    "red-1500",
+    "red-1600",
+    "red-200",
+    "red-300",
+    "red-400",
+    "red-500",
+    "red-600",
+    "red-700",
+    "red-800",
+    "red-900",
+    "seafoam-100",
+    "seafoam-1000",
+    "seafoam-1100",
+    "seafoam-1200",
+    "seafoam-1300",
+    "seafoam-1400",
+    "seafoam-1500",
+    "seafoam-1600",
+    "seafoam-200",
+    "seafoam-300",
+    "seafoam-400",
+    "seafoam-500",
+    "seafoam-600",
+    "seafoam-700",
+    "seafoam-800",
+    "seafoam-900",
+    "silver-100",
+    "silver-1000",
+    "silver-1100",
+    "silver-1200",
+    "silver-1300",
+    "silver-1400",
+    "silver-1500",
+    "silver-1600",
+    "silver-200",
+    "silver-300",
+    "silver-400",
+    "silver-500",
+    "silver-600",
+    "silver-700",
+    "silver-800",
+    "silver-900",
+    "static-blue-1000",
+    "static-blue-900",
+    "static-chartreuse-400",
+    "static-chartreuse-600",
+    "static-chartreuse-800",
+    "static-cyan-400",
+    "static-cyan-600",
+    "static-cyan-800",
+    "static-fuchsia-1000",
+    "static-fuchsia-400",
+    "static-fuchsia-600",
+    "static-fuchsia-800",
+    "static-fuchsia-900",
+    "static-green-400",
+    "static-green-600",
+    "static-green-800",
+    "static-indigo-1000",
+    "static-indigo-400",
+    "static-indigo-600",
+    "static-indigo-800",
+    "static-indigo-900",
+    "static-magenta-1000",
+    "static-magenta-400",
+    "static-magenta-600",
+    "static-magenta-800",
+    "static-magenta-900",
+    "static-orange-400",
+    "static-orange-600",
+    "static-orange-800",
+    "static-purple-400",
+    "static-purple-600",
+    "static-purple-800",
+    "static-red-1000",
+    "static-red-400",
+    "static-red-600",
+    "static-red-800",
+    "static-red-900",
+    "static-turquoise-400",
+    "static-turquoise-600",
+    "static-turquoise-800",
+    "transparent-black-100",
+    "transparent-black-1000",
+    "transparent-black-200",
+    "transparent-black-25",
+    "transparent-black-300",
+    "transparent-black-400",
+    "transparent-black-50",
+    "transparent-black-500",
+    "transparent-black-600",
+    "transparent-black-700",
+    "transparent-black-75",
+    "transparent-black-800",
+    "transparent-black-900",
+    "transparent-white-100",
+    "transparent-white-1000",
+    "transparent-white-200",
+    "transparent-white-25",
+    "transparent-white-300",
+    "transparent-white-400",
+    "transparent-white-50",
+    "transparent-white-500",
+    "transparent-white-600",
+    "transparent-white-700",
+    "transparent-white-75",
+    "transparent-white-800",
+    "transparent-white-900",
+    "turquoise-100",
+    "turquoise-1000",
+    "turquoise-1100",
+    "turquoise-1200",
+    "turquoise-1300",
+    "turquoise-1400",
+    "turquoise-1500",
+    "turquoise-1600",
+    "turquoise-200",
+    "turquoise-300",
+    "turquoise-400",
+    "turquoise-500",
+    "turquoise-600",
+    "turquoise-700",
+    "turquoise-800",
+    "turquoise-900",
+    "white",
+    "yellow-100",
+    "yellow-1000",
+    "yellow-1100",
+    "yellow-1200",
+    "yellow-1300",
+    "yellow-1400",
+    "yellow-1500",
+    "yellow-1600",
+    "yellow-200",
+    "yellow-300",
+    "yellow-400",
+    "yellow-500",
+    "yellow-600",
+    "yellow-700",
+    "yellow-800",
+    "yellow-900"
+  ],
+  "tokens": {
+    "black": {
+      "value": "rgb(0, 0, 0)"
+    },
+    "blue-100": {
+      "sets": {
+        "light": "rgb(245, 249, 255)",
+        "dark": "rgb(14, 23, 63)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "blue-1000": {
+      "sets": {
+        "light": "rgb(39, 77, 234)",
+        "dark": "rgb(105, 149, 254)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "blue-1100": {
+      "sets": {
+        "light": "rgb(29, 62, 207)",
+        "dark": "rgb(124, 169, 252)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "blue-1200": {
+      "sets": {
+        "light": "rgb(21, 50, 173)",
+        "dark": "rgb(152, 192, 252)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "blue-1300": {
+      "sets": {
+        "light": "rgb(16, 40, 140)",
+        "dark": "rgb(181, 213, 253)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "blue-1400": {
+      "sets": {
+        "light": "rgb(12, 31, 105)",
+        "dark": "rgb(213, 231, 254)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "blue-1500": {
+      "sets": {
+        "dark": "rgb(238, 245, 255)",
+        "light": "rgb(14, 24, 67)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "blue-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(7, 11, 30)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "blue-200": {
+      "sets": {
+        "light": "rgb(229, 240, 254)",
+        "dark": "rgb(15, 28, 82)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "blue-300": {
+      "sets": {
+        "light": "rgb(203, 226, 254)",
+        "dark": "rgb(12, 33, 117)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "blue-400": {
+      "sets": {
+        "light": "rgb(172, 207, 253)",
+        "dark": "rgb(18, 45, 154)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "blue-500": {
+      "sets": {
+        "light": "rgb(142, 185, 252)",
+        "dark": "rgb(26, 58, 195)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "blue-600": {
+      "sets": {
+        "light": "rgb(114, 158, 253)",
+        "dark": "rgb(37, 73, 229)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "blue-700": {
+      "sets": {
+        "light": "rgb(93, 137, 255)",
+        "dark": "rgb(52, 91, 248)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "blue-800": {
+      "sets": {
+        "light": "rgb(75, 117, 255)",
+        "dark": "rgb(64, 105, 253)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "blue-900": {
+      "sets": {
+        "light": "rgb(59, 99, 251)",
+        "dark": "rgb(86, 129, 255)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "brown-100": {
+      "sets": {
+        "dark": "rgb(35, 24, 8)",
+        "light": "rgb(252, 247, 242)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "brown-1000": {
+      "sets": {
+        "dark": "rgb(181, 147, 98)",
+        "light": "rgb(119, 91, 50)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "brown-1100": {
+      "sets": {
+        "dark": "rgb(199, 163, 112)",
+        "light": "rgb(103, 76, 35)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "brown-1200": {
+      "sets": {
+        "dark": "rgb(222, 185, 130)",
+        "light": "rgb(88, 61, 21)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "brown-1300": {
+      "sets": {
+        "dark": "rgb(232, 207, 169)",
+        "light": "rgb(70, 49, 17)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "brown-1400": {
+      "sets": {
+        "dark": "rgb(242, 227, 206)",
+        "light": "rgb(52, 37, 13)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "brown-1500": {
+      "sets": {
+        "dark": "rgb(250, 244, 236)",
+        "light": "rgb(38, 26, 9)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "brown-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(16, 12, 4)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "brown-200": {
+      "sets": {
+        "dark": "rgb(44, 31, 11)",
+        "light": "rgb(247, 238, 225)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "brown-300": {
+      "sets": {
+        "dark": "rgb(58, 40, 14)",
+        "light": "rgb(239, 221, 195)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "brown-400": {
+      "sets": {
+        "dark": "rgb(78, 55, 19)",
+        "light": "rgb(229, 200, 157)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "brown-500": {
+      "sets": {
+        "dark": "rgb(98, 71, 30)",
+        "light": "rgb(214, 177, 123)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "brown-600": {
+      "sets": {
+        "dark": "rgb(115, 88, 47)",
+        "light": "rgb(190, 155, 104)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "brown-700": {
+      "sets": {
+        "dark": "rgb(132, 104, 61)",
+        "light": "rgb(171, 138, 90)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "brown-800": {
+      "sets": {
+        "dark": "rgb(143, 114, 69)",
+        "light": "rgb(154, 123, 77)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "brown-900": {
+      "sets": {
+        "dark": "rgb(163, 132, 84)",
+        "light": "rgb(139, 109, 66)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "celery-100": {
+      "sets": {
+        "light": "rgb(235, 255, 220)",
+        "dark": "rgb(11, 31, 0)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "celery-1000": {
+      "sets": {
+        "light": "rgb(52, 109, 12)",
+        "dark": "rgb(88, 172, 28)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "celery-1100": {
+      "sets": {
+        "light": "rgb(44, 92, 9)",
+        "dark": "rgb(100, 190, 35)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "celery-1200": {
+      "sets": {
+        "light": "rgb(35, 75, 6)",
+        "dark": "rgb(116, 213, 46)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "celery-1300": {
+      "sets": {
+        "light": "rgb(27, 60, 3)",
+        "dark": "rgb(136, 234, 65)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "celery-1400": {
+      "sets": {
+        "light": "rgb(19, 46, 0)",
+        "dark": "rgb(170, 251, 112)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "celery-1500": {
+      "sets": {
+        "dark": "rgb(222, 255, 198)",
+        "light": "rgb(12, 33, 0)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "celery-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(4, 15, 0)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "celery-200": {
+      "sets": {
+        "light": "rgb(197, 255, 156)",
+        "dark": "rgb(15, 38, 0)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "celery-300": {
+      "sets": {
+        "light": "rgb(157, 247, 92)",
+        "dark": "rgb(21, 51, 1)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "celery-400": {
+      "sets": {
+        "light": "rgb(129, 228, 58)",
+        "dark": "rgb(31, 67, 4)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "celery-500": {
+      "sets": {
+        "light": "rgb(110, 206, 42)",
+        "dark": "rgb(41, 86, 8)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "celery-600": {
+      "sets": {
+        "light": "rgb(93, 180, 31)",
+        "dark": "rgb(50, 105, 11)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "celery-700": {
+      "sets": {
+        "light": "rgb(82, 161, 25)",
+        "dark": "rgb(60, 122, 15)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "celery-800": {
+      "sets": {
+        "light": "rgb(72, 144, 20)",
+        "dark": "rgb(66, 134, 18)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "celery-900": {
+      "sets": {
+        "light": "rgb(64, 129, 17)",
+        "dark": "rgb(78, 154, 23)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "chartreuse-100": {
+      "sets": {
+        "light": "rgb(246, 251, 222)",
+        "dark": "rgb(23, 28, 0)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "chartreuse-1000": {
+      "sets": {
+        "light": "rgb(86, 103, 0)",
+        "dark": "rgb(136, 164, 0)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "chartreuse-1100": {
+      "sets": {
+        "light": "rgb(73, 87, 0)",
+        "dark": "rgb(151, 181, 0)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "chartreuse-1200": {
+      "sets": {
+        "light": "rgb(60, 71, 0)",
+        "dark": "rgb(169, 203, 0)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "chartreuse-1300": {
+      "sets": {
+        "light": "rgb(47, 57, 0)",
+        "dark": "rgb(187, 225, 0)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "chartreuse-1400": {
+      "sets": {
+        "light": "rgb(35, 43, 0)",
+        "dark": "rgb(219, 240, 117)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "chartreuse-1500": {
+      "sets": {
+        "dark": "rgb(242, 249, 206)",
+        "light": "rgb(25, 30, 0)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "chartreuse-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(11, 14, 0)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "chartreuse-200": {
+      "sets": {
+        "light": "rgb(234, 246, 173)",
+        "dark": "rgb(30, 36, 0)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "chartreuse-300": {
+      "sets": {
+        "light": "rgb(208, 236, 70)",
+        "dark": "rgb(39, 47, 0)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "chartreuse-400": {
+      "sets": {
+        "light": "rgb(182, 219, 0)",
+        "dark": "rgb(53, 63, 0)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "chartreuse-500": {
+      "sets": {
+        "light": "rgb(163, 196, 0)",
+        "dark": "rgb(68, 82, 0)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "chartreuse-600": {
+      "sets": {
+        "light": "rgb(143, 172, 0)",
+        "dark": "rgb(83, 100, 0)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "chartreuse-700": {
+      "sets": {
+        "light": "rgb(128, 153, 0)",
+        "dark": "rgb(97, 116, 0)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "chartreuse-800": {
+      "sets": {
+        "light": "rgb(114, 137, 0)",
+        "dark": "rgb(106, 127, 0)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "chartreuse-900": {
+      "sets": {
+        "light": "rgb(102, 122, 0)",
+        "dark": "rgb(122, 147, 0)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "cinnamon-100": {
+      "sets": {
+        "dark": "rgb(48, 17, 4)",
+        "light": "rgb(253, 247, 243)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "cinnamon-1000": {
+      "sets": {
+        "dark": "rgb(206, 136, 99)",
+        "light": "rgb(147, 77, 43)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "cinnamon-1100": {
+      "sets": {
+        "dark": "rgb(220, 154, 118)",
+        "light": "rgb(128, 62, 32)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "cinnamon-1200": {
+      "sets": {
+        "dark": "rgb(232, 179, 149)",
+        "light": "rgb(110, 48, 21)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "cinnamon-1300": {
+      "sets": {
+        "dark": "rgb(239, 203, 183)",
+        "light": "rgb(92, 35, 11)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "cinnamon-1400": {
+      "sets": {
+        "dark": "rgb(246, 225, 214)",
+        "light": "rgb(72, 25, 6)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "cinnamon-1500": {
+      "sets": {
+        "dark": "rgb(252, 244, 239)",
+        "light": "rgb(52, 18, 4)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "cinnamon-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(24, 8, 2)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "cinnamon-200": {
+      "sets": {
+        "dark": "rgb(59, 21, 5)",
+        "light": "rgb(249, 236, 229)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "cinnamon-300": {
+      "sets": {
+        "dark": "rgb(79, 28, 7)",
+        "light": "rgb(244, 218, 203)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "cinnamon-400": {
+      "sets": {
+        "dark": "rgb(100, 41, 15)",
+        "light": "rgb(237, 196, 172)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "cinnamon-500": {
+      "sets": {
+        "dark": "rgb(122, 57, 28)",
+        "light": "rgb(229, 170, 136)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "cinnamon-600": {
+      "sets": {
+        "dark": "rgb(143, 74, 40)",
+        "light": "rgb(212, 145, 108)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "cinnamon-700": {
+      "sets": {
+        "dark": "rgb(163, 88, 52)",
+        "light": "rgb(198, 126, 88)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "cinnamon-800": {
+      "sets": {
+        "dark": "rgb(176, 98, 59)",
+        "light": "rgb(184, 109, 70)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "cinnamon-900": {
+      "sets": {
+        "dark": "rgb(192, 119, 80)",
+        "light": "rgb(170, 94, 56)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "cyan-100": {
+      "sets": {
+        "light": "rgb(238, 250, 254)",
+        "dark": "rgb(0, 29, 39)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "cyan-1000": {
+      "sets": {
+        "light": "rgb(4, 102, 145)",
+        "dark": "rgb(38, 159, 244)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "cyan-1100": {
+      "sets": {
+        "light": "rgb(0, 87, 121)",
+        "dark": "rgb(63, 177, 255)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "cyan-1200": {
+      "sets": {
+        "light": "rgb(0, 71, 98)",
+        "dark": "rgb(107, 199, 255)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "cyan-1300": {
+      "sets": {
+        "light": "rgb(0, 57, 78)",
+        "dark": "rgb(152, 219, 255)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "cyan-1400": {
+      "sets": {
+        "light": "rgb(0, 43, 59)",
+        "dark": "rgb(195, 236, 252)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "cyan-1500": {
+      "sets": {
+        "dark": "rgb(230, 248, 253)",
+        "light": "rgb(0, 31, 43)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "cyan-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(0, 14, 20)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "cyan-200": {
+      "sets": {
+        "light": "rgb(217, 244, 253)",
+        "dark": "rgb(0, 36, 49)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "cyan-300": {
+      "sets": {
+        "light": "rgb(183, 231, 252)",
+        "dark": "rgb(0, 48, 65)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "cyan-400": {
+      "sets": {
+        "light": "rgb(138, 213, 255)",
+        "dark": "rgb(0, 64, 88)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "cyan-500": {
+      "sets": {
+        "light": "rgb(92, 192, 255)",
+        "dark": "rgb(0, 82, 113)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "cyan-600": {
+      "sets": {
+        "light": "rgb(48, 167, 254)",
+        "dark": "rgb(3, 99, 140)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "cyan-700": {
+      "sets": {
+        "light": "rgb(29, 149, 231)",
+        "dark": "rgb(8, 115, 168)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "cyan-800": {
+      "sets": {
+        "light": "rgb(18, 134, 205)",
+        "dark": "rgb(13, 125, 186)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "cyan-900": {
+      "sets": {
+        "light": "rgb(11, 120, 179)",
+        "dark": "rgb(24, 142, 220)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "fuchsia-100": {
+      "sets": {
+        "light": "rgb(254, 246, 255)",
+        "dark": "rgb(50, 0, 61)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "fuchsia-1000": {
+      "sets": {
+        "light": "rgb(156, 40, 175)",
+        "dark": "rgb(232, 91, 253)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "fuchsia-1100": {
+      "sets": {
+        "light": "rgb(135, 27, 154)",
+        "dark": "rgb(240, 122, 255)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "fuchsia-1200": {
+      "sets": {
+        "light": "rgb(113, 15, 131)",
+        "dark": "rgb(245, 159, 255)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "fuchsia-1300": {
+      "sets": {
+        "light": "rgb(92, 4, 109)",
+        "dark": "rgb(248, 191, 255)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "fuchsia-1400": {
+      "sets": {
+        "light": "rgb(72, 0, 88)",
+        "dark": "rgb(251, 219, 255)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "fuchsia-1500": {
+      "sets": {
+        "dark": "rgb(253, 241, 255)",
+        "light": "rgb(54, 0, 66)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "fuchsia-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(29, 0, 35)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "fuchsia-200": {
+      "sets": {
+        "light": "rgb(253, 233, 255)",
+        "dark": "rgb(61, 0, 74)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "fuchsia-300": {
+      "sets": {
+        "light": "rgb(250, 211, 255)",
+        "dark": "rgb(79, 0, 95)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "fuchsia-400": {
+      "sets": {
+        "light": "rgb(247, 181, 255)",
+        "dark": "rgb(102, 9, 120)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "fuchsia-500": {
+      "sets": {
+        "light": "rgb(243, 147, 255)",
+        "dark": "rgb(127, 23, 146)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "fuchsia-600": {
+      "sets": {
+        "light": "rgb(236, 105, 255)",
+        "dark": "rgb(151, 38, 170)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "fuchsia-700": {
+      "sets": {
+        "light": "rgb(223, 77, 245)",
+        "dark": "rgb(173, 51, 192)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "fuchsia-800": {
+      "sets": {
+        "light": "rgb(200, 68, 220)",
+        "dark": "rgb(186, 60, 206)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "fuchsia-900": {
+      "sets": {
+        "light": "rgb(181, 57, 200)",
+        "dark": "rgb(213, 73, 235)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "gray-100": {
+      "sets": {
+        "light": "rgb(233, 233, 233)",
+        "dark": "rgb(44, 44, 44)",
+        "wireframe": "rgb(228, 234, 249)"
+      }
+    },
+    "gray-1000": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(0, 0, 0)",
+        "wireframe": "rgb(0, 0, 0)"
+      }
+    },
+    "gray-200": {
+      "sets": {
+        "light": "rgb(225, 225, 225)",
+        "dark": "rgb(50, 50, 50)",
+        "wireframe": "rgb(214, 224, 246)"
+      }
+    },
+    "gray-25": {
+      "sets": {
+        "dark": "rgb(17, 17, 17)",
+        "light": "rgb(255, 255, 255)",
+        "wireframe": "rgb(254, 254, 255)"
+      }
+    },
+    "gray-300": {
+      "sets": {
+        "light": "rgb(218, 218, 218)",
+        "dark": "rgb(57, 57, 57)",
+        "wireframe": "rgb(207, 219, 245)"
+      }
+    },
+    "gray-400": {
+      "sets": {
+        "light": "rgb(198, 198, 198)",
+        "dark": "rgb(68, 68, 68)",
+        "wireframe": "rgb(180, 199, 239)"
+      }
+    },
+    "gray-50": {
+      "sets": {
+        "light": "rgb(248, 248, 248)",
+        "dark": "rgb(27, 27, 27)",
+        "wireframe": "rgb(246, 248, 253)"
+      }
+    },
+    "gray-500": {
+      "sets": {
+        "light": "rgb(143, 143, 143)",
+        "dark": "rgb(109, 109, 109)",
+        "wireframe": "rgb(108, 142, 217)"
+      }
+    },
+    "gray-600": {
+      "sets": {
+        "light": "rgb(113, 113, 113)",
+        "dark": "rgb(138, 138, 138)",
+        "wireframe": "rgb(72, 110, 194)"
+      }
+    },
+    "gray-700": {
+      "sets": {
+        "light": "rgb(80, 80, 80)",
+        "dark": "rgb(175, 175, 175)",
+        "wireframe": "rgb(44, 77, 149)"
+      }
+    },
+    "gray-75": {
+      "sets": {
+        "light": "rgb(243, 243, 243)",
+        "dark": "rgb(34, 34, 34)",
+        "wireframe": "rgb(241, 244, 251)"
+      }
+    },
+    "gray-800": {
+      "sets": {
+        "light": "rgb(41, 41, 41)",
+        "dark": "rgb(219, 219, 219)",
+        "wireframe": "rgb(25, 46, 93)"
+      }
+    },
+    "gray-900": {
+      "sets": {
+        "light": "rgb(19, 19, 19)",
+        "dark": "rgb(242, 242, 242)",
+        "wireframe": "rgb(10, 19, 39)"
+      }
+    },
+    "green-100": {
+      "sets": {
+        "light": "rgb(237, 252, 241)",
+        "dark": "rgb(0, 30, 23)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "green-1000": {
+      "sets": {
+        "light": "rgb(3, 110, 69)",
+        "dark": "rgb(14, 175, 98)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "green-1100": {
+      "sets": {
+        "light": "rgb(2, 93, 60)",
+        "dark": "rgb(24, 193, 110)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "green-1200": {
+      "sets": {
+        "light": "rgb(1, 76, 52)",
+        "dark": "rgb(57, 215, 134)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "green-1300": {
+      "sets": {
+        "light": "rgb(0, 61, 44)",
+        "dark": "rgb(126, 231, 172)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "green-1400": {
+      "sets": {
+        "light": "rgb(0, 46, 34)",
+        "dark": "rgb(189, 241, 208)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "green-1500": {
+      "sets": {
+        "dark": "rgb(229, 250, 236)",
+        "light": "rgb(0, 33, 25)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "green-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(0, 15, 12)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "green-200": {
+      "sets": {
+        "light": "rgb(215, 247, 225)",
+        "dark": "rgb(0, 38, 29)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "green-300": {
+      "sets": {
+        "light": "rgb(173, 238, 197)",
+        "dark": "rgb(0, 51, 38)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "green-400": {
+      "sets": {
+        "light": "rgb(107, 227, 162)",
+        "dark": "rgb(0, 68, 48)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "green-500": {
+      "sets": {
+        "light": "rgb(43, 209, 125)",
+        "dark": "rgb(2, 87, 58)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "green-600": {
+      "sets": {
+        "light": "rgb(18, 184, 103)",
+        "dark": "rgb(3, 106, 67)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "green-700": {
+      "sets": {
+        "light": "rgb(11, 164, 93)",
+        "dark": "rgb(4, 124, 75)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "green-800": {
+      "sets": {
+        "light": "rgb(7, 147, 85)",
+        "dark": "rgb(6, 136, 80)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "green-900": {
+      "sets": {
+        "light": "rgb(5, 131, 78)",
+        "dark": "rgb(9, 157, 89)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "indigo-100": {
+      "sets": {
+        "light": "rgb(247, 248, 255)",
+        "dark": "rgb(30, 0, 93)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "indigo-1000": {
+      "sets": {
+        "light": "rgb(99, 56, 238)",
+        "dark": "rgb(139, 141, 254)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "indigo-1100": {
+      "sets": {
+        "light": "rgb(84, 36, 219)",
+        "dark": "rgb(153, 161, 255)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "indigo-1200": {
+      "sets": {
+        "light": "rgb(69, 19, 191)",
+        "dark": "rgb(176, 186, 255)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "indigo-1300": {
+      "sets": {
+        "light": "rgb(55, 6, 160)",
+        "dark": "rgb(199, 208, 255)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "indigo-1400": {
+      "sets": {
+        "light": "rgb(42, 0, 129)",
+        "dark": "rgb(223, 228, 255)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "indigo-1500": {
+      "sets": {
+        "dark": "rgb(243, 244, 255)",
+        "light": "rgb(31, 0, 98)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "indigo-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(17, 0, 54)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "indigo-200": {
+      "sets": {
+        "light": "rgb(235, 238, 255)",
+        "dark": "rgb(35, 0, 110)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "indigo-300": {
+      "sets": {
+        "light": "rgb(216, 222, 255)",
+        "dark": "rgb(47, 0, 140)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "indigo-400": {
+      "sets": {
+        "light": "rgb(192, 201, 255)",
+        "dark": "rgb(62, 12, 174)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "indigo-500": {
+      "sets": {
+        "light": "rgb(167, 178, 255)",
+        "dark": "rgb(79, 30, 209)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "indigo-600": {
+      "sets": {
+        "light": "rgb(145, 151, 254)",
+        "dark": "rgb(95, 52, 235)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "indigo-700": {
+      "sets": {
+        "light": "rgb(132, 128, 254)",
+        "dark": "rgb(109, 75, 248)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "indigo-800": {
+      "sets": {
+        "light": "rgb(122, 106, 253)",
+        "dark": "rgb(116, 91, 252)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "indigo-900": {
+      "sets": {
+        "light": "rgb(113, 85, 250)",
+        "dark": "rgb(128, 119, 254)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "magenta-100": {
+      "sets": {
+        "light": "rgb(255, 245, 248)",
+        "dark": "rgb(59, 0, 22)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "magenta-1000": {
+      "sets": {
+        "light": "rgb(186, 22, 80)",
+        "dark": "rgb(255, 96, 149)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "magenta-1100": {
+      "sets": {
+        "light": "rgb(163, 5, 62)",
+        "dark": "rgb(255, 128, 171)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "magenta-1200": {
+      "sets": {
+        "light": "rgb(136, 0, 51)",
+        "dark": "rgb(255, 163, 194)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "magenta-1300": {
+      "sets": {
+        "light": "rgb(111, 0, 40)",
+        "dark": "rgb(255, 193, 214)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "magenta-1400": {
+      "sets": {
+        "light": "rgb(86, 0, 30)",
+        "dark": "rgb(255, 220, 232)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "magenta-1500": {
+      "sets": {
+        "dark": "rgb(255, 241, 246)",
+        "light": "rgb(64, 0, 22)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "magenta-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(35, 0, 12)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "magenta-200": {
+      "sets": {
+        "light": "rgb(255, 232, 240)",
+        "dark": "rgb(74, 0, 27)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "magenta-300": {
+      "sets": {
+        "light": "rgb(255, 213, 227)",
+        "dark": "rgb(93, 0, 34)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "magenta-400": {
+      "sets": {
+        "light": "rgb(255, 185, 208)",
+        "dark": "rgb(123, 0, 45)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "magenta-500": {
+      "sets": {
+        "light": "rgb(255, 152, 187)",
+        "dark": "rgb(152, 7, 60)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "magenta-600": {
+      "sets": {
+        "light": "rgb(255, 112, 159)",
+        "dark": "rgb(181, 19, 76)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "magenta-700": {
+      "sets": {
+        "light": "rgb(255, 72, 133)",
+        "dark": "rgb(207, 31, 92)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "magenta-800": {
+      "sets": {
+        "light": "rgb(240, 45, 110)",
+        "dark": "rgb(224, 38, 101)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "magenta-900": {
+      "sets": {
+        "light": "rgb(217, 35, 97)",
+        "dark": "rgb(255, 51, 119)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "orange-100": {
+      "sets": {
+        "light": "rgb(255, 246, 231)",
+        "dark": "rgb(49, 16, 0)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "orange-1000": {
+      "sets": {
+        "light": "rgb(167, 62, 0)",
+        "dark": "rgb(243, 117, 0)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "orange-1100": {
+      "sets": {
+        "light": "rgb(144, 51, 0)",
+        "dark": "rgb(255, 137, 0)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "orange-1200": {
+      "sets": {
+        "light": "rgb(118, 41, 0)",
+        "dark": "rgb(255, 173, 45)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "orange-1300": {
+      "sets": {
+        "light": "rgb(95, 32, 0)",
+        "dark": "rgb(255, 201, 116)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "orange-1400": {
+      "sets": {
+        "light": "rgb(73, 24, 0)",
+        "dark": "rgb(255, 225, 178)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "orange-1500": {
+      "sets": {
+        "dark": "rgb(255, 243, 225)",
+        "light": "rgb(52, 18, 0)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "orange-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(25, 8, 0)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "orange-200": {
+      "sets": {
+        "light": "rgb(255, 236, 207)",
+        "dark": "rgb(61, 21, 0)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "orange-300": {
+      "sets": {
+        "light": "rgb(255, 218, 158)",
+        "dark": "rgb(80, 27, 0)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "orange-400": {
+      "sets": {
+        "light": "rgb(255, 193, 94)",
+        "dark": "rgb(106, 36, 0)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "orange-500": {
+      "sets": {
+        "light": "rgb(255, 162, 19)",
+        "dark": "rgb(135, 47, 0)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "orange-600": {
+      "sets": {
+        "light": "rgb(252, 125, 0)",
+        "dark": "rgb(162, 59, 0)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "orange-700": {
+      "sets": {
+        "light": "rgb(232, 106, 0)",
+        "dark": "rgb(185, 73, 0)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "orange-800": {
+      "sets": {
+        "light": "rgb(212, 91, 0)",
+        "dark": "rgb(199, 82, 0)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "orange-900": {
+      "sets": {
+        "light": "rgb(194, 78, 0)",
+        "dark": "rgb(224, 100, 0)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "pink-100": {
+      "sets": {
+        "dark": "rgb(58, 0, 37)",
+        "light": "rgb(255, 246, 252)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "pink-1000": {
+      "sets": {
+        "dark": "rgb(251, 90, 196)",
+        "light": "rgb(176, 31, 123)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "pink-1100": {
+      "sets": {
+        "dark": "rgb(255, 122, 210)",
+        "light": "rgb(152, 22, 104)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "pink-1200": {
+      "sets": {
+        "dark": "rgb(255, 159, 223)",
+        "light": "rgb(128, 12, 85)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "pink-1300": {
+      "sets": {
+        "dark": "rgb(255, 191, 234)",
+        "light": "rgb(105, 3, 68)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "pink-1400": {
+      "sets": {
+        "dark": "rgb(255, 219, 243)",
+        "light": "rgb(83, 0, 53)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "pink-1500": {
+      "sets": {
+        "dark": "rgb(255, 241, 250)",
+        "light": "rgb(62, 0, 39)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "pink-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(33, 0, 21)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "pink-200": {
+      "sets": {
+        "dark": "rgb(71, 0, 44)",
+        "light": "rgb(255, 232, 247)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "pink-300": {
+      "sets": {
+        "dark": "rgb(90, 0, 57)",
+        "light": "rgb(255, 211, 240)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "pink-400": {
+      "sets": {
+        "dark": "rgb(115, 7, 75)",
+        "light": "rgb(255, 181, 230)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "pink-500": {
+      "sets": {
+        "dark": "rgb(143, 18, 97)",
+        "light": "rgb(255, 148, 219)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "pink-600": {
+      "sets": {
+        "dark": "rgb(171, 29, 119)",
+        "light": "rgb(255, 103, 204)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "pink-700": {
+      "sets": {
+        "dark": "rgb(196, 39, 138)",
+        "light": "rgb(242, 76, 184)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "pink-800": {
+      "sets": {
+        "dark": "rgb(213, 45, 151)",
+        "light": "rgb(228, 52, 163)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "pink-900": {
+      "sets": {
+        "dark": "rgb(236, 67, 175)",
+        "light": "rgb(206, 42, 146)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "purple-100": {
+      "sets": {
+        "light": "rgb(251, 247, 254)",
+        "dark": "rgb(41, 0, 79)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "purple-1000": {
+      "sets": {
+        "light": "rgb(134, 40, 217)",
+        "dark": "rgb(186, 127, 237)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "purple-1100": {
+      "sets": {
+        "light": "rgb(115, 13, 204)",
+        "dark": "rgb(197, 149, 240)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "purple-1200": {
+      "sets": {
+        "light": "rgb(93, 0, 177)",
+        "dark": "rgb(212, 176, 244)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "purple-1300": {
+      "sets": {
+        "light": "rgb(75, 0, 144)",
+        "dark": "rgb(225, 201, 247)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "purple-1400": {
+      "sets": {
+        "light": "rgb(59, 0, 111)",
+        "dark": "rgb(238, 224, 250)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "purple-1500": {
+      "sets": {
+        "dark": "rgb(248, 243, 253)",
+        "light": "rgb(44, 0, 84)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "purple-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(23, 0, 45)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "purple-200": {
+      "sets": {
+        "light": "rgb(244, 235, 252)",
+        "dark": "rgb(50, 0, 96)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "purple-300": {
+      "sets": {
+        "light": "rgb(235, 218, 249)",
+        "dark": "rgb(64, 0, 122)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "purple-400": {
+      "sets": {
+        "light": "rgb(221, 193, 246)",
+        "dark": "rgb(83, 0, 159)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "purple-500": {
+      "sets": {
+        "light": "rgb(208, 167, 243)",
+        "dark": "rgb(107, 6, 195)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "purple-600": {
+      "sets": {
+        "light": "rgb(191, 138, 238)",
+        "dark": "rgb(130, 34, 215)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "purple-700": {
+      "sets": {
+        "light": "rgb(178, 114, 235)",
+        "dark": "rgb(148, 62, 224)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "purple-800": {
+      "sets": {
+        "light": "rgb(166, 92, 231)",
+        "dark": "rgb(157, 78, 228)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "purple-900": {
+      "sets": {
+        "light": "rgb(154, 71, 226)",
+        "dark": "rgb(173, 105, 233)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "red-100": {
+      "sets": {
+        "light": "rgb(255, 246, 245)",
+        "dark": "rgb(54, 10, 3)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "red-1000": {
+      "sets": {
+        "light": "rgb(183, 40, 24)",
+        "dark": "rgb(255, 103, 86)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "red-1100": {
+      "sets": {
+        "light": "rgb(156, 33, 19)",
+        "dark": "rgb(255, 134, 120)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "red-1200": {
+      "sets": {
+        "light": "rgb(129, 27, 14)",
+        "dark": "rgb(255, 167, 157)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "red-1300": {
+      "sets": {
+        "light": "rgb(104, 21, 10)",
+        "dark": "rgb(255, 196, 189)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "red-1400": {
+      "sets": {
+        "light": "rgb(80, 16, 6)",
+        "dark": "rgb(255, 222, 219)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "red-1500": {
+      "sets": {
+        "dark": "rgb(255, 242, 240)",
+        "light": "rgb(59, 11, 4)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "red-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(29, 5, 2)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "red-200": {
+      "sets": {
+        "light": "rgb(255, 235, 232)",
+        "dark": "rgb(68, 13, 5)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "red-300": {
+      "sets": {
+        "light": "rgb(255, 214, 209)",
+        "dark": "rgb(87, 17, 7)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "red-400": {
+      "sets": {
+        "light": "rgb(255, 188, 180)",
+        "dark": "rgb(115, 24, 11)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "red-500": {
+      "sets": {
+        "light": "rgb(255, 157, 145)",
+        "dark": "rgb(147, 31, 17)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "red-600": {
+      "sets": {
+        "light": "rgb(255, 118, 101)",
+        "dark": "rgb(177, 38, 23)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "red-700": {
+      "sets": {
+        "light": "rgb(255, 81, 61)",
+        "dark": "rgb(205, 46, 29)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "red-800": {
+      "sets": {
+        "light": "rgb(240, 56, 35)",
+        "dark": "rgb(223, 52, 34)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "red-900": {
+      "sets": {
+        "light": "rgb(215, 50, 32)",
+        "dark": "rgb(252, 67, 46)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "seafoam-100": {
+      "sets": {
+        "light": "rgb(235, 251, 246)",
+        "dark": "rgb(0, 30, 27)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "seafoam-1000": {
+      "sets": {
+        "light": "rgb(5, 108, 92)",
+        "dark": "rgb(12, 173, 142)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "seafoam-1100": {
+      "sets": {
+        "light": "rgb(3, 92, 80)",
+        "dark": "rgb(14, 190, 156)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "seafoam-1200": {
+      "sets": {
+        "light": "rgb(1, 75, 67)",
+        "dark": "rgb(29, 214, 176)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "seafoam-1300": {
+      "sets": {
+        "light": "rgb(0, 60, 54)",
+        "dark": "rgb(122, 229, 203)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "seafoam-1400": {
+      "sets": {
+        "light": "rgb(0, 46, 40)",
+        "dark": "rgb(186, 241, 222)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "seafoam-1500": {
+      "sets": {
+        "dark": "rgb(229, 249, 243)",
+        "light": "rgb(0, 33, 29)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "seafoam-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(0, 15, 14)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "seafoam-200": {
+      "sets": {
+        "light": "rgb(211, 246, 234)",
+        "dark": "rgb(0, 39, 35)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "seafoam-300": {
+      "sets": {
+        "light": "rgb(169, 237, 216)",
+        "dark": "rgb(0, 50, 44)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "seafoam-400": {
+      "sets": {
+        "light": "rgb(92, 225, 194)",
+        "dark": "rgb(0, 67, 59)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "seafoam-500": {
+      "sets": {
+        "light": "rgb(16, 207, 169)",
+        "dark": "rgb(2, 86, 75)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "seafoam-600": {
+      "sets": {
+        "light": "rgb(13, 181, 149)",
+        "dark": "rgb(4, 105, 89)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "seafoam-700": {
+      "sets": {
+        "light": "rgb(11, 162, 134)",
+        "dark": "rgb(6, 122, 103)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "seafoam-800": {
+      "sets": {
+        "light": "rgb(9, 144, 120)",
+        "dark": "rgb(8, 134, 112)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "seafoam-900": {
+      "sets": {
+        "light": "rgb(7, 129, 109)",
+        "dark": "rgb(10, 154, 128)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "silver-100": {
+      "sets": {
+        "dark": "rgb(26, 26, 26)",
+        "light": "rgb(247, 247, 247)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "silver-1000": {
+      "sets": {
+        "dark": "rgb(152, 152, 152)",
+        "light": "rgb(96, 96, 96)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "silver-1100": {
+      "sets": {
+        "dark": "rgb(169, 169, 169)",
+        "light": "rgb(81, 81, 81)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "silver-1200": {
+      "sets": {
+        "dark": "rgb(190, 190, 190)",
+        "light": "rgb(66, 66, 66)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "silver-1300": {
+      "sets": {
+        "dark": "rgb(211, 211, 211)",
+        "light": "rgb(52, 52, 52)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "silver-1400": {
+      "sets": {
+        "dark": "rgb(229, 229, 229)",
+        "light": "rgb(39, 39, 39)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "silver-1500": {
+      "sets": {
+        "dark": "rgb(244, 244, 244)",
+        "light": "rgb(28, 28, 28)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "silver-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(12, 12, 12)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "silver-200": {
+      "sets": {
+        "dark": "rgb(33, 33, 33)",
+        "light": "rgb(239, 239, 239)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "silver-300": {
+      "sets": {
+        "dark": "rgb(44, 44, 44)",
+        "light": "rgb(223, 223, 223)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "silver-400": {
+      "sets": {
+        "dark": "rgb(59, 59, 59)",
+        "light": "rgb(204, 204, 204)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "silver-500": {
+      "sets": {
+        "dark": "rgb(76, 76, 76)",
+        "light": "rgb(183, 183, 183)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "silver-600": {
+      "sets": {
+        "dark": "rgb(92, 92, 92)",
+        "light": "rgb(160, 160, 160)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "silver-700": {
+      "sets": {
+        "dark": "rgb(108, 108, 108)",
+        "light": "rgb(143, 143, 143)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "silver-800": {
+      "sets": {
+        "dark": "rgb(118, 118, 118)",
+        "light": "rgb(128, 128, 128)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "silver-900": {
+      "sets": {
+        "dark": "rgb(137, 137, 137)",
+        "light": "rgb(114, 114, 114)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "static-blue-1000": {
+      "value": "rgb(39, 77, 234)"
+    },
+    "static-blue-900": {
+      "value": "rgb(59, 99, 251)"
+    },
+    "static-chartreuse-400": {
+      "value": "rgb(182, 219, 0)"
+    },
+    "static-chartreuse-600": {
+      "value": "rgb(143, 172, 0)"
+    },
+    "static-chartreuse-800": {
+      "value": "rgb(114, 137, 0)"
+    },
+    "static-cyan-400": {
+      "value": "rgb(138, 213, 255)"
+    },
+    "static-cyan-600": {
+      "value": "rgb(48, 167, 254)"
+    },
+    "static-cyan-800": {
+      "value": "rgb(18, 134, 205)"
+    },
+    "static-fuchsia-1000": {
+      "value": "rgb(156, 40, 175)"
+    },
+    "static-fuchsia-400": {
+      "value": "rgb(247, 181, 255)"
+    },
+    "static-fuchsia-600": {
+      "value": "rgb(236, 105, 255)"
+    },
+    "static-fuchsia-800": {
+      "value": "rgb(200, 68, 220)"
+    },
+    "static-fuchsia-900": {
+      "value": "rgb(181, 57, 200)"
+    },
+    "static-green-400": {
+      "value": "rgb(107, 227, 162)"
+    },
+    "static-green-600": {
+      "value": "rgb(18, 184, 103)"
+    },
+    "static-green-800": {
+      "value": "rgb(7, 147, 85)"
+    },
+    "static-indigo-1000": {
+      "value": "rgb(99, 56, 238)"
+    },
+    "static-indigo-400": {
+      "value": "rgb(192, 201, 255)"
+    },
+    "static-indigo-600": {
+      "value": "rgb(145, 151, 254)"
+    },
+    "static-indigo-800": {
+      "value": "rgb(122, 106, 253)"
+    },
+    "static-indigo-900": {
+      "value": "rgb(113, 85, 250)"
+    },
+    "static-magenta-1000": {
+      "value": "rgb(186, 22, 80)"
+    },
+    "static-magenta-400": {
+      "value": "rgb(255, 185, 208)"
+    },
+    "static-magenta-600": {
+      "value": "rgb(255, 112, 159)"
+    },
+    "static-magenta-800": {
+      "value": "rgb(240, 45, 110)"
+    },
+    "static-magenta-900": {
+      "value": "rgb(217, 35, 97)"
+    },
+    "static-orange-400": {
+      "value": "rgb(255, 193, 94)"
+    },
+    "static-orange-600": {
+      "value": "rgb(252, 125, 0)"
+    },
+    "static-orange-800": {
+      "value": "rgb(212, 91, 0)"
+    },
+    "static-purple-400": {
+      "value": "rgb(221, 193, 246)"
+    },
+    "static-purple-600": {
+      "value": "rgb(191, 138, 238)"
+    },
+    "static-purple-800": {
+      "value": "rgb(166, 92, 231)"
+    },
+    "static-red-1000": {
+      "value": "rgb(183, 40, 24)"
+    },
+    "static-red-400": {
+      "value": "rgb(255, 188, 180)"
+    },
+    "static-red-600": {
+      "value": "rgb(255, 118, 101)"
+    },
+    "static-red-800": {
+      "value": "rgb(240, 56, 35)"
+    },
+    "static-red-900": {
+      "value": "rgb(215, 50, 32)"
+    },
+    "static-turquoise-400": {
+      "value": "rgb(111, 221, 228)"
+    },
+    "static-turquoise-600": {
+      "value": "rgb(15, 177, 192)"
+    },
+    "static-turquoise-800": {
+      "value": "rgb(10, 141, 153)"
+    },
+    "transparent-black-100": {
+      "value": "rgba(0, 0, 0, 0.09)"
+    },
+    "transparent-black-1000": {
+      "value": "rgb(0, 0, 0)"
+    },
+    "transparent-black-200": {
+      "value": "rgba(0, 0, 0, 0.12)"
+    },
+    "transparent-black-25": {
+      "value": "rgba(0, 0, 0, 0)"
+    },
+    "transparent-black-300": {
+      "value": "rgba(0, 0, 0, 0.15)"
+    },
+    "transparent-black-400": {
+      "value": "rgba(0, 0, 0, 0.22)"
+    },
+    "transparent-black-50": {
+      "value": "rgba(0, 0, 0, 0.03)"
+    },
+    "transparent-black-500": {
+      "value": "rgba(0, 0, 0, 0.44)"
+    },
+    "transparent-black-600": {
+      "value": "rgba(0, 0, 0, 0.56)"
+    },
+    "transparent-black-700": {
+      "value": "rgba(0, 0, 0, 0.69)"
+    },
+    "transparent-black-75": {
+      "value": "rgba(0, 0, 0, 0.05)"
+    },
+    "transparent-black-800": {
+      "value": "rgba(0, 0, 0, 0.84)"
+    },
+    "transparent-black-900": {
+      "value": "rgba(0, 0, 0, 0.93)"
+    },
+    "transparent-white-100": {
+      "value": "rgba(255, 255, 255, 0.11)"
+    },
+    "transparent-white-1000": {
+      "value": "rgb(255, 255, 255)"
+    },
+    "transparent-white-200": {
+      "value": "rgba(255, 255, 255, 0.14)"
+    },
+    "transparent-white-25": {
+      "value": "rgba(255, 255, 255, 0)"
+    },
+    "transparent-white-300": {
+      "value": "rgba(255, 255, 255, 0.17)"
+    },
+    "transparent-white-400": {
+      "value": "rgba(255, 255, 255, 0.21)"
+    },
+    "transparent-white-50": {
+      "value": "rgba(255, 255, 255, 0.04)"
+    },
+    "transparent-white-500": {
+      "value": "rgba(255, 255, 255, 0.39)"
+    },
+    "transparent-white-600": {
+      "value": "rgba(255, 255, 255, 0.51)"
+    },
+    "transparent-white-700": {
+      "value": "rgba(255, 255, 255, 0.66)"
+    },
+    "transparent-white-75": {
+      "value": "rgba(255, 255, 255, 0.07)"
+    },
+    "transparent-white-800": {
+      "value": "rgba(255, 255, 255, 0.85)"
+    },
+    "transparent-white-900": {
+      "value": "rgba(255, 255, 255, 0.94)"
+    },
+    "turquoise-100": {
+      "sets": {
+        "dark": "rgb(0, 30, 33)",
+        "light": "rgb(238, 251, 251)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "turquoise-1000": {
+      "sets": {
+        "dark": "rgb(13, 168, 182)",
+        "light": "rgb(5, 107, 116)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "turquoise-1100": {
+      "sets": {
+        "dark": "rgb(16, 186, 202)",
+        "light": "rgb(3, 90, 98)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "turquoise-1200": {
+      "sets": {
+        "dark": "rgb(64, 208, 220)",
+        "light": "rgb(1, 74, 81)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "turquoise-1300": {
+      "sets": {
+        "dark": "rgb(128, 225, 231)",
+        "light": "rgb(0, 59, 65)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "turquoise-1400": {
+      "sets": {
+        "dark": "rgb(183, 240, 240)",
+        "light": "rgb(0, 44, 49)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "turquoise-1500": {
+      "sets": {
+        "dark": "rgb(228, 249, 249)",
+        "light": "rgb(0, 32, 35)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "turquoise-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(0, 15, 17)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "turquoise-200": {
+      "sets": {
+        "dark": "rgb(0, 37, 41)",
+        "light": "rgb(209, 245, 245)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "turquoise-300": {
+      "sets": {
+        "dark": "rgb(0, 49, 54)",
+        "light": "rgb(169, 236, 237)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "turquoise-400": {
+      "sets": {
+        "dark": "rgb(0, 66, 72)",
+        "light": "rgb(111, 221, 228)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "turquoise-500": {
+      "sets": {
+        "dark": "rgb(3, 84, 92)",
+        "light": "rgb(39, 202, 216)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "turquoise-600": {
+      "sets": {
+        "dark": "rgb(5, 103, 112)",
+        "light": "rgb(15, 177, 192)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "turquoise-700": {
+      "sets": {
+        "dark": "rgb(7, 120, 131)",
+        "light": "rgb(12, 158, 171)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "turquoise-800": {
+      "sets": {
+        "dark": "rgb(9, 131, 142)",
+        "light": "rgb(10, 141, 153)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "turquoise-900": {
+      "sets": {
+        "dark": "rgb(11, 151, 164)",
+        "light": "rgb(8, 126, 137)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    },
+    "white": {
+      "value": "rgb(255, 255, 255)"
+    },
+    "yellow-100": {
+      "sets": {
+        "light": "rgb(255, 248, 204)",
+        "dark": "rgb(37, 23, 0)",
+        "wireframe": "rgb(246, 248, 252)"
+      }
+    },
+    "yellow-1000": {
+      "sets": {
+        "light": "rgb(134, 85, 0)",
+        "dark": "rgb(203, 141, 0)",
+        "wireframe": "rgb(61, 94, 165)"
+      }
+    },
+    "yellow-1100": {
+      "sets": {
+        "light": "rgb(114, 72, 0)",
+        "dark": "rgb(218, 159, 0)",
+        "wireframe": "rgb(52, 79, 140)"
+      }
+    },
+    "yellow-1200": {
+      "sets": {
+        "light": "rgb(93, 59, 0)",
+        "dark": "rgb(235, 183, 0)",
+        "wireframe": "rgb(42, 65, 114)"
+      }
+    },
+    "yellow-1300": {
+      "sets": {
+        "light": "rgb(75, 47, 0)",
+        "dark": "rgb(249, 206, 0)",
+        "wireframe": "rgb(34, 51, 91)"
+      }
+    },
+    "yellow-1400": {
+      "sets": {
+        "light": "rgb(56, 35, 0)",
+        "dark": "rgb(255, 230, 86)",
+        "wireframe": "rgb(25, 39, 69)"
+      }
+    },
+    "yellow-1500": {
+      "sets": {
+        "dark": "rgb(255, 246, 195)",
+        "light": "rgb(40, 25, 0)",
+        "wireframe": "rgb(18, 27, 48)"
+      }
+    },
+    "yellow-1600": {
+      "sets": {
+        "dark": "rgb(255, 255, 255)",
+        "light": "rgb(18, 11, 0)",
+        "wireframe": "rgb(8, 12, 22)"
+      }
+    },
+    "yellow-200": {
+      "sets": {
+        "light": "rgb(255, 241, 151)",
+        "dark": "rgb(47, 29, 0)",
+        "wireframe": "rgb(235, 239, 248)"
+      }
+    },
+    "yellow-300": {
+      "sets": {
+        "light": "rgb(255, 222, 44)",
+        "dark": "rgb(61, 39, 0)",
+        "wireframe": "rgb(216, 224, 242)"
+      }
+    },
+    "yellow-400": {
+      "sets": {
+        "light": "rgb(245, 199, 0)",
+        "dark": "rgb(83, 52, 0)",
+        "wireframe": "rgb(192, 205, 234)"
+      }
+    },
+    "yellow-500": {
+      "sets": {
+        "light": "rgb(230, 175, 0)",
+        "dark": "rgb(107, 67, 0)",
+        "wireframe": "rgb(164, 183, 225)"
+      }
+    },
+    "yellow-600": {
+      "sets": {
+        "light": "rgb(210, 149, 0)",
+        "dark": "rgb(130, 82, 0)",
+        "wireframe": "rgb(135, 160, 215)"
+      }
+    },
+    "yellow-700": {
+      "sets": {
+        "light": "rgb(193, 131, 0)",
+        "dark": "rgb(151, 97, 0)",
+        "wireframe": "rgb(113, 142, 208)"
+      }
+    },
+    "yellow-800": {
+      "sets": {
+        "light": "rgb(175, 116, 0)",
+        "dark": "rgb(164, 106, 0)",
+        "wireframe": "rgb(93, 127, 201)"
+      }
+    },
+    "yellow-900": {
+      "sets": {
+        "light": "rgb(158, 102, 0)",
+        "dark": "rgb(186, 124, 0)",
+        "wireframe": "rgb(74, 111, 195)"
+      }
+    }
+  }
+}

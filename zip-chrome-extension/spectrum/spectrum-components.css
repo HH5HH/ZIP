@@ -1,0 +1,34 @@
+/* Official Spectrum CSS artifacts (vendored for offline ZIP usage). */
+/* Sources: @spectrum-css/* packages from unpkg npm CDN. */
+
+@import url("./vendor/tokens/index.css");
+
+@import url("./vendor/page/index-base.css");
+@import url("./vendor/page/spectrum-two.css");
+
+@import url("./vendor/typography/index.css");
+
+@import url("./vendor/button/index-base.css");
+@import url("./vendor/button/spectrum-two.css");
+
+@import url("./vendor/actionbutton/index-base.css");
+@import url("./vendor/actionbutton/spectrum-two.css");
+
+@import url("./vendor/textfield/index-base.css");
+@import url("./vendor/textfield/spectrum-two.css");
+
+@import url("./vendor/picker/index-base.css");
+@import url("./vendor/picker/spectrum-two.css");
+
+@import url("./vendor/menu/index-base.css");
+@import url("./vendor/menu/spectrum-two.css");
+
+@import url("./vendor/table/index-base.css");
+@import url("./vendor/table/spectrum-two.css");
+
+@import url("./vendor/divider/index-base.css");
+@import url("./vendor/divider/spectrum-two.css");
+
+@import url("./vendor/link/index.css");
+@import url("./vendor/fieldlabel/index.css");
+@import url("./vendor/icon/index.css");
