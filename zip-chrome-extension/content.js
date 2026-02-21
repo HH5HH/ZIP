@@ -1869,6 +1869,25 @@
     return "";
   }
 
+  function getSlackApiErrorCode(result) {
+    const source = result && typeof result === "object" ? result : {};
+    return String(
+      source.code
+      || (source.payload && source.payload.error)
+      || ""
+    ).trim().toLowerCase();
+  }
+
+  function getSlackApiErrorMessage(result, fallback) {
+    const source = result && typeof result === "object" ? result : {};
+    return String(
+      source.error
+      || (source.payload && source.payload.error)
+      || fallback
+      || ""
+    ).trim();
+  }
+
   function extractSlackIdentityFromUsersProfilePayload(payload) {
     const source = payload && typeof payload === "object" ? payload : null;
     const profile = source && source.profile && typeof source.profile === "object"
@@ -1894,12 +1913,24 @@
   }
 
   async function getSlackUserProfile(workspaceOrigin, userId) {
-    const identity = { userName: "", avatarUrl: "" };
+    const identity = {
+      userName: "",
+      avatarUrl: "",
+      avatarErrorCode: "",
+      avatarErrorMessage: ""
+    };
     const applyIdentity = (nextIdentity) => {
       const candidate = nextIdentity && typeof nextIdentity === "object" ? nextIdentity : null;
       if (!candidate) return;
       if (!identity.userName) identity.userName = String(candidate.userName || "").trim();
       if (!identity.avatarUrl) identity.avatarUrl = normalizeSlackAvatarUrl(candidate.avatarUrl || "");
+    };
+    const captureAvatarError = (result, fallbackMessage) => {
+      if (identity.avatarUrl) return;
+      const code = getSlackApiErrorCode(result);
+      const message = getSlackApiErrorMessage(result, fallbackMessage);
+      if (code && !identity.avatarErrorCode) identity.avatarErrorCode = code;
+      if (message && !identity.avatarErrorMessage) identity.avatarErrorMessage = message;
     };
     const normalizedUserId = normalizeSlackUserId(userId);
     const targetOrigins = [];
@@ -1918,6 +1949,8 @@
       });
       if (selfProfile && selfProfile.ok) {
         applyIdentity(extractSlackIdentityFromUsersProfilePayload(selfProfile.payload));
+      } else {
+        captureAvatarError(selfProfile, "users.profile.get(self) failed.");
       }
 
       if ((!identity.userName || !identity.avatarUrl) && normalizedUserId) {
@@ -1927,6 +1960,8 @@
         });
         if (profileById && profileById.ok) {
           applyIdentity(extractSlackIdentityFromUsersProfilePayload(profileById.payload));
+        } else {
+          captureAvatarError(profileById, "users.profile.get(user) failed.");
         }
       }
 
@@ -1937,13 +1972,17 @@
         });
         if (info && info.ok) {
           applyIdentity(extractSlackIdentityFromUsersInfoPayload(info.payload));
+        } else {
+          captureAvatarError(info, "users.info failed.");
         }
       }
 
       if (identity.userName && identity.avatarUrl) break;
     }
 
-    if (!identity.userName && !identity.avatarUrl) return null;
+    if (!identity.userName && !identity.avatarUrl && !identity.avatarErrorCode && !identity.avatarErrorMessage) {
+      return null;
+    }
     return identity;
   }
 
@@ -2010,15 +2049,25 @@
     const teamId = String(payload.team_id || payload.team || session.teamId || "").trim();
     let userName = String(session.userName || "").trim();
     let avatarUrl = String(session.avatarUrl || "").trim();
+    let avatarErrorCode = "";
+    let avatarErrorMessage = "";
     const profile = await getSlackUserProfile(workspaceOrigin, userId).catch(() => null);
     if (profile) {
       if (!userName) userName = String(profile.userName || "").trim();
       if (!avatarUrl) avatarUrl = String(profile.avatarUrl || "").trim();
+      if (!avatarUrl) {
+        avatarErrorCode = String(profile.avatarErrorCode || "").trim().toLowerCase();
+        avatarErrorMessage = String(profile.avatarErrorMessage || "").trim();
+      }
     }
     if (!userName || !avatarUrl) {
       const domIdentity = extractSlackIdentityFromDom();
       if (!userName) userName = String(domIdentity.userName || "").trim();
       if (!avatarUrl) avatarUrl = String(domIdentity.avatarUrl || "").trim();
+    }
+    if (avatarUrl) {
+      avatarErrorCode = "";
+      avatarErrorMessage = "";
     }
     return {
       ok: true,
@@ -2026,6 +2075,8 @@
       team_id: teamId,
       user_name: userName,
       avatar_url: avatarUrl,
+      avatar_error_code: avatarErrorCode,
+      avatar_error: avatarErrorMessage,
       workspace_origin: workspaceOrigin,
       session_token: token || ""
     };

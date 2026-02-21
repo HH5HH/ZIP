@@ -1658,11 +1658,28 @@ function extractSlackIdentityFromUsersInfoPayload(payload) {
 
 async function fetchSlackIdentityViaApi(workspaceOrigin, token, userId) {
   const resolvedUserId = normalizeSlackUserId(userId);
-  const identity = { userName: "", avatarUrl: "" };
+  const identity = {
+    userName: "",
+    avatarUrl: "",
+    avatarErrorCode: "",
+    avatarErrorMessage: ""
+  };
   const applyIdentity = (nextIdentity) => {
     const candidate = nextIdentity && typeof nextIdentity === "object" ? nextIdentity : {};
     if (!identity.userName) identity.userName = String(candidate.userName || "").trim();
     if (!identity.avatarUrl) identity.avatarUrl = normalizeSlackAvatarUrl(candidate.avatarUrl || "");
+  };
+  const captureAvatarError = (result, fallbackMessage) => {
+    if (identity.avatarUrl) return;
+    const source = result && typeof result === "object" ? result : {};
+    const code = String(
+      source.code
+      || (source.payload && source.payload.error)
+      || ""
+    ).trim().toLowerCase();
+    const message = String(source.error || fallbackMessage || "").trim();
+    if (code && !identity.avatarErrorCode) identity.avatarErrorCode = code;
+    if (message && !identity.avatarErrorMessage) identity.avatarErrorMessage = message;
   };
 
   const targetOrigins = [];
@@ -1688,6 +1705,8 @@ async function fetchSlackIdentityViaApi(workspaceOrigin, token, userId) {
     );
     if (selfProfileResult && selfProfileResult.ok === true) {
       applyIdentity(extractSlackIdentityFromUsersProfilePayload(selfProfileResult.payload));
+    } else {
+      captureAvatarError(selfProfileResult, "users.profile.get(self) failed.");
     }
 
     if ((!identity.userName || !identity.avatarUrl) && resolvedUserId) {
@@ -1702,6 +1721,8 @@ async function fetchSlackIdentityViaApi(workspaceOrigin, token, userId) {
       );
       if (profileByIdResult && profileByIdResult.ok === true) {
         applyIdentity(extractSlackIdentityFromUsersProfilePayload(profileByIdResult.payload));
+      } else {
+        captureAvatarError(profileByIdResult, "users.profile.get(user) failed.");
       }
     }
 
@@ -1717,6 +1738,8 @@ async function fetchSlackIdentityViaApi(workspaceOrigin, token, userId) {
       );
       if (userInfoResult && userInfoResult.ok === true) {
         applyIdentity(extractSlackIdentityFromUsersInfoPayload(userInfoResult.payload));
+      } else {
+        captureAvatarError(userInfoResult, "users.info failed.");
       }
     }
 
@@ -2684,6 +2707,8 @@ async function slackAuthTestViaApi(input) {
       || (openIdSession && openIdSession.avatarUrl)
       || ""
     );
+    let avatarErrorCode = "";
+    let avatarErrorMessage = "";
     if (!userName || !avatarUrl) {
       const identity = await fetchSlackIdentityViaApi(workspaceOrigin, attemptToken, userId);
       if (!userName) {
@@ -2691,6 +2716,10 @@ async function slackAuthTestViaApi(input) {
       }
       if (!avatarUrl) {
         avatarUrl = normalizeSlackAvatarUrl(identity.avatarUrl || "");
+      }
+      if (!avatarUrl) {
+        avatarErrorCode = String(identity.avatarErrorCode || "").trim().toLowerCase();
+        avatarErrorMessage = String(identity.avatarErrorMessage || "").trim();
       }
     }
     if (!userName) {
@@ -2703,7 +2732,9 @@ async function slackAuthTestViaApi(input) {
       user_id: userId,
       team_id: teamId,
       user_name: userName,
-      avatar_url: avatarUrl
+      avatar_url: avatarUrl,
+      avatar_error_code: avatarErrorCode,
+      avatar_error: avatarErrorMessage
     };
   }
 

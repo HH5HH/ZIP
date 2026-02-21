@@ -2955,6 +2955,17 @@
     );
   }
 
+  function formatSlackAvatarDiagnostic(code, message) {
+    const normalizedCode = String(code || "").trim().toLowerCase();
+    const normalizedMessage = normalizePassAiCommentBody(message || "");
+    if (!normalizedCode && !normalizedMessage) return "";
+    if (normalizedCode && normalizedMessage) {
+      if (normalizedMessage.toLowerCase() === normalizedCode) return normalizedCode;
+      return normalizedCode + " - " + normalizedMessage;
+    }
+    return normalizedCode || normalizedMessage;
+  }
+
   function syncSlacktivatedIndicator() {
     if (els.slacktivatedIcon) {
       const defaultSrc = String(
@@ -6008,6 +6019,18 @@
         let apiAvatarUrl = normalizePassAiSlackAvatarUrl(
           apiStatus.avatar_url || apiStatus.avatarUrl || state.passAiSlackAvatarUrl || ""
         );
+        let apiAvatarErrorCode = String(
+          apiStatus.avatar_error_code
+          || apiStatus.avatarErrorCode
+          || ""
+        ).trim().toLowerCase();
+        let apiAvatarErrorMessage = normalizePassAiCommentBody(
+          apiStatus.avatar_error
+          || apiStatus.avatarError
+          || apiStatus.avatar_error_message
+          || apiStatus.avatarErrorMessage
+          || ""
+        );
         let apiTeamId = String(apiStatus.team_id || apiStatus.teamId || "").trim();
         let apiEnterpriseId = String(apiStatus.enterprise_id || apiStatus.enterpriseId || "").trim();
 
@@ -6041,6 +6064,10 @@
             }
           }
         }
+        if (apiAvatarUrl) {
+          apiAvatarErrorCode = "";
+          apiAvatarErrorMessage = "";
+        }
         setPassAiSlackAuthState({
           ready: true,
           mode: "api",
@@ -6051,7 +6078,19 @@
           teamId: apiTeamId,
           enterpriseId: apiEnterpriseId
         });
-        if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
+        if (!silent) {
+          const avatarDiagnostic = !apiAvatarUrl
+            ? formatSlackAvatarDiagnostic(apiAvatarErrorCode, apiAvatarErrorMessage)
+            : "";
+          if (avatarDiagnostic) {
+            setStatus(
+              "ZIP is now SLACKTIVATED. Slack avatar lookup failed (" + avatarDiagnostic + "). Check Slack scopes users.profile:read and users:read.",
+              false
+            );
+          } else {
+            setStatus("ZIP is now SLACKTIVATED.", false);
+          }
+        }
         return true;
       }
       apiFailureCode = String(apiStatus && apiStatus.code || "").trim().toLowerCase();
@@ -6125,7 +6164,21 @@
         if (!silent) setStatus(message, true);
         return false;
       }
-      if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
+      if (!silent) {
+        const avatarDiagnostic = formatSlackAvatarDiagnostic(
+          response.avatar_error_code || response.avatarErrorCode || "",
+          response.avatar_error || response.avatarError || response.avatar_error_message || response.avatarErrorMessage || ""
+        );
+        const responseAvatarUrl = normalizePassAiSlackAvatarUrl(response.avatar_url || response.avatarUrl || "");
+        if (!responseAvatarUrl && avatarDiagnostic) {
+          setStatus(
+            "ZIP is now SLACKTIVATED. Slack avatar lookup failed (" + avatarDiagnostic + "). Check Slack scopes users.profile:read and users:read.",
+            false
+          );
+        } else {
+          setStatus("ZIP is now SLACKTIVATED.", false);
+        }
+      }
       return true;
     } catch (tabErr) {
       const wasReady = isPassAiSlacktivated();
