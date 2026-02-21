@@ -478,6 +478,9 @@ test("sidepanel login wiring uses LOGIN_CLICKED with no ZIP local sign-out path"
   assert.match(source, /msg\.type === "AUTHENTICATED"/);
   assert.match(source, /msg\.type === "LOGGED_OUT"/);
   assert.match(source, /msg\.type === "ABOUT_TO_EXPIRE"/);
+  assert.match(source, /const collectZendeskTabCandidates = async \(\) => \{/);
+  assert.match(source, /const zendeskTabs = await queryZendeskTabsFromSidepanel\(\)\.catch\(\(\) => \[\]\);/);
+  assert.match(source, /const candidateIds = await collectZendeskTabCandidates\(\);/);
 });
 
 test("sidepanel requires ZIP.KEY gate before Zendesk login", () => {
