@@ -3196,7 +3196,8 @@
       force: true,
       silent: true,
       allowOpenIdSilentProbe: true,
-      allowSlackTabBootstrap: true
+      allowSlackTabBootstrap: true,
+      allowSlackTabBootstrapCreate: false
     }).catch(() => false);
     if (!ready || !isPassAiSlacktivated()) {
       setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
