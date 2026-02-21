@@ -22,6 +22,7 @@
   const PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY = "zip.passAi.slackOidc.clientSecret";
   const PASS_AI_SLACK_OIDC_SCOPE_STORAGE_KEY = "zip.passAi.slackOidc.scope";
   const PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY = "zip.passAi.slackOidc.redirectPath";
+  const PASS_AI_SLACK_OIDC_REDIRECT_URI_STORAGE_KEY = "zip.passAi.slackOidc.redirectUri";
   const PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.botToken";
   const PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.userToken";
   const PASS_AI_SLACK_OIDC_DEFAULT_SCOPE = "openid profile email";
@@ -42,6 +43,7 @@
   const ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY = "zip_slack_client_secret";
   const ZIP_SLACK_SCOPE_STORAGE_KEY = "zip_slack_scope";
   const ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY = "zip_slack_redirect_path";
+  const ZIP_SLACK_REDIRECT_URI_STORAGE_KEY = "zip_slack_redirect_uri";
   const ZIP_SLACK_BOT_TOKEN_STORAGE_KEY = "zip_slack_bot_token";
   const ZIP_SLACK_USER_TOKEN_STORAGE_KEY = "zip_slack_user_token";
   const ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY = "zip_slack_oauth_token";
@@ -54,6 +56,7 @@
     PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY,
     PASS_AI_SLACK_OIDC_SCOPE_STORAGE_KEY,
     PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY,
+    PASS_AI_SLACK_OIDC_REDIRECT_URI_STORAGE_KEY,
     PASS_AI_SLACK_TEAM_STORAGE_KEY,
     PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY,
     PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY,
@@ -157,6 +160,7 @@
       clientSecret: "",
       scope: PASS_AI_SLACK_OIDC_DEFAULT_SCOPE,
       redirectPath: PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH,
+      redirectUri: "",
       userToken: "",
       oauthToken: "",
       singularityChannelId: PASS_AI_SLACK_CHANNEL_DEFAULT,
@@ -896,6 +900,16 @@
     }
   }
 
+  function isAllowedSlackWorkspaceHost(host, workspaceHost) {
+    const normalizedHost = String(host || "").toLowerCase();
+    if (!normalizedHost || !normalizedHost.endsWith(".slack.com")) return false;
+    if (!workspaceHost) return true;
+    if (normalizedHost === workspaceHost) return true;
+    // Slack frequently routes workspace sessions to app.slack.com/client/*.
+    if (normalizedHost === "app.slack.com") return true;
+    return false;
+  }
+
   function isSlackAuthLikePathname(pathname) {
     const path = String(pathname || "").toLowerCase();
     if (!path) return false;
@@ -920,7 +934,7 @@
     const parsed = parseSlackTabUrl(tab.url);
     if (!parsed || !isSlackWorkspaceTabUrl(parsed.toString())) return Number.NEGATIVE_INFINITY;
     const host = String(parsed.hostname || "").toLowerCase();
-    if (workspaceHost && host && host !== workspaceHost) return Number.NEGATIVE_INFINITY;
+    if (!isAllowedSlackWorkspaceHost(host, workspaceHost)) return Number.NEGATIVE_INFINITY;
     if (injectableOnly && !isInjectableSlackTabUrl(parsed.toString())) return Number.NEGATIVE_INFINITY;
 
     const full = parsed.toString();
@@ -1008,8 +1022,7 @@
       const parsed = parseSlackTabUrl(tab.url);
       if (!parsed) continue;
       const host = String(parsed.hostname || "").toLowerCase();
-      if (!host.endsWith(".slack.com")) continue;
-      if (workspaceHost && host !== workspaceHost) continue;
+      if (!isAllowedSlackWorkspaceHost(host, workspaceHost)) continue;
       if (injectableOnly && !isInjectableSlackTabUrl(parsed.toString())) continue;
       if (!filtered.includes(numericId)) filtered.push(numericId);
     }
@@ -4572,6 +4585,23 @@
     return normalized;
   }
 
+  function normalizeZipKeyRedirectUri(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    let parsed = null;
+    try {
+      parsed = new URL(raw);
+    } catch (_) {
+      parsed = null;
+    }
+    if (!parsed) return "";
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (parsed.protocol !== "https:") return "";
+    if (!host || !host.endsWith(".chromiumapp.org")) return "";
+    const pathname = String(parsed.pathname || "").trim() || "/";
+    return parsed.origin + pathname;
+  }
+
   function decodeZipKeyPayloadBase64(value) {
     const compact = String(value || "")
       .replace(/\s+/g, "")
@@ -4706,6 +4736,23 @@
       "redirect_path",
       "redirectPath"
     ]));
+    const redirectUri = normalizeZipKeyRedirectUri(readZipKeyValue(payload, [
+      "services.slacktivation.redirect_uri",
+      "services.slacktivation.redirectUri",
+      "services.slacktivation.oidc.redirect_uri",
+      "services.slacktivation.oidc.redirectUri",
+      "slacktivation.redirect_uri",
+      "slacktivation.redirectUri",
+      "slacktivation.oidc.redirect_uri",
+      "slacktivation.oidc.redirectUri",
+      "slack.oidc.redirectUri",
+      "slackOidc.redirectUri",
+      ZIP_SLACK_REDIRECT_URI_STORAGE_KEY,
+      PASS_AI_SLACK_OIDC_REDIRECT_URI_STORAGE_KEY,
+      "ZIP_PASS_AI_SLACK_OIDC_REDIRECT_URI",
+      "redirect_uri",
+      "redirectUri"
+    ]));
     const userToken = normalizePassAiSlackApiToken(readZipKeyValue(payload, [
       "services.slacktivation.user_token",
       "services.slacktivation.userToken",
@@ -4766,7 +4813,8 @@
         clientId,
         clientSecret,
         scope,
-        redirectPath
+        redirectPath,
+        redirectUri
       },
       api: {
         userToken
@@ -4784,6 +4832,7 @@
       ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY,
       ZIP_SLACK_SCOPE_STORAGE_KEY,
       ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY,
+      ZIP_SLACK_REDIRECT_URI_STORAGE_KEY,
       ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
       ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
       ZIP_SLACK_KEY_LOADED_STORAGE_KEY,
@@ -4794,6 +4843,7 @@
       PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY,
       PASS_AI_SLACK_OIDC_SCOPE_STORAGE_KEY,
       PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY,
+      PASS_AI_SLACK_OIDC_REDIRECT_URI_STORAGE_KEY,
       PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY,
       PASS_AI_SLACK_CHANNEL_STORAGE_KEY,
       PASS_AI_SINGULARITY_MENTION_STORAGE_KEY,
@@ -4822,6 +4872,11 @@
       stored[ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY]
       || stored[PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY]
       || PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH
+    );
+    const redirectUri = normalizeZipKeyRedirectUri(
+      stored[ZIP_SLACK_REDIRECT_URI_STORAGE_KEY]
+      || stored[PASS_AI_SLACK_OIDC_REDIRECT_URI_STORAGE_KEY]
+      || ""
     );
     const userToken = normalizePassAiSlackApiToken(
       stored[ZIP_SLACK_USER_TOKEN_STORAGE_KEY]
@@ -4877,6 +4932,7 @@
       clientSecret,
       scope,
       redirectPath,
+      redirectUri,
       userToken,
       oauthToken,
       singularityChannelId,
@@ -4996,7 +5052,8 @@
         clientId: String(normalized.oidc && normalized.oidc.clientId || "").trim(),
         clientSecret: String(normalized.oidc && normalized.oidc.clientSecret || "").trim(),
         scope: normalizePassAiSlackOpenIdScope(normalized.oidc && normalized.oidc.scope),
-        redirectPath: normalizeZipKeyRedirectPath(normalized.oidc && normalized.oidc.redirectPath)
+        redirectPath: normalizeZipKeyRedirectPath(normalized.oidc && normalized.oidc.redirectPath),
+        redirectUri: normalizeZipKeyRedirectUri(normalized.oidc && normalized.oidc.redirectUri)
       },
       api: {
         userToken: normalizePassAiSlackApiToken(normalized.api && normalized.api.userToken)
@@ -5190,11 +5247,15 @@
     const redirectPath = normalizeZipKeyRedirectPath(
       secretConfig && secretConfig.redirectPath
     );
+    const redirectUri = normalizeZipKeyRedirectUri(
+      secretConfig && secretConfig.redirectUri
+    );
     return {
       clientId,
       clientSecret,
       scope,
-      redirectPath
+      redirectPath,
+      redirectUri
     };
   }
 
@@ -5291,6 +5352,7 @@
       clientSecret: config.clientSecret,
       scope: config.scope,
       redirectPath: config.redirectPath,
+      redirectUri: config.redirectUri,
       interactive
     });
     const nextState = normalizePassAiSlackOpenIdAuthResponse(response);

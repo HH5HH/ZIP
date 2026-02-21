@@ -672,3 +672,52 @@ test("Playwright smoke: fallback uses existing Slack tab focus instead of creati
   assert.ok(focusedExisting, "should focus/update existing Slack tab for fallback login");
   assert.equal((report.calls.windowsCreate || []).length, 0, "must not create popup windows");
 });
+
+test("Playwright smoke: fallback reuses app.slack.com client tab instead of opening new Slack tabs", async (t) => {
+  const playwright = await loadPlaywrightOrSkip(t);
+  if (!playwright) return;
+
+  let browser;
+  try {
+    browser = await playwright.chromium.launch({ headless: true });
+  } catch (err) {
+    t.skip("Chromium failed to launch for Playwright smoke test: " + (err && err.message ? err.message : "unknown error"));
+    return;
+  }
+
+  t.after(async () => {
+    try {
+      await browser.close();
+    } catch (_) {}
+  });
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  await bootSidepanelForScenario(page, {
+    openIdStatusOk: false,
+    silentAuthOk: false,
+    interactiveAuthOk: false,
+    slackTabs: [{ id: 5102, windowId: 71, active: false, highlighted: false, url: "https://app.slack.com/client/TMOCKZIP/C12345" }],
+    activeTabSlack: false
+  });
+
+  await clickSlacktivatedButton(page);
+
+  await page.waitForFunction(() => {
+    const harness = window.__zipSidepanelHarness;
+    if (!harness) return false;
+    const calls = harness.getCalls();
+    const slackUpdates = (calls.tabsUpdate || []).filter((row) => String(row && row.updateInfo && row.updateInfo.url || "").includes("slack.com"));
+    return slackUpdates.length >= 1;
+  }, { timeout: 10000 });
+
+  const report = await readSlackUiReport(page);
+  const slackTabCreates = (report.calls.tabsCreate || []).filter((row) => String((row && row.url) || "").includes("slack.com"));
+  const slackTabUpdates = (report.calls.tabsUpdate || []).filter((row) => String(row && row.updateInfo && row.updateInfo.url || "").includes("slack.com"));
+  const focusedExisting = slackTabUpdates.find((row) => Number(row && row.tabId) === 5102);
+
+  assert.equal(slackTabCreates.length, 0, "should not create a new Slack tab when app.slack.com tab already exists");
+  assert.ok(focusedExisting, "should focus/update existing app.slack.com tab for fallback login");
+  assert.equal((report.calls.windowsCreate || []).length, 0, "must not create popup windows");
+});

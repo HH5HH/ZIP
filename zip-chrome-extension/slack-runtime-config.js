@@ -23,5 +23,8 @@
   if (!window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH) {
     window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_PATH = "slack-user";
   }
+  if (!window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_URI) {
+    window.ZIP_PASS_AI_SLACK_OIDC_REDIRECT_URI = "";
+  }
   // Tokens are intentionally not hardcoded; provide via ZIP.KEY import into chrome.storage.local.
 })();
