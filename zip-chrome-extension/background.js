@@ -2200,6 +2200,7 @@ async function slackSendMarkdownToSelfViaApi(input) {
     return { ok: false, error: "Slack message body is empty.", code: "slack_payload_empty" };
   }
   const webApiOrigin = SLACK_WEB_API_ORIGIN;
+  const allowWorkspaceTabBootstrap = body.autoBootstrapSlackTab !== false;
   // @ME must target the SLACKTIVATED user identity via user OAuth/session token.
   const tokens = await resolveSlackApiTokens(body);
   const userDeliveryToken = normalizeSlackApiToken(tokens.userToken);
@@ -2355,7 +2356,7 @@ async function slackSendMarkdownToSelfViaApi(input) {
             workspaceOrigin,
             channelId: postChannel,
             ts: postedTs,
-            autoBootstrapSlackTab: true
+            autoBootstrapSlackTab: allowWorkspaceTabBootstrap
           }, "workspace_mark_unread_fallback");
           unreadMarked = !!(workspaceUnreadFallback && workspaceUnreadFallback.ok && workspaceUnreadFallback.unread_marked === true);
         }

@@ -3218,7 +3218,8 @@
         userName: state.passAiSlackUserName || "",
         avatarUrl: state.passAiSlackAvatarUrl || "",
         markdownText,
-        userToken: slackApiTokens.userToken || ""
+        userToken: slackApiTokens.userToken || "",
+        autoBootstrapSlackTab: false
       };
 
       setStatus("Sending visible ticket list to @ME via Slack API…", false);
