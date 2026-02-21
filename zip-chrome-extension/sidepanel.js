@@ -15,6 +15,8 @@
   const PASS_AI_SLACK_WORKSPACE_ORIGIN = "https://adobedx.slack.com";
   const PASS_AI_SLACK_API_ENDPOINT = PASS_AI_SLACK_WORKSPACE_ORIGIN + "/api";
   const PASS_AI_SLACK_APP_ID = "A0AGPACM3UG";
+  const ZIP_OFFICIAL_EXTENSION_ID = "ibijkkpjfgaocgmpafbcckhhdkpbldoc";
+  const ZIP_OFFICIAL_SLACK_REDIRECT_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-user";
   const PASS_AI_SLACK_SINGULARITY_USER_ID = "U05PQCUFN0H";
   // Legacy cleanup key only. Team pinning is no longer part of ZIP.KEY validation.
   const PASS_AI_SLACK_TEAM_STORAGE_KEY = "zip.passAi.expectedSlackTeamId";
@@ -5237,6 +5239,19 @@
     return unique.length ? unique.join(" ") : PASS_AI_SLACK_OIDC_DEFAULT_SCOPE;
   }
 
+  function getOfficialSlackRedirectUriForRuntime() {
+    const runtimeId = String(
+      typeof chrome !== "undefined"
+      && chrome.runtime
+      && typeof chrome.runtime.id === "string"
+        ? chrome.runtime.id
+        : ""
+    ).trim();
+    if (!runtimeId) return "";
+    if (runtimeId === ZIP_OFFICIAL_EXTENSION_ID) return ZIP_OFFICIAL_SLACK_REDIRECT_URI;
+    return "";
+  }
+
   function getPassAiSlackOpenIdConfig() {
     const secretConfig = state && state.zipSecretConfig && typeof state.zipSecretConfig === "object"
       ? state.zipSecretConfig
@@ -5249,7 +5264,7 @@
     );
     const redirectUri = normalizeZipKeyRedirectUri(
       secretConfig && secretConfig.redirectUri
-    );
+    ) || getOfficialSlackRedirectUriForRuntime();
     return {
       clientId,
       clientSecret,
