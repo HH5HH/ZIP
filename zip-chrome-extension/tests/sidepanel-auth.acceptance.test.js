@@ -611,6 +611,27 @@ test("startup status waits for filter catalogs before announcing Ready", () => {
   );
 });
 
+test("sendToZendeskTab retry path is isolated from Slack worker-tab state", () => {
+  const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
+  const sendToZendeskTabMatch = source.match(/function sendToZendeskTab\(inner\)\s*\{[\s\S]*?\n  \}/);
+  assert.ok(sendToZendeskTabMatch, "sendToZendeskTab function not found");
+  const sendToZendeskTabBody = sendToZendeskTabMatch[0];
+  assert.doesNotMatch(sendToZendeskTabBody, /isTrackedSlackWorkerTabId/);
+  assert.doesNotMatch(sendToZendeskTabBody, /clearTrackedSlackWorkerTabReference/);
+  assert.doesNotMatch(sendToZendeskTabBody, /numericTabId/);
+});
+
+test("refreshAll uses single-flight protection to prevent overlapping catalog loads", () => {
+  const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
+  const refreshAllMatch = source.match(/async function refreshAll\(\)\s*\{[\s\S]*?\n  \}/);
+  assert.ok(refreshAllMatch, "refreshAll function not found");
+  const refreshAllBody = refreshAllMatch[0];
+  assert.match(refreshAllBody, /if \(refreshAllInFlight\) return refreshAllInFlight;/);
+  assert.match(refreshAllBody, /refreshAllInFlight = \(async \(\) => \{/);
+  assert.match(refreshAllBody, /return await refreshAllInFlight;/);
+  assert.match(refreshAllBody, /refreshAllInFlight = null;/);
+});
+
 test("content script supports authoritative session probe and logout/session events", () => {
   const source = fs.readFileSync(CONTENT_PATH, "utf8");
   assert.match(source, /type === "ZIP_SESSION_PROBE"/);

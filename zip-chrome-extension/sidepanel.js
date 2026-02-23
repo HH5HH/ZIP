@@ -194,6 +194,7 @@
   let toastHideTimerId = null;
   let authHydrationInFlight = false;
   let authRefreshInFlight = false;
+  let refreshAllInFlight = null;
   let slackAuthCheckInFlight = false;
   let slackAuthCheckLastAt = 0;
   let slackIdentityEnrichmentLastAt = 0;
@@ -1120,47 +1121,18 @@
         reject(new Error("Unable to open Slack tab in this browser context."));
         return;
       }
-      const createInCurrentWindow = () => {
-        chrome.tabs.create({ url: safeUrl, active }, (tab) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message || "Unable to open Slack tab."));
-            return;
-          }
-          resolve({
-            tabId: tab && tab.id != null ? tab.id : null,
-            windowId: tab && tab.windowId != null ? tab.windowId : null,
-            openedNewTab: true,
-            worker
-          });
+      chrome.tabs.create({ url: safeUrl, active }, (tab) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message || "Unable to open Slack tab."));
+          return;
+        }
+        resolve({
+          tabId: tab && tab.id != null ? tab.id : null,
+          windowId: tab && tab.windowId != null ? tab.windowId : null,
+          openedNewTab: true,
+          worker
         });
-      };
-      if (
-        worker
-        && !active
-        && chrome.windows
-        && typeof chrome.windows.create === "function"
-      ) {
-        chrome.windows.create({ url: safeUrl, focused: false, state: "minimized" }, (createdWindow) => {
-          if (chrome.runtime.lastError) {
-            createInCurrentWindow();
-            return;
-          }
-          const workerWindowId = createdWindow && createdWindow.id != null ? createdWindow.id : null;
-          const workerTab = Array.isArray(createdWindow && createdWindow.tabs)
-            ? createdWindow.tabs[0]
-            : null;
-          resolve({
-            tabId: workerTab && workerTab.id != null ? workerTab.id : null,
-            windowId: workerWindowId != null
-              ? workerWindowId
-              : (workerTab && workerTab.windowId != null ? workerTab.windowId : null),
-            openedNewTab: true,
-            worker
-          });
-        });
-        return;
-      }
-      createInCurrentWindow();
+      });
     });
   }
 
@@ -2291,23 +2263,21 @@
       chrome.runtime.sendMessage(
         { type: "ZIP_REQUEST", tabId, requestId, inner },
         (response) => {
-          if (chrome.runtime.lastError) {
-            if (isTrackedSlackWorkerTabId(numericTabId)) {
-              clearTrackedSlackWorkerTabReference(numericTabId);
+          try {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message || "Extension error"));
+              return;
             }
-            reject(new Error(chrome.runtime.lastError.message || "Extension error"));
-            return;
-          }
-          if (response && response.error) {
-            if (isTrackedSlackWorkerTabId(numericTabId)) {
-              clearTrackedSlackWorkerTabReference(numericTabId);
+            if (response && response.error) {
+              reject(new Error(response.error));
+              return;
             }
-            reject(new Error(response.error));
-            return;
+            if (response && response.result !== undefined) resolve(response.result);
+            else if (response && response.type === "ZIP_RESPONSE" && response.result !== undefined) resolve(response.result);
+            else resolve(response);
+          } catch (err) {
+            reject(err instanceof Error ? err : new Error("Zendesk tab request failed."));
           }
-          if (response && response.result !== undefined) resolve(response.result);
-          else if (response && response.type === "ZIP_RESPONSE" && response.result !== undefined) resolve(response.result);
-          else resolve(response);
         }
       );
     });
@@ -4368,6 +4338,12 @@
     renderOrgSelectLoadingPlaceholder();
     renderViewSelectLoadingPlaceholder();
     renderGroupSelectLoadingPlaceholder();
+  }
+
+  function stopTopFilterMenusLoadingState() {
+    setOrgSelectLoading(false);
+    setViewSelectLoading(false);
+    setGroupSelectLoading(false);
   }
 
   function showLogin() {
@@ -9416,67 +9392,73 @@
         assignedFilterNavError = err || new Error("Unknown error");
       }
     }
-    (async () => {
-      const orgResult = await loadFilterCatalogWithRetry("By Organization", loadOrganizations);
-      const viewResult = await loadFilterCatalogWithRetry("By View", loadViews);
-      const groupResult = await loadFilterCatalogWithRetry("By Group / Agent", loadAllGroupsWithMembers);
-      return [orgResult, viewResult, groupResult];
-    })().then((catalogResults) => {
-      if (!state.user) return;
-      const failedCatalogs = (Array.isArray(catalogResults) ? catalogResults : [])
-        .filter((result) => !result || !result.ok)
-        .map((result) => String(result && result.label ? result.label : "Filter"));
-      if (assignedFilterNavError) {
-        setStatus(
-          "Ready. " + state.filteredTickets.length + " tickets shown. Could not open main filter tab: " + formatErrorMessage(assignedFilterNavError, "Unknown error"),
-          true
-        );
-        return;
-      }
-      if (failedCatalogs.length) {
-        setStatus(
-          "Ready. " + state.filteredTickets.length + " tickets shown. Some filters failed to load: " + failedCatalogs.join(", "),
-          true
-        );
-        return;
-      }
-      setStatus("Ready. " + state.filteredTickets.length + " tickets shown.", false);
-    });
+    const orgResult = await loadFilterCatalogWithRetry("By Organization", loadOrganizations);
+    const viewResult = await loadFilterCatalogWithRetry("By View", loadViews);
+    const groupResult = await loadFilterCatalogWithRetry("By Group / Agent", loadAllGroupsWithMembers);
+    const catalogResults = [orgResult, viewResult, groupResult];
+    if (!state.user) return;
+    const failedCatalogs = (Array.isArray(catalogResults) ? catalogResults : [])
+      .filter((result) => !result || !result.ok)
+      .map((result) => String(result && result.label ? result.label : "Filter"));
+    if (assignedFilterNavError) {
+      setStatus(
+        "Ready. " + state.filteredTickets.length + " tickets shown. Could not open main filter tab: " + formatErrorMessage(assignedFilterNavError, "Unknown error"),
+        true
+      );
+      return;
+    }
+    if (failedCatalogs.length) {
+      setStatus(
+        "Ready. " + state.filteredTickets.length + " tickets shown. Some filters failed to load: " + failedCatalogs.join(", "),
+        true
+      );
+      return;
+    }
+    setStatus("Ready. " + state.filteredTickets.length + " tickets shown.", false);
   }
 
   async function refreshAll() {
-    const gateStatus = enforceZipConfigGate({ reportStatus: false });
-    if (!gateStatus.ready) {
-      showLogin();
-      return;
-    }
-    setBusy(true);
-    try {
-      const me = await sendToZendeskTab({ action: "getMe" });
-      if (!hasZendeskSessionUser(me)) {
-        const status = Number(me && me.status);
-        if (shouldTreatMeResponseAsLoggedOut(me)) {
-          handleZendeskLoggedOut();
-          return;
-        }
-        if (!state.user) {
-          showLogin();
-          return;
-        }
-        setStatus("Session check temporarily unavailable" + (Number.isFinite(status) ? " (HTTP " + status + ")" : "") + ".", true);
+    if (refreshAllInFlight) return refreshAllInFlight;
+    refreshAllInFlight = (async () => {
+      const gateStatus = enforceZipConfigGate({ reportStatus: false });
+      if (!gateStatus.ready) {
+        showLogin();
         return;
       }
-      await applySession(me);
-    } catch (err) {
-      if (isSessionErrorMessage(err && err.message)) {
-        handleZendeskLoggedOut();
-      } else if (state.user) {
-        setStatus("Refresh failed: " + (err && err.message ? err.message : "Unknown error"), true);
-      } else {
-        showLogin();
+      setBusy(true);
+      try {
+        const me = await sendToZendeskTab({ action: "getMe" });
+        if (!hasZendeskSessionUser(me)) {
+          const status = Number(me && me.status);
+          if (shouldTreatMeResponseAsLoggedOut(me)) {
+            handleZendeskLoggedOut();
+            return;
+          }
+          if (!state.user) {
+            showLogin();
+            return;
+          }
+          setStatus("Session check temporarily unavailable" + (Number.isFinite(status) ? " (HTTP " + status + ")" : "") + ".", true);
+          return;
+        }
+        await applySession(me);
+      } catch (err) {
+        stopTopFilterMenusLoadingState();
+        if (isSessionErrorMessage(err && err.message)) {
+          handleZendeskLoggedOut();
+        } else if (state.user) {
+          setStatus("Refresh failed: " + (err && err.message ? err.message : "Unknown error"), true);
+        } else {
+          showLogin();
+        }
+      } finally {
+        setBusy(false);
       }
+    })();
+    try {
+      return await refreshAllInFlight;
     } finally {
-      setBusy(false);
+      refreshAllInFlight = null;
     }
   }
 
