@@ -10,6 +10,7 @@ const SIDEPANEL_CSS_PATH = path.join(ROOT, "sidepanel.css");
 const CONTENT_PATH = path.join(ROOT, "content.js");
 const BACKGROUND_PATH = path.join(ROOT, "background.js");
 const SLACK_TOKEN_BRIDGE_PATH = path.join(ROOT, "slack-token-bridge.js");
+const OPTIONS_PATH = path.join(ROOT, "options.js");
 
 test("sidepanel uses SLACKTIVATED indicator + @ME action and removes legacy Slack login button", () => {
   const html = fs.readFileSync(SIDEPANEL_HTML_PATH, "utf8");
@@ -77,6 +78,14 @@ test("sidepanel uses SLACKTIVATED indicator + @ME action and removes legacy Slac
   assert.match(js, /allowCreateTab:\s*allowSlackTabBootstrapCreate/);
   assert.match(js, /const bootstrapAllowCreateTab = opts\.allowCreateTab !== false;/);
   assert.match(js, /bootstrapSlackWorkspaceForMessaging\(\{ allowCreateTab: bootstrapAllowCreateTab \}\)/);
+  assert.match(js, /const SLACK_BOOTSTRAP_MIN_GAP_MS = 8 \* 1000;/);
+  assert.match(js, /const sessionOnly = !!\(/);
+  assert.match(js, /webReady:\s*!sessionOnly/);
+  assert.match(js, /session_only:\s*sessionOnly/);
+  assert.match(js, /recordSlackProbeEvent\("slack_probe_api_auth_ok"/);
+  assert.match(js, /recordSlackProbeEvent\("slack_probe_web_auth_ok"/);
+  assert.match(js, /recordSlackProbeEvent\("slack_probe_session_only"/);
+  assert.match(js, /allowSlackTabBootstrapCreate:\s*true/);
   assert.match(js, /function getPassAiSlackApiTokenConfig\(\)/);
   assert.match(js, /runContextMenuAction\("clearZipKey"\)/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
@@ -126,6 +135,7 @@ test("content script supports Slack auth identity details and @ME markdown DM ac
   assert.match(source, /session_only:\s*true/);
   assert.match(source, /if \(looksSignedIn && hasSessionSignals\) \{/);
   assert.match(source, /Slack session detected; waiting for web token capture\./);
+  assert.match(source, /\(\?:xoxe\\\.\)\?xox\[a-z\]-/);
 
   assert.match(source, /async function slackSendMarkdownToSelfAction\(inner\)/);
   assert.match(source, /async function slackMarkUnreadAction\(inner\)/);
@@ -141,11 +151,18 @@ test("content script supports Slack auth identity details and @ME markdown DM ac
 
 test("Slack token bridge captures tokens from body and headers", () => {
   const source = fs.readFileSync(SLACK_TOKEN_BRIDGE_PATH, "utf8");
+  assert.match(source, /\(\?:xoxe\\\.\)\?xox\[a-z\]-/);
   assert.match(source, /function inspectHeaders\(headers, depth\)/);
   assert.match(source, /if \(init && Object\.prototype\.hasOwnProperty\.call\(init, "headers"\)\) inspectHeaders\(init\.headers, 0\);/);
   assert.match(source, /if \(input && typeof input === "object" && Object\.prototype\.hasOwnProperty\.call\(input, "headers"\)\) inspectHeaders\(input\.headers, 0\);/);
   assert.match(source, /window\.XMLHttpRequest\.prototype\.setRequestHeader/);
   assert.match(source, /inspect\(value, 0\);/);
+});
+
+test("options normalizeSlackToken accepts modern Slack user token prefixes", () => {
+  const source = fs.readFileSync(OPTIONS_PATH, "utf8");
+  assert.match(source, /function normalizeSlackToken\(value\)/);
+  assert.match(source, /\^\(\?:xoxe\\\.\)\?xox\[a-z\]-/);
 });
 
 test("background removes legacy Slack OAuth and popup-login handlers", () => {
@@ -197,10 +214,16 @@ test("background removes legacy Slack OAuth and popup-login handlers", () => {
   assert.match(source, /for \(let i = 0; i < tokenAttempts\.length; i \+= 1\)/);
   assert.match(source, /function isSlackUserOAuthToken\(value\)/);
   assert.doesNotMatch(source, /return \/\^xoxp-\//);
+  assert.match(source, /\^\(\?:xoxe\\\.\)\?xox\[a-z\]-/);
   assert.doesNotMatch(source, /Active Slack API user does not match the SLACKTIVATED user\./);
   assert.doesNotMatch(source, /function isSlackBotApiToken\(value\)/);
   assert.match(source, /function isSlackTokenInvalidationCode\(code\)/);
   assert.match(source, /async function invalidateStoredSlackToken\(token\)/);
+  assert.match(source, /const SLACK_TOKEN_FAILURE_BACKOFF_MS = 2 \* 60 \* 1000;/);
+  assert.match(source, /const slackTokenBackoffUntilByToken = new Map\(\);/);
+  assert.match(source, /function markSlackTokenBackoff\(token\)/);
+  assert.match(source, /function clearSlackTokenBackoff\(token\)/);
+  assert.match(source, /if \(isSlackTokenTemporarilyBackedOff\(attemptToken\)\) \{/);
   assert.match(source, /if \(isSlackTokenInvalidationCode\(lastFailureCode\)\) \{/);
   assert.match(source, /SLACK_IT_TO_ME requires a Slack user\/session token for DM delivery\./);
   assert.match(source, /\/api\/chat\.postMessage/);

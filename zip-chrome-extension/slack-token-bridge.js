@@ -9,7 +9,7 @@
     var dataset = currentScript && currentScript.dataset ? currentScript.dataset : {};
     var EVENT_NAME = dataset.eventName || "zip-slack-token";
     var TYPE = dataset.messageType || "ZIP_SLACK_TOKEN_BRIDGE";
-    var TOKEN_REGEX = /xox[a-z]-[A-Za-z0-9-]+/i;
+    var TOKEN_REGEX = /(?:xoxe\.)?xox[a-z]-[A-Za-z0-9-]+/i;
     var seen = typeof WeakSet !== "undefined" ? new WeakSet() : null;
 
     function extract(value) {

@@ -56,6 +56,7 @@ const SLACK_API_DEFAULT_USER_TOKEN = "";
 const SLACK_OPENID_DEFAULT_SCOPES = "openid profile email";
 const SLACK_OPENID_DEFAULT_REDIRECT_PATH = "slack-user";
 const SLACK_OPENID_STATUS_VERIFY_TTL_MS = 60 * 1000;
+const SLACK_TOKEN_FAILURE_BACKOFF_MS = 2 * 60 * 1000;
 const ZIP_PANEL_PATH = "sidepanel.html";
 const ZIP_CONTENT_SCRIPT_FILE = "content.js";
 const ZENDESK_SUBDOMAIN = (() => {
@@ -269,6 +270,7 @@ const zendeskAuthState = {
 let sessionPollTimerId = null;
 let sessionCheckInFlight = false;
 let sessionAboutToExpireSentForDeadline = 0;
+const slackTokenBackoffUntilByToken = new Map();
 
 function clearSessionPollTimer() {
   if (sessionPollTimerId != null) {
@@ -1772,7 +1774,7 @@ async function fetchSlackIdentityViaApi(workspaceOrigin, token, userId) {
 function normalizeSlackApiToken(value) {
   const token = String(value || "").trim();
   if (!token) return "";
-  return /^(xox[a-z]-|xoxe\.xox[a-z]-)/i.test(token) ? token : "";
+  return /^(?:xoxe\.)?xox[a-z]-/i.test(token) ? token : "";
 }
 
 function isSlackUserOAuthToken(value) {
@@ -1780,6 +1782,37 @@ function isSlackUserOAuthToken(value) {
   if (!token) return false;
   // User/session-flavored tokens are eligible; bot tokens are not.
   return !/^xoxb-/i.test(token) && !/^xoxe\.xoxb-/i.test(token);
+}
+
+function getSlackTokenBackoffUntil(token) {
+  const normalized = normalizeSlackApiToken(token);
+  if (!normalized) return 0;
+  const until = Number(slackTokenBackoffUntilByToken.get(normalized) || 0);
+  if (!Number.isFinite(until) || until <= 0) {
+    slackTokenBackoffUntilByToken.delete(normalized);
+    return 0;
+  }
+  if (Date.now() >= until) {
+    slackTokenBackoffUntilByToken.delete(normalized);
+    return 0;
+  }
+  return until;
+}
+
+function isSlackTokenTemporarilyBackedOff(token) {
+  return getSlackTokenBackoffUntil(token) > 0;
+}
+
+function markSlackTokenBackoff(token) {
+  const normalized = normalizeSlackApiToken(token);
+  if (!normalized) return;
+  slackTokenBackoffUntilByToken.set(normalized, Date.now() + SLACK_TOKEN_FAILURE_BACKOFF_MS);
+}
+
+function clearSlackTokenBackoff(token) {
+  const normalized = normalizeSlackApiToken(token);
+  if (!normalized) return;
+  slackTokenBackoffUntilByToken.delete(normalized);
 }
 
 function toPriorSlackTs(value) {
@@ -2524,10 +2557,17 @@ async function slackSendMarkdownToSelfViaApi(input) {
 
   let lastFailureCode = "slack_send_failed";
   let lastFailureError = "Unable to send Slack self-DM.";
+  let backedOffTokenCount = 0;
 
   for (let i = 0; i < tokenAttempts.length; i += 1) {
     const attemptToken = normalizeSlackApiToken(tokenAttempts[i]);
     if (!attemptToken) continue;
+    if (isSlackTokenTemporarilyBackedOff(attemptToken)) {
+      backedOffTokenCount += 1;
+      lastFailureCode = "slack_token_backoff";
+      lastFailureError = "Slack token validation is cooling down after recent failures.";
+      continue;
+    }
 
     const auth = await postSlackApiWithBearerToken(webApiOrigin, "/api/auth.test", {
       _x_reason: "zip-slack-it-to-me-auth-bg"
@@ -2536,10 +2576,12 @@ async function slackSendMarkdownToSelfViaApi(input) {
       lastFailureCode = auth.code || "slack_auth_failed";
       lastFailureError = auth.error || "Unable to validate Slack API credentials.";
       if (isSlackTokenInvalidationCode(lastFailureCode)) {
+        markSlackTokenBackoff(attemptToken);
         await invalidateStoredSlackToken(attemptToken);
       }
       continue;
     }
+    clearSlackTokenBackoff(attemptToken);
 
     const authPayload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
     const teamId = normalizeSlackTeamId(authPayload.team_id || authPayload.team);
@@ -2588,6 +2630,7 @@ async function slackSendMarkdownToSelfViaApi(input) {
         lastFailureCode = dmOpen.code || "slack_open_dm_failed";
         lastFailureError = dmOpen.error || "Unable to open Slack DM channel.";
         if (isSlackTokenInvalidationCode(lastFailureCode)) {
+          markSlackTokenBackoff(attemptToken);
           await invalidateStoredSlackToken(attemptToken);
           tokenInvalidated = true;
           break;
@@ -2616,6 +2659,7 @@ async function slackSendMarkdownToSelfViaApi(input) {
         lastFailureCode = post.code || "slack_post_failed";
         lastFailureError = post.error || "Unable to send Slack self-DM.";
         if (isSlackTokenInvalidationCode(lastFailureCode)) {
+          markSlackTokenBackoff(attemptToken);
           await invalidateStoredSlackToken(attemptToken);
           tokenInvalidated = true;
           break;
@@ -2659,6 +2703,11 @@ async function slackSendMarkdownToSelfViaApi(input) {
     }
   }
 
+  if (backedOffTokenCount > 0 && backedOffTokenCount >= tokenAttempts.length) {
+    const sessionFallback = await slackSendMarkdownToSelfViaWorkspaceSession(body, "slack_token_backoff");
+    if (sessionFallback && sessionFallback.ok) return sessionFallback;
+  }
+
   const shouldRetryWorkspaceSession = !(
     primarySessionCode === "slack_workspace_tab_missing"
     || primarySessionCode === "slack_workspace_session_unavailable"
@@ -2699,10 +2748,17 @@ async function slackAuthTestViaApi(input) {
   const openIdSession = await readSlackOpenIdSession();
   let lastFailureCode = "slack_auth_failed";
   let lastFailureError = "Unable to validate Slack API credentials.";
+  let backedOffTokenCount = 0;
 
   for (let i = 0; i < tokenAttempts.length; i += 1) {
     const attemptToken = normalizeSlackApiToken(tokenAttempts[i]);
     if (!attemptToken) continue;
+    if (isSlackTokenTemporarilyBackedOff(attemptToken)) {
+      backedOffTokenCount += 1;
+      lastFailureCode = "slack_token_backoff";
+      lastFailureError = "Slack token validation is cooling down after recent failures.";
+      continue;
+    }
     const auth = await postSlackApiWithBearerToken(workspaceOrigin, "/api/auth.test", {
       _x_reason: "zip-slacktivation-auth-bg"
     }, attemptToken);
@@ -2710,10 +2766,12 @@ async function slackAuthTestViaApi(input) {
       lastFailureCode = auth.code || "slack_auth_failed";
       lastFailureError = auth.error || "Unable to validate Slack API credentials.";
       if (isSlackTokenInvalidationCode(lastFailureCode)) {
+        markSlackTokenBackoff(attemptToken);
         await invalidateStoredSlackToken(attemptToken);
       }
       continue;
     }
+    clearSlackTokenBackoff(attemptToken);
 
     const payload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
     const userId = normalizeSlackUserId(payload.user_id || payload.user || body.userId || body.user_id);
@@ -2758,6 +2816,14 @@ async function slackAuthTestViaApi(input) {
       avatar_url: avatarUrl,
       avatar_error_code: avatarErrorCode,
       avatar_error: avatarErrorMessage
+    };
+  }
+
+  if (backedOffTokenCount > 0 && backedOffTokenCount >= tokenAttempts.length) {
+    return {
+      ok: false,
+      code: "slack_token_backoff",
+      error: "Slack token validation is cooling down after recent failures."
     };
   }
 
