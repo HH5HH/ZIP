@@ -75,6 +75,7 @@
   const PASS_AI_SINGULARITY_NAME_PATTERN = "singularity";
   const SLACKTIVATED_PENDING_ICON_URL = "icons/icon128.png";
   const SLACKTIVATED_LOGIN_TOOLTIP = "ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/";
+  const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP.KEY and reset ZIP now? This signs you out, clears SLACKTIVATION, and requires re-importing ZIP.KEY.";
   const PASS_AI_POLL_INTERVAL_MS = 1500;
   const PASS_AI_POLL_MAX_ATTEMPTS = 48;
   const PASS_AI_INACTIVITY_FINAL_MS = 6000;
@@ -2060,6 +2061,10 @@
 
   async function runContextMenuAction(action) {
     hideContextMenu();
+    if (action === "clearZipKey" && !requestZipKeyClearConfirmation()) {
+      setStatus("Clear ZIP.KEY canceled.", false);
+      return;
+    }
     try {
       const response = await sendContextMenuAction(action);
       if (action === "toggleSide") {
@@ -2324,8 +2329,10 @@
       );
       if (!ready) return null;
       return {
-        userId: String(response.user_id || response.userId || "").trim(),
-        userName: String(response.user_name || response.userName || response.display_name || response.displayName || "").trim(),
+        userId: normalizePassAiSlackUserId(response.user_id || response.userId || ""),
+        userName: normalizePassAiSlackDisplayName(
+          response.user_name || response.userName || response.display_name || response.displayName || ""
+        ),
         avatarUrl: normalizePassAiSlackAvatarUrl(response.avatar_url || response.avatarUrl || ""),
         teamId: String(response.team_id || response.teamId || "").trim(),
         enterpriseId: String(response.enterprise_id || response.enterpriseId || "").trim(),
@@ -2469,17 +2476,17 @@
         || response.token
         || ""
       );
-      const userName = String(
+      const userName = normalizePassAiSlackDisplayName(
         response.user_name
         || response.userName
         || response.display_name
         || response.displayName
         || ""
-      ).trim();
+      );
       const avatarUrl = normalizePassAiSlackAvatarUrl(response.avatar_url || response.avatarUrl || "");
       if (!avatarUrl) return null;
       return {
-        userId: String(response.user_id || response.userId || "").trim(),
+        userId: normalizePassAiSlackUserId(response.user_id || response.userId || ""),
         userName,
         avatarUrl,
         teamId: String(response.team_id || response.teamId || "").trim(),
@@ -2936,7 +2943,7 @@
   }
 
   function getSlacktivatedDisplayName() {
-    const bySlack = String(state.passAiSlackUserName || "").trim();
+    const bySlack = normalizePassAiSlackDisplayName(state.passAiSlackUserName || "");
     if (bySlack) return bySlack;
     const byZendesk = String(state.user && state.user.name || "").trim();
     if (byZendesk) return byZendesk;
@@ -3449,8 +3456,8 @@
       await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
       const sendPayload = {
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
-        userId: state.passAiSlackUserId || "",
-        userName: state.passAiSlackUserName || "",
+        userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+        userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
         avatarUrl: state.passAiSlackAvatarUrl || "",
         markdownText,
         userToken: slackApiTokens.userToken || "",
@@ -4713,6 +4720,38 @@
     return hasPassAiSourcesFooter(text);
   }
 
+  function normalizePassAiSlackUserId(value) {
+    const userId = String(value || "").trim().toUpperCase();
+    return /^[UW][A-Z0-9]{8,}$/.test(userId) ? userId : "";
+  }
+
+  function normalizePassAiSlackDisplayName(value) {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    if (!text || text.length > 80) return "";
+    if (/^:[a-z0-9_+\-]{1,64}:$/i.test(text)) return "";
+    if (normalizePassAiSlackUserId(text)) return "";
+    const lower = text.toLowerCase();
+    if (
+      lower === "you"
+      || lower === "profile"
+      || lower === "account"
+      || lower === "user menu"
+      || lower === "menu"
+      || lower === "zip"
+      || lower === "ziptool"
+    ) {
+      return "";
+    }
+    return text;
+  }
+
+  function requestZipKeyClearConfirmation() {
+    if (typeof window === "undefined" || typeof window.confirm !== "function") {
+      return true;
+    }
+    return window.confirm(ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE);
+  }
+
   function normalizePassAiSlackTeamId(value) {
     const teamId = String(value || "").trim().toUpperCase();
     return /^[TE][A-Z0-9]{8,}$/.test(teamId) ? teamId : "";
@@ -5289,8 +5328,8 @@
       mode: String(raw.mode || "").trim().toLowerCase() || "cached",
       workspaceOrigin,
       webReady: raw.webReady !== false,
-      userId: String(raw.userId || raw.user_id || "").trim(),
-      userName: String(raw.userName || raw.user_name || "").trim(),
+      userId: normalizePassAiSlackUserId(raw.userId || raw.user_id || ""),
+      userName: normalizePassAiSlackDisplayName(raw.userName || raw.user_name || ""),
       avatarUrl: normalizePassAiSlackAvatarUrl(raw.avatarUrl || raw.avatar_url || ""),
       teamId: String(raw.teamId || raw.team_id || "").trim().toUpperCase(),
       enterpriseId: String(raw.enterpriseId || raw.enterprise_id || "").trim().toUpperCase(),
@@ -5907,8 +5946,8 @@
     const requestedMode = String(nextState && nextState.mode || "").trim().toLowerCase();
     const skipPersist = !!(nextState && nextState.skipPersist);
     const clearPersisted = !!(nextState && nextState.clearPersisted);
-    const priorUserId = String(state.passAiSlackUserId || "").trim();
-    const priorUserName = String(state.passAiSlackUserName || "").trim();
+    const priorUserId = normalizePassAiSlackUserId(state.passAiSlackUserId || "");
+    const priorUserName = normalizePassAiSlackDisplayName(state.passAiSlackUserName || "");
     const priorAvatarUrl = normalizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "");
     const zendeskAvatarUrl = getCurrentZendeskAvatarUrl();
     const priorAvatarIsZendesk = !!(
@@ -5916,11 +5955,13 @@
       && zendeskAvatarUrl
       && priorAvatarUrl === zendeskAvatarUrl
     );
-    const requestedUserId = String((nextState && nextState.userId) || "").trim();
-    const requestedUserName = String(
+    const requestedUserId = normalizePassAiSlackUserId(
+      nextState && (nextState.userId || nextState.user_id || "")
+    );
+    const requestedUserName = normalizePassAiSlackDisplayName(
       (nextState && (nextState.userName || nextState.user_name || nextState.displayName || nextState.display_name))
       || ""
-    ).trim();
+    );
     const requestedAvatarUrl = normalizePassAiSlackAvatarUrl(nextState && (nextState.avatarUrl || nextState.avatar_url || ""));
     const preservePreviousIdentity = !requestedUserId || !priorUserId || requestedUserId === priorUserId;
     const hasRequestedWebReady = !!(
@@ -5961,8 +6002,8 @@
       mode: requestedMode || "api",
       workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
       webReady: state.passAiSlackWebReady,
-      userId: state.passAiSlackUserId || "",
-      userName: state.passAiSlackUserName || "",
+      userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+      userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
       avatarUrl: state.passAiSlackAvatarUrl || "",
       teamId: String((nextState && (nextState.teamId || nextState.team_id)) || "").trim().toUpperCase(),
       enterpriseId: String((nextState && (nextState.enterpriseId || nextState.enterprise_id)) || "").trim().toUpperCase(),
@@ -6007,15 +6048,19 @@
       const configuredUserToken = getPassAiSlackApiTokenConfig().userToken || "";
       const apiStatus = await sendBackgroundRequest("ZIP_SLACK_API_AUTH_TEST", {
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
-        userId: state.passAiSlackUserId || "",
-        userName: state.passAiSlackUserName || "",
+        userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+        userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
         // Avoid feeding back stale/non-Slack avatar URLs; let background resolve Slack profile avatar.
         avatarUrl: "",
         userToken: isPassAiSlackUserApiToken(configuredUserToken) ? configuredUserToken : ""
       });
       if (apiStatus && apiStatus.ok === true) {
-        let apiUserId = String(apiStatus.user_id || apiStatus.userId || state.passAiSlackUserId || "").trim();
-        let apiUserName = String(apiStatus.user_name || apiStatus.userName || state.passAiSlackUserName || "").trim();
+        let apiUserId = normalizePassAiSlackUserId(
+          apiStatus.user_id || apiStatus.userId || state.passAiSlackUserId || ""
+        );
+        let apiUserName = normalizePassAiSlackDisplayName(
+          apiStatus.user_name || apiStatus.userName || state.passAiSlackUserName || ""
+        );
         let apiAvatarUrl = normalizePassAiSlackAvatarUrl(
           apiStatus.avatar_url || apiStatus.avatarUrl || state.passAiSlackAvatarUrl || ""
         );
@@ -6037,8 +6082,8 @@
         if (!apiAvatarUrl || !apiUserName) {
           const identityFromTab = await enrichPassAiSlackIdentityFromExistingTab({ force: false });
           if (identityFromTab) {
-            if (!apiUserId) apiUserId = String(identityFromTab.userId || "").trim();
-            if (!apiUserName) apiUserName = String(identityFromTab.userName || "").trim();
+            if (!apiUserId) apiUserId = normalizePassAiSlackUserId(identityFromTab.userId || "");
+            if (!apiUserName) apiUserName = normalizePassAiSlackDisplayName(identityFromTab.userName || "");
             if (!apiAvatarUrl) apiAvatarUrl = normalizePassAiSlackAvatarUrl(identityFromTab.avatarUrl || "");
             if (!apiTeamId) apiTeamId = String(identityFromTab.teamId || "").trim();
             if (!apiEnterpriseId) apiEnterpriseId = String(identityFromTab.enterpriseId || "").trim();
@@ -6052,8 +6097,8 @@
         if (!apiAvatarUrl) {
           const transientIdentity = await enrichPassAiSlackIdentityViaTransientTab({ force: false });
           if (transientIdentity) {
-            if (!apiUserId) apiUserId = String(transientIdentity.userId || "").trim();
-            if (!apiUserName) apiUserName = String(transientIdentity.userName || "").trim();
+            if (!apiUserId) apiUserId = normalizePassAiSlackUserId(transientIdentity.userId || "");
+            if (!apiUserName) apiUserName = normalizePassAiSlackDisplayName(transientIdentity.userName || "");
             if (!apiAvatarUrl) apiAvatarUrl = normalizePassAiSlackAvatarUrl(transientIdentity.avatarUrl || "");
             if (!apiTeamId) apiTeamId = String(transientIdentity.teamId || "").trim();
             if (!apiEnterpriseId) apiEnterpriseId = String(transientIdentity.enterpriseId || "").trim();
