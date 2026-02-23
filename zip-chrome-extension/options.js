@@ -4,6 +4,7 @@
   const ZIP_KEY_FILE_PREFIX = "ZIPKEY1:";
   const DEFAULT_SCOPE = "openid profile email";
   const DEFAULT_REDIRECT_PATH = "slack-user";
+  const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP.KEY and reset ZIP now? This signs you out, clears SLACKTIVATION, and requires re-importing ZIP.KEY.";
 
   const els = {
     file: document.getElementById("zipKeyFile"),
@@ -399,6 +400,15 @@
   }
 
   async function clearZipKey() {
+    const shouldClear = (
+      typeof window === "undefined"
+      || typeof window.confirm !== "function"
+      || window.confirm(ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE)
+    );
+    if (!shouldClear) {
+      setStatus("Clear ZIP.KEY canceled.");
+      return;
+    }
     if (els.clearBtn) els.clearBtn.disabled = true;
     setStatus("Clearing ZIP.KEY secrets…");
     try {
