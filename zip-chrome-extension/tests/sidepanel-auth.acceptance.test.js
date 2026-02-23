@@ -8,6 +8,7 @@ const ROOT = path.resolve(__dirname, "..");
 const BACKGROUND_PATH = path.join(ROOT, "background.js");
 const SIDEPANEL_PATH = path.join(ROOT, "sidepanel.js");
 const CONTENT_PATH = path.join(ROOT, "content.js");
+const OPTIONS_PATH = path.join(ROOT, "options.js");
 const SIDEPANEL_FALLBACK_PATH = path.join(ROOT, "sidepanel-login-fallback.js");
 const MANIFEST_PATH = path.join(ROOT, "manifest.json");
 const ZENDESK_DASHBOARD_URL = "https://adobeprimetime.zendesk.com/agent/dashboard?brand_id=2379046";
@@ -532,6 +533,17 @@ test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", 
   assert.equal(stored.zip_slack_key_loaded, false);
 });
 
+test("automatic Slack token invalidation does not remove canonical ZIP.KEY token storage keys", () => {
+  const source = fs.readFileSync(BACKGROUND_PATH, "utf8");
+  const fnMatch = source.match(/async function invalidateStoredSlackToken\(token\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(fnMatch, "invalidateStoredSlackToken function not found");
+  const body = fnMatch[0];
+  assert.match(body, /SLACK_API_USER_TOKEN_STORAGE_KEY/);
+  assert.match(body, /SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY/);
+  assert.doesNotMatch(body, /ZIP_SLACK_USER_TOKEN_STORAGE_KEY/);
+  assert.doesNotMatch(body, /ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY/);
+});
+
 test("sidepanel login wiring uses LOGIN_CLICKED with no ZIP local sign-out path", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
   const startLoginMatch = source.match(/async function startLogin\(\)\s*\{[\s\S]*?\n  \}/);
@@ -564,6 +576,20 @@ test("sidepanel requires ZIP.KEY gate before Zendesk login", () => {
   assert.match(source, /const gateStatus = enforceZipConfigGate\(\{ reportStatus: true \}\);/);
   assert.match(source, /msg\.type === "ZIP_KEY_CLEARED"/);
   assert.doesNotMatch(source, /ZIP\.KEY cleared\. Drop the latest ZIP\.KEY file to continue\./);
+});
+
+test("sidepanel Clear ZIP.KEY action requires explicit user confirmation", () => {
+  const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
+  assert.match(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset ZIP now\?/);
+  assert.match(source, /action === "clearZipKey" && !requestZipKeyClearConfirmation\(\)/);
+  assert.match(source, /window\.confirm\(ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE\)/);
+});
+
+test("options Clear ZIP.KEY action requires explicit user confirmation", () => {
+  const source = fs.readFileSync(OPTIONS_PATH, "utf8");
+  assert.match(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset ZIP now\?/);
+  assert.match(source, /window\.confirm\(ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE\)/);
+  assert.match(source, /setStatus\("Clear ZIP\.KEY canceled\."\)/);
 });
 
 test("startup status waits for filter catalogs before announcing Ready", () => {

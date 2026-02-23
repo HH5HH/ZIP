@@ -1636,6 +1636,26 @@
     return "";
   }
 
+  function normalizeSlackDisplayName(value) {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    if (!text || text.length > 80) return "";
+    if (/^:[a-z0-9_+\-]{1,64}:$/i.test(text)) return "";
+    if (normalizeSlackUserId(text)) return "";
+    const lower = text.toLowerCase();
+    if (
+      lower === "you"
+      || lower === "profile"
+      || lower === "account"
+      || lower === "user menu"
+      || lower === "menu"
+      || lower === "zip"
+      || lower === "ziptool"
+    ) {
+      return "";
+    }
+    return text;
+  }
+
   function pickSlackSessionUserName(candidate) {
     if (!candidate || typeof candidate !== "object") return "";
     const directUserId = normalizeSlackUserId(
@@ -1667,7 +1687,7 @@
       directProfile && directProfile.real_name
     ];
     for (let i = 0; i < values.length; i += 1) {
-      const name = String(values[i] || "").trim();
+      const name = normalizeSlackDisplayName(values[i]);
       if (name) return name;
     }
     return "";
@@ -1726,7 +1746,7 @@
     text = text.replace(/^signed in as\s+/i, "");
     text = text.replace(/\s+\b(menu|profile|account|settings)\b$/i, "");
     text = text.trim();
-    return text.length > 80 ? "" : text;
+    return normalizeSlackDisplayName(text);
   }
 
   function extractSlackIdentityFromDom() {
@@ -1823,7 +1843,7 @@
 
     if (!userName || !avatarUrl) {
       const domIdentity = extractSlackIdentityFromDom();
-      if (!userName) userName = String(domIdentity.userName || "").trim();
+      if (!userName) userName = normalizeSlackDisplayName(domIdentity.userName || "");
       if (!avatarUrl) avatarUrl = String(domIdentity.avatarUrl || "").trim();
     }
 
@@ -1843,7 +1863,7 @@
       user.name
     ];
     for (let i = 0; i < values.length; i += 1) {
-      const name = String(values[i] || "").trim();
+      const name = normalizeSlackDisplayName(values[i]);
       if (name) return name;
     }
     return "";
@@ -1922,7 +1942,7 @@
     const applyIdentity = (nextIdentity) => {
       const candidate = nextIdentity && typeof nextIdentity === "object" ? nextIdentity : null;
       if (!candidate) return;
-      if (!identity.userName) identity.userName = String(candidate.userName || "").trim();
+      if (!identity.userName) identity.userName = normalizeSlackDisplayName(candidate.userName || "");
       if (!identity.avatarUrl) identity.avatarUrl = normalizeSlackAvatarUrl(candidate.avatarUrl || "");
     };
     const captureAvatarError = (result, fallbackMessage) => {
@@ -2047,13 +2067,13 @@
     const payload = auth.payload || {};
     const userId = String(payload.user_id || payload.user || session.userId || "").trim();
     const teamId = String(payload.team_id || payload.team || session.teamId || "").trim();
-    let userName = String(session.userName || "").trim();
+    let userName = normalizeSlackDisplayName(session.userName || "");
     let avatarUrl = String(session.avatarUrl || "").trim();
     let avatarErrorCode = "";
     let avatarErrorMessage = "";
     const profile = await getSlackUserProfile(workspaceOrigin, userId).catch(() => null);
     if (profile) {
-      if (!userName) userName = String(profile.userName || "").trim();
+      if (!userName) userName = normalizeSlackDisplayName(profile.userName || "");
       if (!avatarUrl) avatarUrl = String(profile.avatarUrl || "").trim();
       if (!avatarUrl) {
         avatarErrorCode = String(profile.avatarErrorCode || "").trim().toLowerCase();
@@ -2062,7 +2082,7 @@
     }
     if (!userName || !avatarUrl) {
       const domIdentity = extractSlackIdentityFromDom();
-      if (!userName) userName = String(domIdentity.userName || "").trim();
+      if (!userName) userName = normalizeSlackDisplayName(domIdentity.userName || "");
       if (!avatarUrl) avatarUrl = String(domIdentity.avatarUrl || "").trim();
     }
     if (avatarUrl) {
@@ -2095,7 +2115,7 @@
     const session = extractSlackSessionIdentity();
     let userId = normalizeSlackUserId((inner && (inner.userId || inner.user_id)) || session.userId);
     let teamId = normalizeSlackTeamId(session.teamId);
-    let userName = String(session.userName || "").trim();
+    let userName = normalizeSlackDisplayName(session.userName || "");
     let avatarUrl = String(session.avatarUrl || "").trim();
 
     const auth = await postSlackApi(workspaceOrigin, "/api/auth.test", {
@@ -2120,12 +2140,12 @@
 
     const profile = await getSlackUserProfile(workspaceOrigin, userId).catch(() => null);
     if (profile) {
-      if (!userName) userName = String(profile.userName || "").trim();
+      if (!userName) userName = normalizeSlackDisplayName(profile.userName || "");
       if (!avatarUrl) avatarUrl = String(profile.avatarUrl || "").trim();
     }
     if (!userName || !avatarUrl) {
       const domIdentity = extractSlackIdentityFromDom();
-      if (!userName) userName = String(domIdentity.userName || "").trim();
+      if (!userName) userName = normalizeSlackDisplayName(domIdentity.userName || "");
       if (!avatarUrl) avatarUrl = String(domIdentity.avatarUrl || "").trim();
     }
 
