@@ -119,7 +119,7 @@
 
   function normalizeSlackToken(value) {
     const token = String(value || "").trim();
-    return /^xox[a-z]-/i.test(token) ? token : "";
+    return /^(?:xoxe\.)?xox[a-z]-/i.test(token) ? token : "";
   }
 
   function normalizeChannelId(value) {
