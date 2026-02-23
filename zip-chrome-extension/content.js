@@ -1004,7 +1004,7 @@
 
   function extractXoxcToken(value) {
     const text = String(value == null ? "" : value);
-    const match = text.match(/xox[a-z]-[A-Za-z0-9-]+/i);
+    const match = text.match(/(?:xoxe\.)?xox[a-z]-[A-Za-z0-9-]+/i);
     return match ? match[0] : "";
   }
 
@@ -2034,6 +2034,7 @@
         return {
           ok: true,
           ready: true,
+          api_validated: false,
           user_id: session.userId || "",
           team_id: session.teamId || "",
           user_name: session.userName || "",
@@ -2053,6 +2054,7 @@
         return {
           ok: true,
           ready: true,
+          api_validated: false,
           user_id: session.userId || "",
           team_id: session.teamId || "",
           user_name: session.userName || "",
@@ -2091,6 +2093,8 @@
     }
     return {
       ok: true,
+      ready: true,
+      api_validated: true,
       user_id: userId,
       team_id: teamId,
       user_name: userName,
