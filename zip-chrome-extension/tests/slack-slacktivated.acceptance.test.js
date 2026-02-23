@@ -79,6 +79,18 @@ test("sidepanel uses SLACKTIVATED indicator + @ME action and removes legacy Slac
   assert.match(js, /const bootstrapAllowCreateTab = opts\.allowCreateTab !== false;/);
   assert.match(js, /bootstrapSlackWorkspaceForMessaging\(\{ allowCreateTab: bootstrapAllowCreateTab \}\)/);
   assert.match(js, /const SLACK_BOOTSTRAP_MIN_GAP_MS = 8 \* 1000;/);
+  assert.match(js, /const SLACK_WORKER_IDLE_CLOSE_MS = 12 \* 1000;/);
+  assert.match(js, /slackWorkerTabId:\s*null/);
+  assert.match(js, /slackWorkerWindowId:\s*null/);
+  assert.match(js, /function clearSlackWorkerCloseTimer\(\)/);
+  assert.match(js, /function setTrackedSlackWorkerTab\(tabId, windowId\)/);
+  assert.match(js, /async function closeTrackedSlackWorkerTab\(reason\)/);
+  assert.match(js, /function scheduleSlackWorkerTabClose\(reason, delayMs\)/);
+  assert.match(js, /function maybeCloseZipOpenedSlackLoginTab\(reason, delayMs\)/);
+  assert.match(js, /openSlackWorkspaceTab\(landingUrl, \{ active: false, worker: true \}\)/);
+  assert.match(js, /existingSlackTabs = existingSlackTabs\.filter\(\(tab\) => !isTrackedSlackWorkerTabId\(tab && tab\.id\)\)/);
+  assert.match(js, /maybeCloseZipOpenedSlackLoginTab\("polling_login_complete", SLACK_LOGIN_TAB_CLOSE_DELAY_MS\)/);
+  assert.match(js, /window\.addEventListener\("beforeunload"/);
   assert.match(js, /const sessionOnly = !!\(/);
   assert.match(js, /webReady:\s*!sessionOnly/);
   assert.match(js, /session_only:\s*sessionOnly/);

@@ -140,6 +140,8 @@
     sidePanelLayout: "unknown",
     zendeskTabId: null,
     slackTabId: null,
+    slackWorkerTabId: null,
+    slackWorkerWindowId: null,
     passAiLoading: false,
     passAiConversationInFlight: false,
     passAiTicketId: null,
@@ -201,6 +203,9 @@
   let slackOpenIdSilentProbeLastAt = 0;
   let slackBootstrapInFlight = false;
   let slackBootstrapLastAt = 0;
+  let slackWorkerCloseTimerId = null;
+  let slackLoginFlowOpenedTabId = null;
+  let slackLoginFlowOpenedByZip = false;
   let eventsWired = false;
   const AUTH_CHECK_INTERVAL_ACTIVE_MS = 60 * 1000;
   const AUTH_CHECK_INTERVAL_LOGGED_OUT_MS = 15 * 1000;
@@ -218,6 +223,8 @@
   const SLACK_TAB_RETRY_MAX_ATTEMPTS = 6;
   const SLACK_TAB_RETRY_BASE_DELAY_MS = 150;
   const SLACK_BOOTSTRAP_MIN_GAP_MS = 8 * 1000;
+  const SLACK_WORKER_IDLE_CLOSE_MS = 12 * 1000;
+  const SLACK_LOGIN_TAB_CLOSE_DELAY_MS = 1200;
   const SLACK_PROBE_EVENT_BUFFER_MAX = 120;
   const FILTER_CATALOG_RETRY_ATTEMPTS = 3;
   const FILTER_CATALOG_RETRY_BASE_DELAY_MS = 500;
@@ -1061,6 +1068,7 @@
       if (!orderedIds.includes(numericId)) orderedIds.push(numericId);
     };
 
+    if (state.slackWorkerTabId != null) pushId(state.slackWorkerTabId);
     if (state.slackTabId != null) pushId(state.slackTabId);
     if (includeBackground) {
       const backgroundSlackTabId = await getSlackTabId().catch(() => null);
@@ -1106,21 +1114,53 @@
       return Promise.reject(new Error("Slack workspace URL is missing."));
     }
     const active = !!(options && options.active);
+    const worker = !!(options && options.worker);
     return new Promise((resolve, reject) => {
       if (!chrome || !chrome.tabs || typeof chrome.tabs.create !== "function") {
         reject(new Error("Unable to open Slack tab in this browser context."));
         return;
       }
-      chrome.tabs.create({ url: safeUrl, active }, (tab) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message || "Unable to open Slack tab."));
-          return;
-        }
-        resolve({
-          tabId: tab && tab.id != null ? tab.id : null,
-          windowId: tab && tab.windowId != null ? tab.windowId : null
+      const createInCurrentWindow = () => {
+        chrome.tabs.create({ url: safeUrl, active }, (tab) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message || "Unable to open Slack tab."));
+            return;
+          }
+          resolve({
+            tabId: tab && tab.id != null ? tab.id : null,
+            windowId: tab && tab.windowId != null ? tab.windowId : null,
+            openedNewTab: true,
+            worker
+          });
         });
-      });
+      };
+      if (
+        worker
+        && !active
+        && chrome.windows
+        && typeof chrome.windows.create === "function"
+      ) {
+        chrome.windows.create({ url: safeUrl, focused: false, state: "minimized" }, (createdWindow) => {
+          if (chrome.runtime.lastError) {
+            createInCurrentWindow();
+            return;
+          }
+          const workerWindowId = createdWindow && createdWindow.id != null ? createdWindow.id : null;
+          const workerTab = Array.isArray(createdWindow && createdWindow.tabs)
+            ? createdWindow.tabs[0]
+            : null;
+          resolve({
+            tabId: workerTab && workerTab.id != null ? workerTab.id : null,
+            windowId: workerWindowId != null
+              ? workerWindowId
+              : (workerTab && workerTab.windowId != null ? workerTab.windowId : null),
+            openedNewTab: true,
+            worker
+          });
+        });
+        return;
+      }
+      createInCurrentWindow();
     });
   }
 
@@ -1139,6 +1179,111 @@
         resolve(true);
       });
     });
+  }
+
+  function clearSlackWorkerCloseTimer() {
+    if (slackWorkerCloseTimerId != null) {
+      try { window.clearTimeout(slackWorkerCloseTimerId); } catch (_) {}
+      slackWorkerCloseTimerId = null;
+    }
+  }
+
+  function isTrackedSlackWorkerTabId(tabId) {
+    const trackedId = Number(state && state.slackWorkerTabId);
+    const numericTabId = Number(tabId);
+    return Number.isFinite(trackedId)
+      && trackedId > 0
+      && Number.isFinite(numericTabId)
+      && numericTabId > 0
+      && trackedId === numericTabId;
+  }
+
+  function clearTrackedSlackWorkerTabReference(tabId) {
+    if (tabId != null && !isTrackedSlackWorkerTabId(tabId)) return;
+    clearSlackWorkerCloseTimer();
+    state.slackWorkerTabId = null;
+    state.slackWorkerWindowId = null;
+  }
+
+  function setTrackedSlackWorkerTab(tabId, windowId) {
+    const numericTabId = Number(tabId);
+    if (!Number.isFinite(numericTabId) || numericTabId <= 0) return;
+    const numericWindowId = Number(windowId);
+    state.slackWorkerTabId = numericTabId;
+    state.slackWorkerWindowId = Number.isFinite(numericWindowId) && numericWindowId > 0 ? numericWindowId : null;
+    state.slackTabId = numericTabId;
+    recordSlackProbeEvent("slack_probe_worker_tab_tracked", {
+      tabId: numericTabId,
+      windowId: state.slackWorkerWindowId != null ? state.slackWorkerWindowId : ""
+    });
+  }
+
+  async function closeTrackedSlackWorkerTab(reason) {
+    const trackedTabId = Number(state && state.slackWorkerTabId);
+    if (!Number.isFinite(trackedTabId) || trackedTabId <= 0) {
+      clearTrackedSlackWorkerTabReference();
+      return false;
+    }
+    clearSlackWorkerCloseTimer();
+    const closed = await closeSlackWorkspaceTab(trackedTabId).catch(() => false);
+    if (state.slackTabId === trackedTabId) {
+      state.slackTabId = null;
+    }
+    clearTrackedSlackWorkerTabReference(trackedTabId);
+    recordSlackProbeEvent("slack_probe_worker_tab_closed", {
+      tabId: trackedTabId,
+      reason: String(reason || "cleanup").trim() || "cleanup",
+      closed: !!closed
+    });
+    return !!closed;
+  }
+
+  function scheduleSlackWorkerTabClose(reason, delayMs) {
+    const trackedTabId = Number(state && state.slackWorkerTabId);
+    if (!Number.isFinite(trackedTabId) || trackedTabId <= 0) {
+      clearTrackedSlackWorkerTabReference();
+      return;
+    }
+    clearSlackWorkerCloseTimer();
+    const timeoutMs = Number(delayMs);
+    const normalizedDelay = Number.isFinite(timeoutMs) && timeoutMs >= 0
+      ? timeoutMs
+      : SLACK_WORKER_IDLE_CLOSE_MS;
+    slackWorkerCloseTimerId = window.setTimeout(() => {
+      closeTrackedSlackWorkerTab(reason || "idle_timeout").catch(() => {});
+    }, normalizedDelay);
+  }
+
+  function touchTrackedSlackWorkerTab(tabId, reason) {
+    if (!isTrackedSlackWorkerTabId(tabId)) return;
+    recordSlackProbeEvent("slack_probe_worker_tab_touch", {
+      tabId: Number(tabId),
+      reason: String(reason || "activity").trim() || "activity"
+    });
+    scheduleSlackWorkerTabClose("idle_timeout", SLACK_WORKER_IDLE_CLOSE_MS);
+  }
+
+  async function maybeCloseZipOpenedSlackLoginTab(reason, delayMs) {
+    const shouldClose = !!slackLoginFlowOpenedByZip;
+    const openedTabId = Number(slackLoginFlowOpenedTabId);
+    slackLoginFlowOpenedByZip = false;
+    slackLoginFlowOpenedTabId = null;
+    if (!shouldClose || !Number.isFinite(openedTabId) || openedTabId <= 0) return false;
+    if (isTrackedSlackWorkerTabId(openedTabId)) return false;
+    const waitMs = Number(delayMs);
+    if (Number.isFinite(waitMs) && waitMs > 0) {
+      await wait(waitMs);
+    }
+    const closed = await closeSlackWorkspaceTab(openedTabId).catch(() => false);
+    if (state.slackTabId === openedTabId) {
+      state.slackTabId = null;
+    }
+    recordSlackProbeEvent("slack_probe_login_tab_closed", {
+      tabId: openedTabId,
+      reason: String(reason || "login_complete").trim() || "login_complete",
+      closed: !!closed
+    });
+    return !!closed;
   }
 
   function focusSlackWorkspaceTab(tabId, url) {
@@ -2147,10 +2292,16 @@
         { type: "ZIP_REQUEST", tabId, requestId, inner },
         (response) => {
           if (chrome.runtime.lastError) {
+            if (isTrackedSlackWorkerTabId(numericTabId)) {
+              clearTrackedSlackWorkerTabReference(numericTabId);
+            }
             reject(new Error(chrome.runtime.lastError.message || "Extension error"));
             return;
           }
           if (response && response.error) {
+            if (isTrackedSlackWorkerTabId(numericTabId)) {
+              clearTrackedSlackWorkerTabReference(numericTabId);
+            }
             reject(new Error(response.error));
             return;
           }
@@ -2258,13 +2409,20 @@
               const retryMessage = String(result.error || result.message || "").trim();
               lastError = new Error(retryMessage || "Slack tab is not ready yet.");
               if (state.slackTabId === candidateId) state.slackTabId = null;
+              if (isTrackedSlackWorkerTabId(candidateId)) {
+                clearTrackedSlackWorkerTabReference(candidateId);
+              }
               continue;
             }
             state.slackTabId = candidateId;
+            touchTrackedSlackWorkerTab(candidateId, "send_success");
             return result;
           } catch (err) {
             lastError = err || null;
             if (state.slackTabId === candidateId) state.slackTabId = null;
+            if (isTrackedSlackWorkerTabId(candidateId)) {
+              clearTrackedSlackWorkerTabReference(candidateId);
+            }
           }
         }
 
@@ -2371,13 +2529,16 @@
             return;
           }
           if (response && response.result !== undefined) {
+            touchTrackedSlackWorkerTab(numericTabId, "send_specific_success");
             resolve(response.result);
             return;
           }
           if (response && response.type === "ZIP_RESPONSE" && response.result !== undefined) {
+            touchTrackedSlackWorkerTab(numericTabId, "send_specific_success");
             resolve(response.result);
             return;
           }
+          touchTrackedSlackWorkerTab(numericTabId, "send_specific_success");
           resolve(response);
         }
       );
@@ -2410,30 +2571,11 @@
       }
 
       if (!Number.isFinite(targetTabId) || targetTabId <= 0) {
-        const workspaceTabs = await querySlackTabsFromSidepanel({
-          injectableOnly: false,
-          workspaceOrigin
-        }).catch(() => []);
-        if (Array.isArray(workspaceTabs) && workspaceTabs.length > 0 && workspaceTabs[0] && workspaceTabs[0].id != null) {
-          const existingTabId = Number(workspaceTabs[0].id);
-          if (Number.isFinite(existingTabId) && existingTabId > 0) {
-            await new Promise((resolve) => {
-              if (!chrome || !chrome.tabs || typeof chrome.tabs.update !== "function") {
-                resolve();
-                return;
-              }
-              chrome.tabs.update(existingTabId, { url: landingUrl, active: false }, () => {
-                void chrome.runtime.lastError;
-                resolve();
-              });
-            });
-          }
-        } else {
-          const opened = await openSlackWorkspaceTab(landingUrl, { active: false }).catch(() => null);
-          const openedTabId = Number(opened && opened.tabId);
-          if (Number.isFinite(openedTabId) && openedTabId > 0) {
-            createdTabId = openedTabId;
-          }
+        const opened = await openSlackWorkspaceTab(landingUrl, { active: false, worker: true }).catch(() => null);
+        const openedTabId = Number(opened && opened.tabId);
+        if (Number.isFinite(openedTabId) && openedTabId > 0) {
+          createdTabId = openedTabId;
+          setTrackedSlackWorkerTab(openedTabId, opened && opened.windowId);
         }
 
         const deadlineMs = Date.now() + 8000;
@@ -2502,6 +2644,9 @@
       slackTransientAvatarProbeInFlight = false;
       if (createdTabId != null) {
         await closeSlackWorkspaceTab(createdTabId).catch(() => {});
+        if (isTrackedSlackWorkerTabId(createdTabId)) {
+          clearTrackedSlackWorkerTabReference(createdTabId);
+        }
       }
     }
   }
@@ -2521,6 +2666,13 @@
         workspaceOrigin
       }).catch(() => []);
       if (!Array.isArray(injectableTabs) || !injectableTabs.length) return null;
+      const trackedWorkerId = Number(state && state.slackWorkerTabId);
+      if (Number.isFinite(trackedWorkerId) && trackedWorkerId > 0) {
+        const trackedMatch = injectableTabs.find((tab) => Number(tab && tab.id) === trackedWorkerId);
+        if (trackedMatch && trackedMatch.id != null) {
+          return trackedWorkerId;
+        }
+      }
       const candidateId = Number(injectableTabs[0] && injectableTabs[0].id);
       if (!Number.isFinite(candidateId) || candidateId <= 0) return null;
       return candidateId;
@@ -2529,19 +2681,18 @@
     const existingInjectableId = await findInjectableTab();
     if (existingInjectableId != null) {
       state.slackTabId = existingInjectableId;
+      touchTrackedSlackWorkerTab(existingInjectableId, "bootstrap_reuse_injectable");
       recordSlackProbeEvent("slack_probe_bootstrap_reused_tab", { tabId: existingInjectableId });
       return true;
     }
 
     let candidateTabId = null;
-    const workspaceTabs = await querySlackTabsFromSidepanel({
-      injectableOnly: false,
-      workspaceOrigin
-    }).catch(() => []);
-    if (Array.isArray(workspaceTabs) && workspaceTabs.length > 0 && workspaceTabs[0] && workspaceTabs[0].id != null) {
-      candidateTabId = Number(workspaceTabs[0].id);
-      recordSlackProbeEvent("slack_probe_bootstrap_reused_workspace_tab", { tabId: candidateTabId });
-      if (Number.isFinite(candidateTabId) && candidateTabId > 0) {
+    const trackedWorkerId = Number(state && state.slackWorkerTabId);
+    if (Number.isFinite(trackedWorkerId) && trackedWorkerId > 0) {
+      const trackedWorkerTab = await getTabById(trackedWorkerId);
+      if (trackedWorkerTab && trackedWorkerTab.id != null) {
+        candidateTabId = trackedWorkerId;
+        recordSlackProbeEvent("slack_probe_bootstrap_reused_worker_tab", { tabId: candidateTabId });
         try {
           await new Promise((resolve) => {
             if (!chrome || !chrome.tabs || typeof chrome.tabs.update !== "function") {
@@ -2554,17 +2705,30 @@
             });
           });
         } catch (_) {}
+      } else {
+        clearTrackedSlackWorkerTabReference(trackedWorkerId);
       }
-    } else if (allowCreateTab) {
-      const opened = await openSlackWorkspaceTab(landingUrl, { active: false }).catch(() => null);
-      const openedTabId = Number(opened && opened.tabId);
-      if (Number.isFinite(openedTabId) && openedTabId > 0) {
-        candidateTabId = openedTabId;
-        recordSlackProbeEvent("slack_probe_bootstrap_opened_tab", { tabId: openedTabId });
+    }
+    const workspaceTabs = await querySlackTabsFromSidepanel({
+      injectableOnly: false,
+      workspaceOrigin
+    }).catch(() => []);
+    if (!Number.isFinite(candidateTabId) || candidateTabId <= 0) {
+      if (Array.isArray(workspaceTabs) && workspaceTabs.length > 0 && workspaceTabs[0] && workspaceTabs[0].id != null) {
+        candidateTabId = Number(workspaceTabs[0].id);
+        recordSlackProbeEvent("slack_probe_bootstrap_reused_workspace_tab", { tabId: candidateTabId });
+      } else if (allowCreateTab) {
+        const opened = await openSlackWorkspaceTab(landingUrl, { active: false, worker: true }).catch(() => null);
+        const openedTabId = Number(opened && opened.tabId);
+        if (Number.isFinite(openedTabId) && openedTabId > 0) {
+          candidateTabId = openedTabId;
+          setTrackedSlackWorkerTab(openedTabId, opened && opened.windowId);
+          recordSlackProbeEvent("slack_probe_bootstrap_opened_tab", { tabId: openedTabId });
+        }
+      } else {
+        recordSlackProbeEvent("slack_probe_bootstrap_blocked_create", { reason: "create_tab_disabled" });
+        return false;
       }
-    } else {
-      recordSlackProbeEvent("slack_probe_bootstrap_blocked_create", { reason: "create_tab_disabled" });
-      return false;
     }
 
     if (!Number.isFinite(candidateTabId) || candidateTabId <= 0) {
@@ -2572,6 +2736,7 @@
       return false;
     }
     state.slackTabId = candidateTabId;
+    touchTrackedSlackWorkerTab(candidateTabId, "bootstrap_candidate");
 
     const deadlineMs = Date.now() + 8000;
     while (Date.now() < deadlineMs) {
@@ -2579,10 +2744,12 @@
       const readyTabId = await findInjectableTab();
       if (readyTabId != null) {
         state.slackTabId = readyTabId;
+        touchTrackedSlackWorkerTab(readyTabId, "bootstrap_ready");
         recordSlackProbeEvent("slack_probe_bootstrap_ready", { tabId: readyTabId });
         return true;
       }
     }
+    scheduleSlackWorkerTabClose("bootstrap_timeout", SLACK_WORKER_IDLE_CLOSE_MS);
     recordSlackProbeEvent("slack_probe_bootstrap_timeout", { timeoutMs: 8000 });
     return false;
   }
@@ -2661,6 +2828,20 @@
         response = await sendToSlackTab(inner);
       }
     }
+    const action = String(inner && inner.action || "").trim();
+    const authTestVerified = !!(
+      action === "slackAuthTest"
+      && response
+      && response.ok === true
+      && (
+        response.api_validated === true
+        || response.apiValidated === true
+      )
+    );
+    scheduleSlackWorkerTabClose(
+      authTestVerified ? "auth_verified_idle_close" : "post_request_idle_close",
+      authTestVerified ? SLACK_LOGIN_TAB_CLOSE_DELAY_MS : SLACK_WORKER_IDLE_CLOSE_MS
+    );
     return response;
   }
 
@@ -4191,6 +4372,8 @@
 
   function showLogin() {
     stopPassAiSlackAuthPolling();
+    maybeCloseZipOpenedSlackLoginTab("show_login_reset", 0).catch(() => {});
+    closeTrackedSlackWorkerTab("show_login_reset").catch(() => {});
     hideToast();
     slackIdentityEnrichmentLastAt = 0;
     slackTransientAvatarProbeInFlight = false;
@@ -4199,6 +4382,8 @@
     state.user = null;
     state.zendeskTabId = null;
     state.slackTabId = null;
+    state.slackWorkerTabId = null;
+    state.slackWorkerWindowId = null;
     stopAuthCheckPolling();
     state.userProfile = null;
     state.mePayload = null;
@@ -6147,6 +6332,8 @@
       if (openIdReady) {
         recordSlackProbeEvent("slack_probe_openid_ready", { source: "cached_session" });
         if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
+        await maybeCloseZipOpenedSlackLoginTab("openid_cached_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
+        scheduleSlackWorkerTabClose("openid_cached_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS);
         return true;
       }
     }
@@ -6159,6 +6346,8 @@
         if (silentOpenId && silentOpenId.ok === true && isPassAiSlacktivated()) {
           recordSlackProbeEvent("slack_probe_openid_ready", { source: "silent_probe" });
           if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
+          await maybeCloseZipOpenedSlackLoginTab("openid_silent_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
+          scheduleSlackWorkerTabClose("openid_silent_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS);
           return true;
         }
       }
@@ -6268,6 +6457,8 @@
             setStatus("ZIP is now SLACKTIVATED.", false);
           }
         }
+        await maybeCloseZipOpenedSlackLoginTab("api_auth_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
+        scheduleSlackWorkerTabClose("api_auth_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS);
         return true;
       }
       apiFailureCode = String(apiStatus && apiStatus.code || "").trim().toLowerCase();
@@ -6461,6 +6652,8 @@
           setStatus("ZIP is now SLACKTIVATED.", false);
         }
       }
+      await maybeCloseZipOpenedSlackLoginTab("web_auth_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
+      scheduleSlackWorkerTabClose("web_auth_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS);
       return true;
     } catch (tabErr) {
       const wasReady = isPassAiSlacktivated();
@@ -6525,6 +6718,7 @@
         .then((ready) => {
           if (ready) {
             stopPassAiSlackAuthPolling();
+            maybeCloseZipOpenedSlackLoginTab("polling_login_complete", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
             setStatus("Slack sign-in detected. ZIP is now SLACKTIVATED.", false);
             return;
           }
@@ -6551,6 +6745,8 @@
   async function beginSlackLoginFlow() {
     stopPassAiSlackAuthPolling();
     state.passAiSlackAuthError = "";
+    slackLoginFlowOpenedTabId = null;
+    slackLoginFlowOpenedByZip = false;
     updateTicketActionButtons();
     setStatus("Checking adobedx.slack.com session…", false);
     try {
@@ -6564,6 +6760,7 @@
       if (hasPassAiSlackOpenIdConfig(openIdConfig)) {
         const interactiveOpenId = await runPassAiSlackOpenIdAuth({ interactive: true }).catch(() => null);
         if (interactiveOpenId && interactiveOpenId.ok === true) {
+          await maybeCloseZipOpenedSlackLoginTab("interactive_openid_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
           setStatus("ZIP is now SLACKTIVATED.", false);
           return;
         }
@@ -6575,20 +6772,28 @@
       if (!Array.isArray(existingSlackTabs) || !existingSlackTabs.length) {
         existingSlackTabs = await querySlackTabsFromSidepanel({ injectableOnly: false }).catch(() => []);
       }
+      if (Array.isArray(existingSlackTabs) && existingSlackTabs.length) {
+        existingSlackTabs = existingSlackTabs.filter((tab) => !isTrackedSlackWorkerTabId(tab && tab.id));
+      }
       if (Array.isArray(existingSlackTabs) && existingSlackTabs.length > 0 && existingSlackTabs[0] && existingSlackTabs[0].id != null) {
         opened = await focusSlackWorkspaceTab(existingSlackTabs[0].id, loginUrl);
       } else {
         opened = await openSlackWorkspaceTab(loginUrl, { active: true });
+        slackLoginFlowOpenedByZip = true;
       }
       const openedTabId = Number(opened && opened.tabId);
       if (Number.isFinite(openedTabId) && openedTabId > 0) {
         state.slackTabId = openedTabId;
+        if (slackLoginFlowOpenedByZip) {
+          slackLoginFlowOpenedTabId = openedTabId;
+        }
       }
       await wait(450);
       // Re-arm silent probe after opening/focusing Slack so auto-login can be picked up immediately.
       slackOpenIdSilentProbeLastAt = 0;
       const readyNow = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false, allowSlackTabBootstrap: false });
       if (readyNow) {
+        await maybeCloseZipOpenedSlackLoginTab("login_flow_ready_now", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
         setStatus("ZIP is now SLACKTIVATED.", false);
         return;
       }
@@ -9396,6 +9601,10 @@
         refreshThemeFlyoutPosition();
       });
       window.addEventListener("blur", () => { hideContextMenu(); });
+      window.addEventListener("beforeunload", () => {
+        maybeCloseZipOpenedSlackLoginTab("panel_unload", 0).catch(() => {});
+        closeTrackedSlackWorkerTab("panel_unload").catch(() => {});
+      });
       document.addEventListener("visibilitychange", () => {
         if (!document.hidden) {
           refreshZipSecretConfigFromStorage()
