@@ -88,6 +88,8 @@ test("sidepanel uses SLACKTIVATED indicator + @ME action and removes legacy Slac
   assert.match(js, /function scheduleSlackWorkerTabClose\(reason, delayMs\)/);
   assert.match(js, /function maybeCloseZipOpenedSlackLoginTab\(reason, delayMs\)/);
   assert.match(js, /openSlackWorkspaceTab\(landingUrl, \{ active: false, worker: true \}\)/);
+  assert.doesNotMatch(js, /chrome\.windows\.create\(\{ url: safeUrl, focused: false, state: "minimized" \}/);
+  assert.doesNotMatch(js, /state:\s*"minimized"/);
   assert.match(js, /existingSlackTabs = existingSlackTabs\.filter\(\(tab\) => !isTrackedSlackWorkerTabId\(tab && tab\.id\)\)/);
   assert.match(js, /maybeCloseZipOpenedSlackLoginTab\("polling_login_complete", SLACK_LOGIN_TAB_CLOSE_DELAY_MS\)/);
   assert.match(js, /window\.addEventListener\("beforeunload"/);
