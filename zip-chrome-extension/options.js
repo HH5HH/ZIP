@@ -280,6 +280,22 @@
       "redirect_uri",
       "redirectUri"
     ]));
+    const botToken = normalizeSlackToken(readZipKeyValue(payload, [
+      "services.slacktivation.bot_token",
+      "services.slacktivation.botToken",
+      "services.slacktivation.api.bot_token",
+      "services.slacktivation.api.botToken",
+      "slacktivation.bot_token",
+      "slacktivation.botToken",
+      "slacktivation.api.bot_token",
+      "slacktivation.api.botToken",
+      "slack.api.botToken",
+      "slackApi.botToken",
+      "zip_slack_bot_token",
+      "zip.passAi.slackApi.botToken",
+      "bot_token",
+      "botToken"
+    ]));
     const userToken = normalizeSlackToken(readZipKeyValue(payload, [
       "services.slacktivation.user_token",
       "services.slacktivation.userToken",
@@ -310,6 +326,7 @@
         redirectUri
       },
       api: {
+        botToken,
         userToken
       },
       singularity: {

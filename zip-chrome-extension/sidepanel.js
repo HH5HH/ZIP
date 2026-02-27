@@ -91,9 +91,9 @@
   const TICKET_COLUMNS = [
     { key: "id", label: "Ticket", type: "number" },
     { key: "subject", label: "Subject", type: "string" },
-    { key: "status", label: "Status", type: "string" },
     { key: "priority", label: "Priority", type: "string" },
-    { key: "created_at", label: "Created", type: "date" },
+    { key: "requestor", label: "Requestor", type: "string" },
+    { key: "organization", label: "Organization", type: "string" },
     { key: "updated_at", label: "Updated", type: "date" },
     { key: "__ticket_email_actions", label: "", type: "utility", sortable: false }
   ];
@@ -180,6 +180,7 @@
     ticketEmailUserEmailCacheById: Object.create(null),
     ticketEmailRequesterByTicketId: Object.create(null),
     ticketEmailCopyCacheByTicketId: Object.create(null),
+    ticketEnrichmentMetrics: null,
     themeId: "s2-dark-azure-blue",
     themeOptions: [],
     themeFlyoutStop: ""
@@ -3460,12 +3461,91 @@
     return /[",\r\n]/.test(s) ? "\"" + s.replace(/"/g, "\"\"") + "\"" : s;
   }
 
+  function getTicketRequestorName(row) {
+    const source = row && typeof row === "object" ? row : {};
+    const nestedRequester = source.requester && typeof source.requester === "object" ? source.requester : null;
+    const nestedRequestor = source.requestor && typeof source.requestor === "object" ? source.requestor : null;
+    const candidates = [
+      source.requestor_name_translated,
+      source.requestor_name,
+      source.requester_name,
+      source.requesterName,
+      source.requestorName,
+      nestedRequester && nestedRequester.name,
+      nestedRequester && nestedRequester.display_name,
+      nestedRequestor && nestedRequestor.name,
+      nestedRequestor && nestedRequestor.display_name
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      const value = String(candidates[i] == null ? "" : candidates[i]).replace(/\s+/g, " ").trim();
+      if (value) return value;
+    }
+    return "";
+  }
+
+  function getTicketRequestorEmail(row) {
+    const source = row && typeof row === "object" ? row : {};
+    const nestedRequester = source.requester && typeof source.requester === "object" ? source.requester : null;
+    const nestedRequestor = source.requestor && typeof source.requestor === "object" ? source.requestor : null;
+    const candidates = [
+      source.requestor_email,
+      source.requester_email,
+      source.requestorEmail,
+      source.requesterEmail,
+      nestedRequester && nestedRequester.email,
+      nestedRequestor && nestedRequestor.email
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      const email = normalizeEmailAddress(candidates[i]);
+      if (email) return email;
+    }
+    return "";
+  }
+
+  function getTicketOrganizationName(row) {
+    const source = row && typeof row === "object" ? row : {};
+    const nestedOrganization = source.organization && typeof source.organization === "object" ? source.organization : null;
+    const candidates = [
+      source.organization_name_translated,
+      source.organization_name,
+      source.organizationName,
+      typeof source.organization === "string" ? source.organization : "",
+      nestedOrganization && nestedOrganization.name
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      const value = String(candidates[i] == null ? "" : candidates[i]).replace(/\s+/g, " ").trim();
+      if (value) return value;
+    }
+    return "";
+  }
+
+  function buildTicketRequestorHtml(row) {
+    const requestorName = getTicketRequestorName(row);
+    const requestorEmail = getTicketRequestorEmail(row);
+    if (!requestorName && !requestorEmail) return "";
+    const label = escapeHtml(requestorName || requestorEmail);
+    if (!requestorEmail) return label;
+    return "<a href=\"mailto:" + escapeHtml(requestorEmail) + "\">" + label + "</a>";
+  }
+
   function buildVisibleTicketsCsvExportData() {
     const rows = Array.isArray(state.filteredTickets) ? state.filteredTickets.slice() : [];
-    const header = ["Ticket", "Ticket URL", "Subject", "Status", "Priority", "Created", "Updated"];
+    const header = [
+      "Ticket",
+      "Ticket URL",
+      "Subject",
+      "Status",
+      "Priority",
+      "Created",
+      "Requestor",
+      "Organization",
+      "Updated"
+    ];
     const csvRows = rows.map((row) => {
       const rowId = row && row.id != null ? row.id : "";
       const rowUrl = (row && row.url && String(row.url).trim()) || (rowId !== "" ? TICKET_URL_PREFIX + rowId : "");
+      const requestorHtml = buildTicketRequestorHtml(row);
+      const organizationName = getTicketOrganizationName(row);
       return [
         rowId !== "" ? "#" + rowId : "",
         rowUrl,
@@ -3473,6 +3553,8 @@
         row && row.status != null ? row.status : "",
         row && row.priority != null ? row.priority : "",
         row && row.created_at != null ? row.created_at : "",
+        requestorHtml,
+        organizationName,
         row && row.updated_at != null ? row.updated_at : ""
       ];
     });
@@ -3566,7 +3648,9 @@
     const viaSource = nestedVia && nestedVia.source && typeof nestedVia.source === "object" ? nestedVia.source : null;
     const viaFrom = viaSource && viaSource.from && typeof viaSource.from === "object" ? viaSource.from : null;
     const candidates = [
+      source.requestor_email,
       source.requester_email,
+      source.requestorEmail,
       source.requesterEmail,
       source.email,
       source.email_address,
@@ -3617,13 +3701,16 @@
       const subject = escapeSlackMrkdwn(shortenSlackSubject(row && row.subject, 120));
       const status = formatSlackStatusIndicator(row && row.status);
       const requesterEmail = getSlackTicketEmailAddress(row);
-      const emailRef = requesterEmail
-        ? ("<" + sanitizeSlackLinkTarget("mailto:" + requesterEmail) + "|" + escapeSlackMrkdwn(requesterEmail) + ">")
-        : "";
-      const owner = escapeSlackMrkdwn(getSlackTicketOwnerLabel(row));
+      const requestorNameRaw = getTicketRequestorName(row);
+      const requestorName = escapeSlackMrkdwn(requestorNameRaw);
+      const requestorColumn = requesterEmail
+        ? ("<" + sanitizeSlackLinkTarget("mailto:" + requesterEmail) + "|" + (requestorName || escapeSlackMrkdwn(requesterEmail)) + ">")
+        : (requestorName || "-");
+      const organizationName = escapeSlackMrkdwn(getTicketOrganizationName(row));
+      const organizationColumn = organizationName || "-";
       const parts = [ticketRef, subject, status];
-      if (emailRef) parts.push(emailRef);
-      if (owner) parts.push("[" + owner + "]");
+      parts.push("[" + requestorColumn + "]");
+      parts.push("[ " + organizationColumn + " ]");
       return "• " + parts.join(" ");
     });
 
@@ -3695,16 +3782,32 @@
         userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
         avatarUrl: state.passAiSlackAvatarUrl || "",
         markdownText,
+        botToken: slackApiTokens.botToken || "",
         userToken: slackApiTokens.userToken || "",
-        autoBootstrapSlackTab: false
+        autoBootstrapSlackTab: true,
+        preferApiFirst: true,
+        requireNativeNewMessage: false,
+        allowBotDelivery: true,
+        skipUnreadMark: true,
+        forceNewMessage: true
       };
 
       setStatus("Sending visible ticket list to @ME via Slack API…", false);
-      const response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", sendPayload);
+      let response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", sendPayload);
 
       if (!response || response.ok !== true) {
+        const responseCode = String(response && response.code || "").trim().toLowerCase();
+        if (responseCode === "slack_unread_marker_unconfirmed") {
+          response = {
+            ...(response && typeof response === "object" ? response : {}),
+            ok: true,
+            unread_marked: false,
+            unread_unconfirmed: true
+          };
+        } else {
         const responseMessage = normalizePassAiCommentBody(response && (response.error || response.message)) || "Slack send failed.";
         throw new Error(responseMessage);
+        }
       }
 
       setPassAiSlackAuthState({
@@ -3720,8 +3823,13 @@
 
       const sentRows = Math.min(rows.length, SLACK_IT_TO_ME_MAX_ROWS);
       const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
-      const unreadSuffix = response.unread_marked === true ? " Marked as new in Slack." : "";
-      setStatus("SLACK_IT_TO_ME delivered to @" + getSlacktivatedDisplayName() + summarySuffix + "." + unreadSuffix, false);
+      const unreadSuffix = response.unread_marked === true
+        ? " Delivered as a new unread Slack message."
+        : "";
+      const unconfirmedSuffix = response.unread_unconfirmed === true
+        ? " Slack unread confirmation is delayed; message delivery succeeded."
+        : "";
+      setStatus("SLACK_IT_TO_ME delivered to @" + getSlacktivatedDisplayName() + summarySuffix + "." + unreadSuffix + unconfirmedSuffix, false);
     } catch (err) {
       const message = normalizePassAiCommentBody(err && err.message) || "Unable to send visible ticket list.";
       setStatus("SLACK_IT_TO_ME failed: " + message, true);
@@ -4425,7 +4533,15 @@
 
   function compareByColumn(a, b, col) {
     let av = a[col.key], bv = b[col.key];
-    if (col.type === "date") {
+    if (col.key === "requestor") {
+      av = getTicketRequestorName(a) || getTicketRequestorEmail(a);
+      bv = getTicketRequestorName(b) || getTicketRequestorEmail(b);
+      av = String(av || "").toLowerCase();
+      bv = String(bv || "").toLowerCase();
+    } else if (col.key === "organization") {
+      av = String(getTicketOrganizationName(a) || "").toLowerCase();
+      bv = String(getTicketOrganizationName(b) || "").toLowerCase();
+    } else if (col.type === "date") {
       av = new Date(av).getTime();
       bv = new Date(bv).getTime();
       av = Number.isNaN(av) ? 0 : av;
@@ -5324,6 +5440,22 @@
       "redirect_uri",
       "redirectUri"
     ]));
+    const botToken = normalizePassAiSlackApiToken(readZipKeyValue(payload, [
+      "services.slacktivation.bot_token",
+      "services.slacktivation.botToken",
+      "services.slacktivation.api.bot_token",
+      "services.slacktivation.api.botToken",
+      "slacktivation.bot_token",
+      "slacktivation.botToken",
+      "slacktivation.api.bot_token",
+      "slacktivation.api.botToken",
+      "slack.api.botToken",
+      "slackApi.botToken",
+      ZIP_SLACK_BOT_TOKEN_STORAGE_KEY,
+      PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY,
+      "bot_token",
+      "botToken"
+    ]));
     const userToken = normalizePassAiSlackApiToken(readZipKeyValue(payload, [
       "services.slacktivation.user_token",
       "services.slacktivation.userToken",
@@ -5388,6 +5520,7 @@
         redirectUri
       },
       api: {
+        botToken,
         userToken
       },
       singularity: {
@@ -5404,6 +5537,7 @@
       ZIP_SLACK_SCOPE_STORAGE_KEY,
       ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY,
       ZIP_SLACK_REDIRECT_URI_STORAGE_KEY,
+      ZIP_SLACK_BOT_TOKEN_STORAGE_KEY,
       ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
       ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
       ZIP_SLACK_KEY_LOADED_STORAGE_KEY,
@@ -5415,6 +5549,7 @@
       PASS_AI_SLACK_OIDC_SCOPE_STORAGE_KEY,
       PASS_AI_SLACK_OIDC_REDIRECT_PATH_STORAGE_KEY,
       PASS_AI_SLACK_OIDC_REDIRECT_URI_STORAGE_KEY,
+      PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY,
       PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY,
       PASS_AI_SLACK_CHANNEL_STORAGE_KEY,
       PASS_AI_SINGULARITY_MENTION_STORAGE_KEY,
@@ -5447,6 +5582,11 @@
     const redirectUri = normalizeZipKeyRedirectUri(
       stored[ZIP_SLACK_REDIRECT_URI_STORAGE_KEY]
       || stored[PASS_AI_SLACK_OIDC_REDIRECT_URI_STORAGE_KEY]
+      || ""
+    );
+    const botToken = normalizePassAiSlackApiToken(
+      stored[ZIP_SLACK_BOT_TOKEN_STORAGE_KEY]
+      || stored[PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY]
       || ""
     );
     const userToken = normalizePassAiSlackApiToken(
@@ -5504,6 +5644,7 @@
       scope,
       redirectPath,
       redirectUri,
+      botToken,
       userToken,
       oauthToken,
       singularityChannelId,
@@ -5945,10 +6086,13 @@
     const secretConfig = state && state.zipSecretConfig && typeof state.zipSecretConfig === "object"
       ? state.zipSecretConfig
       : null;
+    const botToken = normalizePassAiSlackApiToken(
+      (secretConfig && secretConfig.botToken) || ""
+    );
     const userToken = normalizePassAiSlackApiToken(
       (secretConfig && (secretConfig.userToken || secretConfig.oauthToken)) || ""
     );
-    return { userToken };
+    return { botToken, userToken };
   }
 
   function hasPassAiSlackApiTokenConfig(config) {
@@ -5965,8 +6109,13 @@
       "zip.passAi.slackBotToken",
       "zip.passAi.slackUserToken"
     ];
+    const botToken = normalizePassAiSlackApiToken(cfg.botToken);
     const userToken = normalizePassAiSlackApiToken(cfg.userToken);
-    removals.push(ZIP_SLACK_BOT_TOKEN_STORAGE_KEY);
+    if (botToken) {
+      updates[ZIP_SLACK_BOT_TOKEN_STORAGE_KEY] = botToken;
+    } else {
+      removals.push(ZIP_SLACK_BOT_TOKEN_STORAGE_KEY);
+    }
     if (userToken) {
       updates[ZIP_SLACK_USER_TOKEN_STORAGE_KEY] = userToken;
       updates[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY] = userToken;
@@ -8067,7 +8216,22 @@
       const rowStatus = normalizeStatusValue(row && row.status);
       if (status !== STATUS_FILTER_ALL_VALUE && rowStatus !== status) return false;
       if (!text) return true;
-      const blob = [row.id, row.subject, row.status, row.priority, row.created_at, row.updated_at].join(" ").toLowerCase();
+      const blob = [
+        row.id,
+        row.subject,
+        row.status,
+        row.priority,
+        row.created_at,
+        row.requestor_name_translated,
+        row.requestor_name,
+        row.requester_name,
+        row.requestor_email,
+        row.requester_email,
+        row.organization_name_translated,
+        row.organization_name,
+        row.organization,
+        row.updated_at
+      ].join(" ").toLowerCase();
       return blob.includes(text);
     });
     const col = TICKET_COLUMNS.find((c) => c.key === state.sortKey) || TICKET_COLUMNS[0];
@@ -8381,6 +8545,20 @@
             wrap.appendChild(jiraLink);
           }
           td.appendChild(wrap);
+        } else if (col.key === "requestor") {
+          const requestorName = getTicketRequestorName(row);
+          const requestorEmail = getTicketRequestorEmail(row);
+          if (requestorEmail) {
+            const link = document.createElement("a");
+            link.href = "mailto:" + requestorEmail;
+            link.rel = "noopener noreferrer";
+            link.textContent = requestorName || requestorEmail;
+            td.appendChild(link);
+          } else {
+            td.textContent = requestorName;
+          }
+        } else if (col.key === "organization") {
+          td.textContent = getTicketOrganizationName(row);
         } else if (col.type === "date") {
           td.textContent = formatDateTime(row[col.key]);
         } else {
@@ -8490,11 +8668,38 @@
     }
   }
 
+  function getPreferredTicketLocale() {
+    const explicit = String(
+      (state.user && (state.user.locale || state.user.locale_id || state.user.language))
+      || (state.mePayload && state.mePayload.user && (state.mePayload.user.locale || state.mePayload.user.language))
+      || ""
+    ).trim();
+    if (explicit) return explicit;
+    if (typeof navigator !== "undefined" && navigator.language) {
+      return String(navigator.language).trim() || "en-US";
+    }
+    return "en-US";
+  }
+
+  function recordTicketEnrichmentMetrics(source, metrics) {
+    if (!metrics || typeof metrics !== "object") return;
+    state.ticketEnrichmentMetrics = {
+      capturedAt: new Date().toISOString(),
+      source: String(source || "tickets"),
+      ...metrics
+    };
+  }
+
   async function loadTickets(userId) {
     setTicketTableLoading(true);
     try {
-      const result = await sendToZendeskTab({ action: "loadTickets", userId: String(userId || "") });
+      const result = await sendToZendeskTab({
+        action: "loadTickets",
+        userId: String(userId || ""),
+        locale: getPreferredTicketLocale()
+      });
       state.tickets = result.tickets || [];
+      recordTicketEnrichmentMetrics("loadTickets", result.metrics);
       if (result.error) throw new Error(result.error);
       applyFiltersAndRender();
     } catch (err) {
@@ -8519,8 +8724,13 @@
   async function loadTicketsByOrg(orgId) {
     setTicketTableLoading(true);
     try {
-      const result = await sendToZendeskTab({ action: "loadTicketsByOrg", orgId: String(orgId || "") });
+      const result = await sendToZendeskTab({
+        action: "loadTicketsByOrg",
+        orgId: String(orgId || ""),
+        locale: getPreferredTicketLocale()
+      });
       state.tickets = result.tickets || [];
+      recordTicketEnrichmentMetrics("loadTicketsByOrg", result.metrics);
       if (result.error) throw new Error(result.error);
       applyFiltersAndRender();
     } catch (err) {
@@ -8536,8 +8746,13 @@
   async function loadTicketsByView(viewId) {
     setTicketTableLoading(true);
     try {
-      const result = await sendToZendeskTab({ action: "loadTicketsByView", viewId: String(viewId || "") });
+      const result = await sendToZendeskTab({
+        action: "loadTicketsByView",
+        viewId: String(viewId || ""),
+        locale: getPreferredTicketLocale()
+      });
       state.tickets = result.tickets || [];
+      recordTicketEnrichmentMetrics("loadTicketsByView", result.metrics);
       if (result.error) throw new Error(result.error);
       applyFiltersAndRender();
     } catch (err) {
@@ -8553,8 +8768,13 @@
   async function loadTicketsByAssigneeId(userId) {
     setTicketTableLoading(true);
     try {
-      const result = await sendToZendeskTab({ action: "loadTicketsByAssigneeId", userId: String(userId || "") });
+      const result = await sendToZendeskTab({
+        action: "loadTicketsByAssigneeId",
+        userId: String(userId || ""),
+        locale: getPreferredTicketLocale()
+      });
       state.tickets = result.tickets || [];
+      recordTicketEnrichmentMetrics("loadTicketsByAssigneeId", result.metrics);
       if (result.error) throw new Error(result.error);
       applyFiltersAndRender();
     } catch (err) {
@@ -9083,8 +9303,13 @@
   async function loadTicketsByGroupId(groupId) {
     setTicketTableLoading(true);
     try {
-      const result = await sendToZendeskTab({ action: "loadTicketsByGroupId", groupId: String(groupId || "") });
+      const result = await sendToZendeskTab({
+        action: "loadTicketsByGroupId",
+        groupId: String(groupId || ""),
+        locale: getPreferredTicketLocale()
+      });
       state.tickets = result.tickets || [];
+      recordTicketEnrichmentMetrics("loadTicketsByGroupId", result.metrics);
       if (result.error) throw new Error(result.error);
       applyFiltersAndRender();
     } catch (err) {
@@ -9373,7 +9598,7 @@
       silent: true,
       allowOpenIdSilentProbe: true,
       allowSlackTabBootstrap: true,
-      allowSlackTabBootstrapCreate: true
+      allowSlackTabBootstrapCreate: false
     }).catch(() => {});
     setStatus(
       "Assigned tickets loaded. " + state.filteredTickets.length + " rows shown. Loading filter menus…",

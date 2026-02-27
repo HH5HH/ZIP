@@ -271,6 +271,7 @@ let sessionPollTimerId = null;
 let sessionCheckInFlight = false;
 let sessionAboutToExpireSentForDeadline = 0;
 const slackTokenBackoffUntilByToken = new Map();
+let latestTicketEnrichmentMetrics = null;
 
 function clearSessionPollTimer() {
   if (sessionPollTimerId != null) {
@@ -1393,6 +1394,16 @@ function closeTabSilently(tabId) {
   });
 }
 
+function buildSlackNewMessageFields(fields) {
+  const source = fields && typeof fields === "object" ? { ...fields } : {};
+  delete source.thread_ts;
+  delete source.threadTs;
+  delete source.parent_ts;
+  delete source.parentTs;
+  delete source.reply_broadcast;
+  return source;
+}
+
 async function slackSendMarkdownToSelfViaWorkspaceSession(input, reasonCode) {
   const body = input && typeof input === "object" ? input : {};
   const workspaceOrigin = normalizeSlackWorkspaceOrigin(body.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
@@ -1439,22 +1450,12 @@ async function slackSendMarkdownToSelfViaWorkspaceSession(input, reasonCode) {
             userId: body.userId || body.user_id || "",
             userName: body.userName || body.user_name || "",
             avatarUrl: body.avatarUrl || body.avatar_url || "",
-            markdownText: body.markdownText || body.text || body.messageText || ""
+            markdownText: body.markdownText || body.text || body.messageText || "",
+            forceNewMessage: true
           });
           if (result && result.ok === true) {
-            let unreadMarked = result.unread_marked === true;
             const deliveredChannel = String(result.channel || "").trim();
             const deliveredTs = String(result.ts || "").trim();
-            if (!unreadMarked && deliveredChannel && deliveredTs) {
-              await sleepMs(260);
-              const markResult = await sendSlackInnerRequestToTab(tab.id, {
-                action: "slackMarkUnread",
-                workspaceOrigin,
-                channelId: deliveredChannel,
-                ts: deliveredTs
-              }).catch(() => null);
-              unreadMarked = !!(markResult && markResult.ok === true && markResult.unread_marked === true);
-            }
             return {
               ok: true,
               channel: deliveredChannel,
@@ -1464,7 +1465,7 @@ async function slackSendMarkdownToSelfViaWorkspaceSession(input, reasonCode) {
               user_name: String(result.user_name || body.userName || body.user_name || "").trim(),
               avatar_url: String(result.avatar_url || body.avatarUrl || body.avatar_url || "").trim(),
               delivery_mode: "workspace_session_dm",
-              unread_marked: unreadMarked,
+              unread_marked: result.unread_marked === true,
               fallback_reason: String(reasonCode || "").trim()
             };
           }
@@ -1777,11 +1778,17 @@ function normalizeSlackApiToken(value) {
   return /^(?:xoxe\.)?xox[a-z]-/i.test(token) ? token : "";
 }
 
+function isSlackBotApiToken(value) {
+  const token = normalizeSlackApiToken(value);
+  if (!token) return false;
+  return /^xoxb-/i.test(token) || /^xoxe\.xoxb-/i.test(token);
+}
+
 function isSlackUserOAuthToken(value) {
   const token = normalizeSlackApiToken(value);
   if (!token) return false;
   // User/session-flavored tokens are eligible; bot tokens are not.
-  return !/^xoxb-/i.test(token) && !/^xoxe\.xoxb-/i.test(token);
+  return !isSlackBotApiToken(token);
 }
 
 function getSlackTokenBackoffUntil(token) {
@@ -1836,58 +1843,115 @@ function toPriorSlackTs(value) {
   return String(seconds) + "." + String(micros).padStart(6, "0");
 }
 
-async function markSlackMessageUnreadViaApiToken(workspaceOrigin, token, channelId, messageTs) {
+function parseSlackTsParts(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const match = raw.match(/^(\d+)(?:\.(\d+))?$/);
+  if (!match) return null;
+  const seconds = Number.parseInt(match[1], 10);
+  const micros = Number.parseInt(String(match[2] || "0").slice(0, 6).padEnd(6, "0"), 10);
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  if (!Number.isFinite(micros) || micros < 0) return null;
+  return { seconds, micros };
+}
+
+function compareSlackTs(leftValue, rightValue) {
+  const left = parseSlackTsParts(leftValue);
+  const right = parseSlackTsParts(rightValue);
+  if (!left || !right) return 0;
+  if (left.seconds < right.seconds) return -1;
+  if (left.seconds > right.seconds) return 1;
+  if (left.micros < right.micros) return -1;
+  if (left.micros > right.micros) return 1;
+  return 0;
+}
+
+function slackTsToMicros(value) {
+  const parts = parseSlackTsParts(value);
+  if (!parts) return null;
+  return (parts.seconds * 1000000) + parts.micros;
+}
+
+function normalizeSlackReadCursorTs(readCursorTs, messageTs) {
+  const targetTs = String(messageTs || "").trim();
+  const fallbackTs = toPriorSlackTs(targetTs);
+  const candidateTs = String(readCursorTs || "").trim();
+  if (!candidateTs) return fallbackTs;
+  if (compareSlackTs(candidateTs, targetTs) >= 0) return fallbackTs;
+  return candidateTs;
+}
+
+async function fetchSlackLatestMessageTsViaApiToken(workspaceOrigin, token, channelId) {
+  const targetChannel = normalizeSlackChannelId(channelId);
+  if (!targetChannel) return "";
+  const result = await postSlackApiWithBearerToken(workspaceOrigin, "/api/conversations.history", {
+    channel: targetChannel,
+    limit: 1,
+    inclusive: "false",
+    _x_reason: "zip-slack-it-to-me-history-latest-bg"
+  }, token);
+  if (!result || !result.ok) return "";
+  const payload = result.payload && typeof result.payload === "object" ? result.payload : {};
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  if (!messages.length) return "";
+  return String(messages[0] && messages[0].ts || "").trim();
+}
+
+async function isSlackMessageUnreadViaApiToken(workspaceOrigin, token, channelId, messageTs, readCursorTs) {
+  const targetChannel = normalizeSlackChannelId(channelId);
+  const targetTs = String(messageTs || "").trim();
+  if (!targetChannel || !targetTs) return false;
+  const cursorTs = normalizeSlackReadCursorTs(readCursorTs, targetTs);
+  const result = await postSlackApiWithBearerToken(workspaceOrigin, "/api/conversations.info", {
+    channel: targetChannel,
+    include_num_members: "false",
+    _x_reason: "zip-slack-it-to-me-mark-verify-bg"
+  }, token);
+  if (!result || !result.ok) return false;
+  const payload = result.payload && typeof result.payload === "object" ? result.payload : {};
+  const channel = payload.channel && typeof payload.channel === "object" ? payload.channel : {};
+  const lastRead = String(channel.last_read || "").trim();
+  if (!lastRead) return false;
+  if (compareSlackTs(lastRead, targetTs) >= 0) return false;
+  if (compareSlackTs(lastRead, cursorTs) < 0) return false;
+  const targetMicros = slackTsToMicros(targetTs);
+  const lastReadMicros = slackTsToMicros(lastRead);
+  if (targetMicros == null || lastReadMicros == null) return false;
+  const deltaSeconds = (targetMicros - lastReadMicros) / 1000000;
+  return deltaSeconds >= 0 && deltaSeconds <= 2.5;
+}
+
+async function markSlackMessageUnreadViaApiToken(workspaceOrigin, token, channelId, messageTs, readCursorTs) {
   const targetChannel = normalizeSlackChannelId(channelId);
   const targetTs = String(messageTs || "").trim();
   if (!targetChannel || !targetTs) return false;
 
-  const delays = [0, 260, 860];
+  const cursorTs = normalizeSlackReadCursorTs(readCursorTs, targetTs);
+  const delays = [0, 180];
   for (let pass = 0; pass < delays.length; pass += 1) {
     if (delays[pass] > 0) await sleepMs(delays[pass]);
-    const priorTs = toPriorSlackTs(targetTs);
-    const attempts = [
-      {
-        path: "/api/conversations.mark",
-        fields: {
+    try {
+      const result = await postSlackApiWithBearerToken(
+        workspaceOrigin,
+        "/api/conversations.mark",
+        {
           channel: targetChannel,
-          ts: priorTs,
-          _x_reason: "zip-slack-it-to-me-mark-unread-bg"
-        }
-      }
-    ];
-    if (priorTs !== "0.000000") {
-      attempts.push({
-        path: "/api/conversations.mark",
-        fields: {
-          channel: targetChannel,
-          ts: "0.000000",
-          _x_reason: "zip-slack-it-to-me-mark-unread-bg-fallback"
-        }
-      });
-    }
-    attempts.push({
-      path: "/api/subscriptions.thread.mark",
-      fields: {
-        channel: targetChannel,
-        thread_ts: targetTs,
-        ts: targetTs,
-        read: "false",
-        _x_reason: "zip-slack-it-to-me-thread-unread-bg"
-      }
-    });
-
-    for (let i = 0; i < attempts.length; i += 1) {
-      const attempt = attempts[i];
-      try {
-        const result = await postSlackApiWithBearerToken(
+          ts: cursorTs,
+          _x_reason: "zip-slack-it-to-me-mark-cursor-bg"
+        },
+        token
+      );
+      if (result && result.ok) {
+        const verified = await isSlackMessageUnreadViaApiToken(
           workspaceOrigin,
-          attempt.path,
-          attempt.fields,
-          token
+          token,
+          targetChannel,
+          targetTs,
+          cursorTs
         );
-        if (result && result.ok) return true;
-      } catch (_) {}
-    }
+        if (verified) return true;
+      }
+    } catch (_) {}
   }
   return false;
 }
@@ -2062,6 +2126,20 @@ function normalizeZipSecretConfig(input) {
     || source[SLACK_OIDC_REDIRECT_URI_LEGACY_STORAGE_KEY]
     || ""
   );
+  const botToken = normalizeSlackApiToken(
+    source.botToken
+    || slacktivationSource.bot_token
+    || slacktivationSource.botToken
+    || slacktivationApiSource.bot_token
+    || slacktivationApiSource.botToken
+    || apiSource.botToken
+    || source.zip_slack_bot_token
+    || source[ZIP_SLACK_BOT_TOKEN_STORAGE_KEY]
+    || source[SLACK_API_BOT_TOKEN_STORAGE_KEY]
+    || source[SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY]
+    || source.bot_token
+    || ""
+  );
   const userToken = normalizeSlackApiToken(
     source.userToken
     || slacktivationSource.user_token
@@ -2123,6 +2201,7 @@ function normalizeZipSecretConfig(input) {
     scope,
     redirectPath,
     redirectUri,
+    botToken,
     userToken,
     oauthToken,
     singularityChannelId,
@@ -2208,7 +2287,7 @@ async function storeZipSecrets(input, options) {
   setOrRemove(ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY, normalized.redirectPath);
   setOrRemove(ZIP_SLACK_REDIRECT_URI_STORAGE_KEY, normalized.redirectUri);
   removals.push(ZIP_SLACK_EXPECTED_TEAM_ID_STORAGE_KEY);
-  removals.push(ZIP_SLACK_BOT_TOKEN_STORAGE_KEY);
+  setOrRemove(ZIP_SLACK_BOT_TOKEN_STORAGE_KEY, normalized.botToken);
   setOrRemove(ZIP_SLACK_USER_TOKEN_STORAGE_KEY, normalized.userToken);
   setOrRemove(ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY, normalized.oauthToken);
   setOrRemove(ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY, normalized.singularityChannelId);
@@ -2276,6 +2355,7 @@ async function runLocalStorageMigration(input) {
     const hasPayloadValues = !!(
       normalizedWhenDone.clientId
       || normalizedWhenDone.clientSecret
+      || normalizedWhenDone.botToken
       || normalizedWhenDone.userToken
       || normalizedWhenDone.oauthToken
       || normalizedWhenDone.singularityChannelId
@@ -2296,6 +2376,7 @@ async function runLocalStorageMigration(input) {
   const hasLegacyValues = !!(
     normalized.clientId
     || normalized.clientSecret
+    || normalized.botToken
     || normalized.userToken
     || normalized.oauthToken
     || normalized.singularityChannelId
@@ -2391,18 +2472,31 @@ async function readStoredSlackApiTokens() {
     return out;
   };
   if (!chrome.storage || !chrome.storage.local || typeof chrome.storage.local.get !== "function") {
+    const botCandidates = uniq([SLACK_API_DEFAULT_BOT_TOKEN, SLACK_API_SECONDARY_BOT_TOKEN]);
     const userCandidates = uniq([SLACK_API_DEFAULT_USER_TOKEN]);
     return {
+      botToken: botCandidates[0] || "",
+      botCandidates,
       userToken: userCandidates[0] || "",
       userCandidates
     };
   }
   try {
     const stored = await chrome.storage.local.get([
+      ZIP_SLACK_BOT_TOKEN_STORAGE_KEY,
       ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
       ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
+      SLACK_API_BOT_TOKEN_STORAGE_KEY,
       SLACK_API_USER_TOKEN_STORAGE_KEY,
+      SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY,
       SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY
+    ]);
+    const botCandidates = uniq([
+      stored && stored[ZIP_SLACK_BOT_TOKEN_STORAGE_KEY],
+      stored && stored[SLACK_API_BOT_TOKEN_STORAGE_KEY],
+      stored && stored[SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY],
+      SLACK_API_DEFAULT_BOT_TOKEN,
+      SLACK_API_SECONDARY_BOT_TOKEN
     ]);
     const userCandidates = uniq([
       stored && stored[ZIP_SLACK_USER_TOKEN_STORAGE_KEY],
@@ -2412,12 +2506,17 @@ async function readStoredSlackApiTokens() {
       SLACK_API_DEFAULT_USER_TOKEN
     ]);
     return {
+      botToken: botCandidates[0] || "",
+      botCandidates,
       userToken: userCandidates[0] || "",
       userCandidates
     };
   } catch (_) {
+    const botCandidates = uniq([SLACK_API_DEFAULT_BOT_TOKEN, SLACK_API_SECONDARY_BOT_TOKEN]);
     const userCandidates = uniq([SLACK_API_DEFAULT_USER_TOKEN]);
     return {
+      botToken: botCandidates[0] || "",
+      botCandidates,
       userToken: userCandidates[0] || "",
       userCandidates
     };
@@ -2426,6 +2525,7 @@ async function readStoredSlackApiTokens() {
 
 async function resolveSlackApiTokens(input) {
   const body = input && typeof input === "object" ? input : {};
+  const botFromMessage = normalizeSlackApiToken(body.botToken || body.bot_token);
   const userFromMessage = normalizeSlackApiToken(body.userToken || body.user_token);
   const stored = await readStoredSlackApiTokens();
   const uniq = (values) => {
@@ -2438,10 +2538,15 @@ async function resolveSlackApiTokens(input) {
     }
     return out;
   };
+  const botCandidates = uniq([botFromMessage].concat(
+    Array.isArray(stored && stored.botCandidates) ? stored.botCandidates : [stored && stored.botToken]
+  ));
   const userCandidates = uniq([userFromMessage].concat(
     Array.isArray(stored && stored.userCandidates) ? stored.userCandidates : [stored && stored.userToken]
   ));
   return {
+    botToken: botCandidates[0] || "",
+    botCandidates,
     userToken: userCandidates[0] || "",
     userCandidates
   };
@@ -2483,32 +2588,267 @@ async function invalidateStoredSlackToken(token) {
   } catch (_) {}
 }
 
+async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
+  const body = input && typeof input === "object" ? input : {};
+  const tokens = resolvedTokens && typeof resolvedTokens === "object" ? resolvedTokens : {};
+  const webApiOrigin = SLACK_WEB_API_ORIGIN;
+  const botDeliveryToken = normalizeSlackApiToken(tokens.botToken);
+  const botCandidates = Array.isArray(tokens && tokens.botCandidates)
+    ? tokens.botCandidates
+      .map((token) => normalizeSlackApiToken(token))
+      .filter((token) => isSlackBotApiToken(token))
+    : [botDeliveryToken].filter((token) => isSlackBotApiToken(token));
+  if (!botCandidates.length) {
+    return {
+      ok: false,
+      code: "slack_bot_token_missing",
+      error: "SLACK_IT_TO_ME requires a Slack bot token for guaranteed new-message delivery."
+    };
+  }
+
+  const openIdSession = await readSlackOpenIdSession();
+  const requestedUserId = normalizeSlackUserId(body.userId || body.user_id);
+  const openIdUserId = normalizeSlackUserId(openIdSession && openIdSession.userId);
+  const userIdCandidates = [];
+  const pushUserIdCandidate = (value) => {
+    const normalized = normalizeSlackUserId(value);
+    if (!normalized) return;
+    if (!userIdCandidates.includes(normalized)) userIdCandidates.push(normalized);
+  };
+  pushUserIdCandidate(requestedUserId);
+  pushUserIdCandidate(openIdUserId);
+  if (!userIdCandidates.length) {
+    return {
+      ok: false,
+      code: "slack_user_identity_missing",
+      error: "Unable to resolve Slack user identity for @ME delivery."
+    };
+  }
+
+  const resolvedUserName = normalizeSlackDisplayName(
+    body.userName || body.user_name || (openIdSession && openIdSession.userName) || ""
+  );
+  const resolvedAvatarUrl = normalizeSlackAvatarUrl(
+    body.avatarUrl
+    || body.avatar_url
+    || (openIdSession && openIdSession.avatarUrl)
+    || ""
+  );
+
+  let lastFailureCode = "slack_bot_send_failed";
+  let lastFailureError = "Unable to send Slack @ME message with bot delivery.";
+  let backedOffTokenCount = 0;
+
+  for (let i = 0; i < botCandidates.length; i += 1) {
+    const attemptToken = normalizeSlackApiToken(botCandidates[i]);
+    if (!attemptToken) continue;
+    if (isSlackTokenTemporarilyBackedOff(attemptToken)) {
+      backedOffTokenCount += 1;
+      lastFailureCode = "slack_bot_token_backoff";
+      lastFailureError = "Slack bot token validation is cooling down after recent failures.";
+      continue;
+    }
+
+    const auth = await postSlackApiWithBearerToken(webApiOrigin, "/api/auth.test", {
+      _x_reason: "zip-slack-it-to-me-auth-bot-bg"
+    }, attemptToken);
+    if (!auth.ok) {
+      lastFailureCode = auth.code || "slack_auth_failed";
+      lastFailureError = auth.error || "Unable to validate Slack bot credentials.";
+      if (isSlackTokenInvalidationCode(lastFailureCode)) {
+        markSlackTokenBackoff(attemptToken);
+      }
+      continue;
+    }
+    clearSlackTokenBackoff(attemptToken);
+
+    const authPayload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
+    const teamId = normalizeSlackTeamId(authPayload.team_id || authPayload.team);
+    let tokenInvalidated = false;
+    for (let userIdx = 0; userIdx < userIdCandidates.length; userIdx += 1) {
+      const userId = userIdCandidates[userIdx];
+      const dmOpen = await postSlackApiWithBearerToken(webApiOrigin, "/api/conversations.open", {
+        users: userId,
+        return_im: "true",
+        _x_reason: "zip-slack-it-to-me-open-dm-bot-bg"
+      }, attemptToken);
+      if (!dmOpen.ok) {
+        lastFailureCode = dmOpen.code || "slack_open_dm_failed";
+        lastFailureError = dmOpen.error || "Unable to open Slack DM channel.";
+        if (isSlackTokenInvalidationCode(lastFailureCode)) {
+          markSlackTokenBackoff(attemptToken);
+          tokenInvalidated = true;
+          break;
+        }
+        continue;
+      }
+      const dmPayload = dmOpen.payload && typeof dmOpen.payload === "object" ? dmOpen.payload : {};
+      const dmChannel = dmPayload.channel && typeof dmPayload.channel === "object" ? dmPayload.channel : {};
+      const postChannel = String(dmChannel.id || dmPayload.channel_id || dmPayload.channel || "").trim();
+      if (!postChannel) {
+        lastFailureCode = "slack_dm_channel_missing";
+        lastFailureError = "Unable to resolve Slack DM channel.";
+        continue;
+      }
+
+      const messageText = String(body.markdownText || body.text || body.messageText || "").trim();
+      const postFields = buildSlackNewMessageFields({
+        channel: postChannel,
+        text: messageText,
+        mrkdwn: "true",
+        unfurl_links: "false",
+        unfurl_media: "false",
+        _x_reason: "zip-slack-it-to-me-bot-bg"
+      });
+      const post = await postSlackApiWithBearerToken(webApiOrigin, "/api/chat.postMessage", postFields, attemptToken);
+      if (!post.ok) {
+        lastFailureCode = post.code || "slack_post_failed";
+        lastFailureError = post.error || "Unable to send Slack self-DM.";
+        if (isSlackTokenInvalidationCode(lastFailureCode)) {
+          markSlackTokenBackoff(attemptToken);
+          tokenInvalidated = true;
+          break;
+        }
+        continue;
+      }
+      const postPayload = post.payload && typeof post.payload === "object" ? post.payload : {};
+      const postedTs = String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim();
+      return {
+        ok: true,
+        channel: String(postPayload.channel || postChannel || userId).trim(),
+        ts: postedTs,
+        user_id: userId,
+        team_id: teamId || "",
+        user_name: resolvedUserName,
+        avatar_url: resolvedAvatarUrl,
+        unread_marked: true,
+        delivery_mode: "bot_direct_channel"
+      };
+    }
+    if (tokenInvalidated) {
+      continue;
+    }
+  }
+
+  if (backedOffTokenCount > 0 && backedOffTokenCount >= botCandidates.length) {
+    return {
+      ok: false,
+      code: "slack_bot_token_backoff",
+      error: lastFailureError
+    };
+  }
+  return {
+    ok: false,
+    code: lastFailureCode,
+    error: lastFailureError
+  };
+}
+
 async function slackSendMarkdownToSelfViaApi(input) {
   const body = input && typeof input === "object" ? input : {};
   const markdownText = String(body.markdownText || body.text || body.messageText || "").trim();
   if (!markdownText) {
     return { ok: false, error: "Slack message body is empty.", code: "slack_payload_empty" };
   }
-  const webApiOrigin = SLACK_WEB_API_ORIGIN;
+  const workspaceOrigin = normalizeSlackWorkspaceOrigin(body.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
+  const webApiOrigin = workspaceOrigin || SLACK_WEB_API_ORIGIN;
   const allowWorkspaceTabBootstrap = body.autoBootstrapSlackTab !== false;
-  // @ME must target the SLACKTIVATED user identity via user OAuth/session token.
+  const requireNativeNewMessage = body.requireNativeNewMessage !== false;
+  const skipUnreadMark = body.skipUnreadMark !== false;
+  const preferApiFirst = body.preferApiFirst !== false;
+  const allowBotDelivery = body.allowBotDelivery === true;
+  // Prefer SLACKTIVATED user-identity delivery. Bot delivery is fallback.
   const tokens = await resolveSlackApiTokens(body);
   const userDeliveryToken = normalizeSlackApiToken(tokens.userToken);
   const userCandidates = Array.isArray(tokens && tokens.userCandidates)
     ? tokens.userCandidates.map((token) => normalizeSlackApiToken(token)).filter(Boolean)
     : [userDeliveryToken].filter(Boolean);
-  const hasUserOAuthCandidate = userCandidates.some((token) => isSlackUserOAuthToken(token));
-
-  // Prefer workspace-session first so @ME mirrors native Slack "new unread" behavior.
-  const primarySessionDelivery = await slackSendMarkdownToSelfViaWorkspaceSession(body, "workspace_session_primary");
-  if (primarySessionDelivery && primarySessionDelivery.ok) {
-    return primarySessionDelivery;
+  const tokenAttempts = [];
+  for (let i = 0; i < userCandidates.length; i += 1) {
+    const normalizedToken = normalizeSlackApiToken(userCandidates[i]);
+    if (!normalizedToken) continue;
+    if (!isSlackUserOAuthToken(normalizedToken)) continue;
+    if (tokenAttempts.includes(normalizedToken)) continue;
+    tokenAttempts.push(normalizedToken);
   }
-  const primarySessionError = String((primarySessionDelivery && primarySessionDelivery.error) || "").trim();
-  const primarySessionCode = String((primarySessionDelivery && primarySessionDelivery.code) || "").trim().toLowerCase();
+  const hasUserOAuthCandidate = tokenAttempts.length > 0;
+
+  let primarySessionDelivery = null;
+  let primarySessionError = "";
+  let primarySessionCode = "";
+  const shouldTryPrimarySessionFirst = !preferApiFirst || (!hasUserOAuthCandidate && !allowBotDelivery);
+  if (shouldTryPrimarySessionFirst) {
+    // Session-first path remains available for environments without a valid user token.
+    const initialSessionDelivery = await slackSendMarkdownToSelfViaWorkspaceSession(body, "workspace_session_primary");
+    primarySessionDelivery = initialSessionDelivery;
+    if (
+      primarySessionDelivery
+      && primarySessionDelivery.ok
+    ) {
+      if (!requireNativeNewMessage || primarySessionDelivery.unread_marked === true) {
+        return primarySessionDelivery;
+      }
+      const deliveredChannel = normalizeSlackChannelId(primarySessionDelivery.channel);
+      const deliveredTs = String(primarySessionDelivery.ts || "").trim();
+      if (deliveredChannel && deliveredTs && tokenAttempts.length) {
+        for (let i = 0; i < tokenAttempts.length; i += 1) {
+          const token = tokenAttempts[i];
+          if (!token || isSlackTokenTemporarilyBackedOff(token)) continue;
+          const marked = await markSlackMessageUnreadViaApiToken(
+            webApiOrigin,
+            token,
+            deliveredChannel,
+            deliveredTs
+          );
+          if (marked) {
+            clearSlackTokenBackoff(token);
+            return {
+              ...primarySessionDelivery,
+              unread_marked: true
+            };
+          }
+        }
+      }
+      return {
+        ok: false,
+        code: "slack_unread_marker_unconfirmed",
+        error: "Slack delivery succeeded but native unread/new marker was not confirmed."
+      };
+    }
+    primarySessionError = String((primarySessionDelivery && primarySessionDelivery.error) || "").trim();
+    if (
+      primarySessionDelivery
+      && primarySessionDelivery.ok
+      && requireNativeNewMessage
+      && primarySessionDelivery.unread_marked !== true
+    ) {
+      primarySessionError = "Slack delivery succeeded but native unread/new marker was not confirmed.";
+    }
+    primarySessionCode = String((primarySessionDelivery && primarySessionDelivery.code) || "").trim().toLowerCase();
+  }
 
   // If no explicit Slack user OAuth token is available, rely on session guidance.
   if (!hasUserOAuthCandidate) {
+    if (allowBotDelivery) {
+      const botFallback = await slackSendMarkdownToSelfViaBotApi(body, tokens);
+      if (botFallback && botFallback.ok) {
+        return botFallback;
+      }
+      const botFailure = String((botFallback && botFallback.error) || "").trim();
+      return {
+        ok: false,
+        code: String((botFallback && botFallback.code) || "slack_user_token_missing"),
+        error: "SLACK_IT_TO_ME requires a Slack user/session token or bot token for DM delivery." + (
+          botFailure
+            ? (" " + botFailure)
+            : ""
+        ) + (
+          primarySessionError
+            ? (" " + primarySessionError)
+            : ""
+        )
+      };
+    }
     return {
       ok: false,
       code: "slack_user_token_missing",
@@ -2520,22 +2860,34 @@ async function slackSendMarkdownToSelfViaApi(input) {
     };
   }
 
-  const tokenAttempts = [];
-  for (let i = 0; i < userCandidates.length; i += 1) {
-    const normalizedToken = normalizeSlackApiToken(userCandidates[i]);
-    if (!normalizedToken) continue;
-    if (tokenAttempts.includes(normalizedToken)) continue;
-    tokenAttempts.push(normalizedToken);
-  }
   if (!tokenAttempts.length) {
+    if (allowBotDelivery) {
+      const botFallback = await slackSendMarkdownToSelfViaBotApi(body, tokens);
+      if (botFallback && botFallback.ok) {
+        return botFallback;
+      }
+    }
     const sessionFallback = await slackSendMarkdownToSelfViaWorkspaceSession(body, "slack_api_token_missing");
-    if (sessionFallback && sessionFallback.ok) return sessionFallback;
+    if (
+      sessionFallback
+      && sessionFallback.ok
+      && (!requireNativeNewMessage || sessionFallback.unread_marked === true)
+    ) {
+      return sessionFallback;
+    }
+    const unreadFailure = (
+      sessionFallback
+      && sessionFallback.ok
+      && requireNativeNewMessage
+      && sessionFallback.unread_marked !== true
+    ) ? "Slack delivery succeeded but native unread/new marker was not confirmed." : "";
+    const sessionFallbackError = String((sessionFallback && sessionFallback.error) || unreadFailure).trim();
     return {
       ok: false,
       code: "slack_user_token_missing",
       error: "SLACK_IT_TO_ME requires a Slack user/session token for DM delivery." + (
-        sessionFallback && sessionFallback.error
-          ? (" " + String(sessionFallback.error))
+        sessionFallbackError
+          ? (" " + sessionFallbackError)
           : ""
       )
     };
@@ -2588,19 +2940,6 @@ async function slackSendMarkdownToSelfViaApi(input) {
     const authFallbackName = normalizeSlackDisplayName(authPayload.user || "");
 
     const authUserId = normalizeSlackUserId(authPayload.user_id || authPayload.user);
-    if (!resolvedUserName || !resolvedAvatarUrl) {
-      const identity = await fetchSlackIdentityViaApi(
-        webApiOrigin,
-        attemptToken,
-        authUserId || requestedUserId || openIdUserId
-      );
-      if (!resolvedUserName) {
-        resolvedUserName = normalizeSlackDisplayName(identity.userName || authFallbackName || "");
-      }
-      if (!resolvedAvatarUrl) {
-        resolvedAvatarUrl = normalizeSlackAvatarUrl(identity.avatarUrl || "");
-      }
-    }
     if (!resolvedUserName) {
       resolvedUserName = authFallbackName;
     }
@@ -2610,9 +2949,9 @@ async function slackSendMarkdownToSelfViaApi(input) {
       if (!normalized) return;
       if (!userIdCandidates.includes(normalized)) userIdCandidates.push(normalized);
     };
+    pushUserIdCandidate(authUserId);
     pushUserIdCandidate(requestedUserId);
     pushUserIdCandidate(openIdUserId);
-    pushUserIdCandidate(authUserId);
     if (!userIdCandidates.length) {
       lastFailureCode = "slack_user_identity_missing";
       lastFailureError = "Unable to resolve Slack user identity for @ME delivery.";
@@ -2647,14 +2986,22 @@ async function slackSendMarkdownToSelfViaApi(input) {
       }
 
       const messageText = markdownText;
-      const post = await postSlackApiWithBearerToken(webApiOrigin, "/api/chat.postMessage", {
+      const postFields = buildSlackNewMessageFields({
         channel: postChannel,
         text: messageText,
         mrkdwn: "true",
         unfurl_links: "false",
         unfurl_media: "false",
         _x_reason: "zip-slack-it-to-me-bg"
-      }, attemptToken);
+      });
+      const prePostCursorTs = skipUnreadMark
+        ? ""
+        : await fetchSlackLatestMessageTsViaApiToken(
+          webApiOrigin,
+          attemptToken,
+          postChannel
+        ).catch(() => "");
+      const post = await postSlackApiWithBearerToken(webApiOrigin, "/api/chat.postMessage", postFields, attemptToken);
       if (!post.ok) {
         lastFailureCode = post.code || "slack_post_failed";
         lastFailureError = post.error || "Unable to send Slack self-DM.";
@@ -2669,22 +3016,30 @@ async function slackSendMarkdownToSelfViaApi(input) {
       const postPayload = post.payload && typeof post.payload === "object" ? post.payload : {};
       const postedTs = String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim();
       let unreadMarked = false;
-      if (postChannel && postedTs) {
+      if (!skipUnreadMark && postChannel && postedTs) {
         unreadMarked = await markSlackMessageUnreadViaApiToken(
           webApiOrigin,
           attemptToken,
           postChannel,
-          postedTs
+          postedTs,
+          prePostCursorTs
         );
         if (!unreadMarked) {
           const workspaceUnreadFallback = await slackMarkUnreadViaWorkspaceSession({
-            workspaceOrigin,
+            workspaceOrigin: webApiOrigin,
             channelId: postChannel,
             ts: postedTs,
             autoBootstrapSlackTab: allowWorkspaceTabBootstrap
           }, "workspace_mark_unread_fallback");
           unreadMarked = !!(workspaceUnreadFallback && workspaceUnreadFallback.ok && workspaceUnreadFallback.unread_marked === true);
         }
+      }
+      if (!skipUnreadMark && requireNativeNewMessage && unreadMarked !== true) {
+        return {
+          ok: false,
+          code: "slack_unread_marker_unconfirmed",
+          error: "Slack delivery succeeded but native unread/new marker was not confirmed."
+        };
       }
       return {
         ok: true,
@@ -2703,9 +3058,35 @@ async function slackSendMarkdownToSelfViaApi(input) {
     }
   }
 
+  if (allowBotDelivery) {
+    const botFallback = await slackSendMarkdownToSelfViaBotApi(body, tokens);
+    if (botFallback && botFallback.ok) {
+      return botFallback;
+    }
+    if (botFallback && !botFallback.ok && botFallback.error) {
+      lastFailureError = String(botFallback.error || lastFailureError);
+      lastFailureCode = String(botFallback.code || lastFailureCode);
+    }
+  }
+
   if (backedOffTokenCount > 0 && backedOffTokenCount >= tokenAttempts.length) {
     const sessionFallback = await slackSendMarkdownToSelfViaWorkspaceSession(body, "slack_token_backoff");
-    if (sessionFallback && sessionFallback.ok) return sessionFallback;
+    if (
+      sessionFallback
+      && sessionFallback.ok
+      && (!requireNativeNewMessage || sessionFallback.unread_marked === true)
+    ) {
+      return sessionFallback;
+    }
+    if (
+      sessionFallback
+      && sessionFallback.ok
+      && requireNativeNewMessage
+      && sessionFallback.unread_marked !== true
+    ) {
+      lastFailureCode = "slack_unread_marker_unconfirmed";
+      lastFailureError = "Slack delivery succeeded but native unread/new marker was not confirmed.";
+    }
   }
 
   const shouldRetryWorkspaceSession = !(
@@ -2714,7 +3095,22 @@ async function slackSendMarkdownToSelfViaApi(input) {
   );
   if (shouldRetryWorkspaceSession) {
     const sessionFallback = await slackSendMarkdownToSelfViaWorkspaceSession(body, lastFailureCode);
-    if (sessionFallback && sessionFallback.ok) return sessionFallback;
+    if (
+      sessionFallback
+      && sessionFallback.ok
+      && (!requireNativeNewMessage || sessionFallback.unread_marked === true)
+    ) {
+      return sessionFallback;
+    }
+    if (
+      sessionFallback
+      && sessionFallback.ok
+      && requireNativeNewMessage
+      && sessionFallback.unread_marked !== true
+    ) {
+      lastFailureCode = "slack_unread_marker_unconfirmed";
+      lastFailureError = "Slack delivery succeeded but native unread/new marker was not confirmed.";
+    }
   }
   return {
     ok: false,
@@ -3927,6 +4323,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === "ZIP_GET_AUTH_STATE") {
     sendResponse(getAuthStatePayload());
+    return true;
+  }
+  if (msg.type === "ZIP_TICKET_ENRICHMENT_METRICS") {
+    latestTicketEnrichmentMetrics = msg && msg.payload && typeof msg.payload === "object"
+      ? { ...msg.payload }
+      : null;
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.type === "ZIP_GET_TICKET_ENRICHMENT_METRICS") {
+    sendResponse({
+      ok: true,
+      payload: latestTicketEnrichmentMetrics
+    });
     return true;
   }
   if (msg.type === "ZIP_FORCE_CHECK") {
