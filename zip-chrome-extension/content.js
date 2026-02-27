@@ -21,10 +21,22 @@
   const SLACK_TOKEN_BRIDGE_SCRIPT_ID = "zip-slack-token-bridge-script";
   const SLACK_TOKEN_BRIDGE_SCRIPT_PATH = "slack-token-bridge.js";
   const ZIP_KEY_BANNER_ID = "zip-key-required-banner";
+  const REQUESTOR_ORG_ENRICHMENT_FLAG_STORAGE_KEY = "zip.feature.requestor_org_enrichment.v1";
+  const REQUESTOR_ORG_ENRICHMENT_FLAG_CACHE_TTL_MS = 60 * 1000;
+  const REQUESTOR_ORG_TRANSLATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+  const REQUESTOR_ORG_METRICS_HISTORY_LIMIT = 24;
 
   let slackTokenBridgeInstalled = false;
   let slackTokenBridgeListenerInstalled = false;
   let slackCapturedToken = "";
+  let requestorOrgFeatureFlagCache = {
+    loaded: false,
+    loadedAt: 0,
+    value: true
+  };
+  let requestorOrgTranslationCache = null;
+  let requestorOrgTranslatorAdapter = null;
+  const requestorOrgMetricsHistory = [];
   let zendeskObserversInstalled = false;
   let zendeskNetworkHooksInstalled = false;
   let zendeskDomObserverInstalled = false;
@@ -45,6 +57,48 @@
     });
   }
 
+  function getChromeRuntime() {
+    try {
+      if (typeof chrome === "undefined" || !chrome || !chrome.runtime) return null;
+      return chrome.runtime;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function sendRuntimeMessage(message, callback) {
+    const runtime = getChromeRuntime();
+    if (!runtime || typeof runtime.sendMessage !== "function") {
+      if (typeof callback === "function") callback(undefined, "runtime_unavailable");
+      return false;
+    }
+    try {
+      runtime.sendMessage(message, (response) => {
+        const hasRuntimeError = !!(runtime && runtime.lastError);
+        const runtimeError = hasRuntimeError
+          ? String((runtime && runtime.lastError && runtime.lastError.message) || "runtime_error")
+          : "";
+        if (typeof callback === "function") callback(response, runtimeError);
+      });
+      return true;
+    } catch (err) {
+      if (typeof callback === "function") {
+        callback(undefined, err && err.message ? err.message : "runtime_send_failed");
+      }
+      return false;
+    }
+  }
+
+  function getRuntimeUrl(path) {
+    const runtime = getChromeRuntime();
+    if (!runtime || typeof runtime.getURL !== "function") return "";
+    try {
+      return String(runtime.getURL(path || "") || "");
+    } catch (_) {
+      return "";
+    }
+  }
+
   async function fetchJson(url) {
     const res = await fetch(url, {
       method: "GET",
@@ -54,6 +108,7 @@
     });
     let payload = null;
     let text = "";
+    let retryAfterMs = 0;
     try {
       payload = await res.json();
     } catch (_) {
@@ -61,7 +116,23 @@
         text = await res.text();
       } catch (_) {}
     }
-    return { ok: res.ok, status: res.status, payload, text };
+    try {
+      const retryAfterRaw = res.headers && typeof res.headers.get === "function"
+        ? String(res.headers.get("Retry-After") || "").trim()
+        : "";
+      if (retryAfterRaw) {
+        const asNumber = Number(retryAfterRaw);
+        if (Number.isFinite(asNumber) && asNumber >= 0) {
+          retryAfterMs = Math.trunc(asNumber * 1000);
+        } else {
+          const asDate = Date.parse(retryAfterRaw);
+          if (Number.isFinite(asDate)) {
+            retryAfterMs = Math.max(0, asDate - Date.now());
+          }
+        }
+      }
+    } catch (_) {}
+    return { ok: res.ok, status: res.status, payload, text, retryAfterMs };
   }
 
   function extractUser(payload) {
@@ -87,6 +158,12 @@
     return typeof window !== "undefined"
       && window.location
       && isZendeskHost(window.location.hostname);
+  }
+
+  function isZendeskAuthPage() {
+    if (!isZendeskPage() || !window.location) return false;
+    const path = String(window.location.pathname || "").toLowerCase();
+    return isLikelyLogoutPath(path) || path.includes("/auth/");
   }
 
   function parseUrlPath(input) {
@@ -166,13 +243,11 @@
     const responseStatus = Number(status) || 200;
     const signalKey = "ok:" + String(responseStatus) + ":" + String(reason || "session_ok");
     if (!shouldEmitZendeskSessionSignal(signalKey)) return;
-    chrome.runtime.sendMessage({
+    sendRuntimeMessage({
       type: "ZD_SESSION_OK",
       status: responseStatus,
       reason: String(reason || "session_ok"),
       payload: payload && typeof payload === "object" ? payload : null
-    }, () => {
-      void chrome.runtime.lastError;
     });
   }
 
@@ -181,12 +256,10 @@
     const responseStatus = Number(status) || 401;
     const signalKey = "logout:" + String(responseStatus) + ":" + String(reason || "logout_detected");
     if (!shouldEmitZendeskSessionSignal(signalKey)) return;
-    chrome.runtime.sendMessage({
+    sendRuntimeMessage({
       type: "ZD_LOGOUT",
       status: responseStatus,
       reason: String(reason || "logout_detected")
-    }, () => {
-      void chrome.runtime.lastError;
     });
   }
 
@@ -427,6 +500,15 @@
     return match ? String(match[0]).toLowerCase() : "";
   }
 
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll("\"", "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
   function extractTicketAssigneeName(row) {
     const source = row && typeof row === "object" ? row : {};
     const nestedAssignee = source.assignee && typeof source.assignee === "object" ? source.assignee : null;
@@ -448,17 +530,82 @@
   function extractTicketRequesterName(row) {
     const source = row && typeof row === "object" ? row : {};
     const nestedRequester = source.requester && typeof source.requester === "object" ? source.requester : null;
+    const nestedRequestor = source.requestor && typeof source.requestor === "object" ? source.requestor : null;
     const candidates = [
       source.requester_name,
       source.requesterName,
+      source.requestor_name,
+      source.requestorName,
       nestedRequester && nestedRequester.name,
-      nestedRequester && nestedRequester.display_name
+      nestedRequester && nestedRequester.display_name,
+      nestedRequestor && nestedRequestor.name,
+      nestedRequestor && nestedRequestor.display_name
     ];
     for (let i = 0; i < candidates.length; i += 1) {
       const value = String(candidates[i] == null ? "" : candidates[i]).replace(/\s+/g, " ").trim();
       if (value) return value;
     }
     return "";
+  }
+
+  function extractTicketRequesterId(row) {
+    const source = row && typeof row === "object" ? row : {};
+    const nestedRequester = source.requester && typeof source.requester === "object" ? source.requester : null;
+    const nestedRequestor = source.requestor && typeof source.requestor === "object" ? source.requestor : null;
+    const candidates = [
+      source.requester_id,
+      source.requesterId,
+      source.requestor_id,
+      source.requestorId,
+      nestedRequester && nestedRequester.id,
+      nestedRequestor && nestedRequestor.id
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      if (candidates[i] == null) continue;
+      const id = String(candidates[i]).trim();
+      if (id) return id;
+    }
+    return "";
+  }
+
+  function extractTicketOrganizationId(row) {
+    const source = row && typeof row === "object" ? row : {};
+    const organization = source.organization && typeof source.organization === "object" ? source.organization : null;
+    const candidates = [
+      source.organization_id,
+      source.organizationId,
+      organization && organization.id
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      if (candidates[i] == null) continue;
+      const id = String(candidates[i]).trim();
+      if (id) return id;
+    }
+    return "";
+  }
+
+  function extractTicketOrganizationName(row) {
+    const source = row && typeof row === "object" ? row : {};
+    const organization = source.organization && typeof source.organization === "object" ? source.organization : null;
+    const candidates = [
+      source.organization_name,
+      source.organizationName,
+      organization && organization.name
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      const name = String(candidates[i] == null ? "" : candidates[i]).replace(/\s+/g, " ").trim();
+      if (name) return name;
+    }
+    return "";
+  }
+
+  function buildRequestorAnchor(email, name) {
+    const requestorEmail = String(email == null ? "" : email).trim();
+    const requestorName = String(name == null ? "" : name).trim();
+    if (!requestorEmail && !requestorName) return "";
+    const label = escapeHtml(requestorName || requestorEmail);
+    if (!requestorEmail) return label;
+    return "<a href=\"mailto:" + escapeHtml(requestorEmail) + "\">" + label + "</a>";
   }
 
   function extractTicketRequesterEmail(row) {
@@ -493,6 +640,9 @@
     const assigneeName = extractTicketAssigneeName(row);
     const requesterName = extractTicketRequesterName(row);
     const requesterEmail = extractTicketRequesterEmail(row);
+    const requesterId = extractTicketRequesterId(row);
+    const organizationId = extractTicketOrganizationId(row);
+    const organizationName = extractTicketOrganizationName(row);
     return {
       id,
       subject: (row && row.subject) || "",
@@ -503,8 +653,17 @@
       url: id ? TICKET_URL_PREFIX + id : "",
       assignee_name: assigneeName,
       owner_name: assigneeName,
+      requester_id: requesterId,
       requester_name: requesterName,
       requester_email: requesterEmail,
+      requestor: buildRequestorAnchor(requesterEmail, requesterName),
+      requestor_name: requesterName,
+      requestor_name_translated: requesterName,
+      requestor_email: requesterEmail,
+      organization_id: organizationId,
+      organization: organizationName,
+      organization_name: organizationName,
+      organization_name_translated: organizationName,
       jira_issue_key: jiraIssueKey,
       jira_url: buildJiraIssueUrl(jiraIssueKey)
     };
@@ -539,19 +698,266 @@
     return false;
   }
 
-  async function loadTickets(userId) {
+  function readStorageLocal(keys) {
+    return new Promise((resolve) => {
+      try {
+        if (typeof chrome === "undefined" || !chrome || !chrome.storage || !chrome.storage.local || typeof chrome.storage.local.get !== "function") {
+          resolve({});
+          return;
+        }
+        chrome.storage.local.get(keys, (items) => {
+          const runtime = getChromeRuntime();
+          if (runtime && runtime.lastError) {
+            resolve({});
+            return;
+          }
+          resolve(items && typeof items === "object" ? items : {});
+        });
+      } catch (_) {
+        resolve({});
+      }
+    });
+  }
+
+  function getTicketEnrichmentModule() {
+    const mod = typeof globalThis !== "undefined"
+      ? globalThis.ZipTicketEnrichment
+      : (typeof window !== "undefined" ? window.ZipTicketEnrichment : null);
+    if (!mod || typeof mod !== "object") return null;
+    if (typeof mod.enrichTicketsWithRequestorOrg !== "function") return null;
+    if (typeof mod.createTranslationCache !== "function") return null;
+    if (typeof mod.createTranslatorAdapter !== "function") return null;
+    return mod;
+  }
+
+  function resolveTicketLocale(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const explicit = String(
+      opts.locale
+      || opts.targetLocale
+      || opts.agentLocale
+      || opts.userLocale
+      || ""
+    ).trim();
+    if (explicit) return explicit;
+    if (typeof navigator !== "undefined" && navigator.language) {
+      return String(navigator.language).trim() || "en-US";
+    }
+    return "en-US";
+  }
+
+  async function isRequestorOrgEnrichmentEnabled(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    if (typeof opts.enabled === "boolean") return opts.enabled;
+    const now = Date.now();
+    if (
+      requestorOrgFeatureFlagCache.loaded
+      && now - Number(requestorOrgFeatureFlagCache.loadedAt || 0) < REQUESTOR_ORG_ENRICHMENT_FLAG_CACHE_TTL_MS
+    ) {
+      return requestorOrgFeatureFlagCache.value !== false;
+    }
+    let enabled = true;
+    try {
+      const stored = await readStorageLocal([REQUESTOR_ORG_ENRICHMENT_FLAG_STORAGE_KEY, "zip_feature_flags"]);
+      const explicit = stored && Object.prototype.hasOwnProperty.call(stored, REQUESTOR_ORG_ENRICHMENT_FLAG_STORAGE_KEY)
+        ? stored[REQUESTOR_ORG_ENRICHMENT_FLAG_STORAGE_KEY]
+        : undefined;
+      if (typeof explicit === "boolean") {
+        enabled = explicit;
+      } else if (stored && stored.zip_feature_flags && typeof stored.zip_feature_flags === "object") {
+        const flags = stored.zip_feature_flags;
+        if (typeof flags.requestorOrgEnrichment === "boolean") {
+          enabled = flags.requestorOrgEnrichment;
+        }
+      }
+    } catch (_) {}
+    requestorOrgFeatureFlagCache = {
+      loaded: true,
+      loadedAt: now,
+      value: enabled
+    };
+    return enabled;
+  }
+
+  function getConfiguredTranslationBatchProvider() {
+    if (typeof window === "undefined") return null;
+    try {
+      if (typeof window.ZIP_TRANSLATE_BATCH === "function") {
+        return window.ZIP_TRANSLATE_BATCH.bind(window);
+      }
+    } catch (_) {}
+    try {
+      if (window.ZIP_TRANSLATOR_ADAPTER && typeof window.ZIP_TRANSLATOR_ADAPTER.translateBatch === "function") {
+        return (sourceStrings, translationOptions) => window.ZIP_TRANSLATOR_ADAPTER.translateBatch(sourceStrings, translationOptions);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  function getRequestorOrgTranslationCache(moduleApi) {
+    if (requestorOrgTranslationCache) return requestorOrgTranslationCache;
+    requestorOrgTranslationCache = moduleApi.createTranslationCache({
+      ttlMs: REQUESTOR_ORG_TRANSLATION_CACHE_TTL_MS
+    });
+    return requestorOrgTranslationCache;
+  }
+
+  function getRequestorOrgTranslator(moduleApi) {
+    if (requestorOrgTranslatorAdapter) return requestorOrgTranslatorAdapter;
+    const provider = getConfiguredTranslationBatchProvider();
+    requestorOrgTranslatorAdapter = moduleApi.createTranslatorAdapter({
+      translateBatch: async (sourceStrings, translationOptions) => {
+        if (!provider) return sourceStrings;
+        try {
+          return await provider(sourceStrings, translationOptions);
+        } catch (_) {
+          return sourceStrings;
+        }
+      }
+    });
+    return requestorOrgTranslatorAdapter;
+  }
+
+  function buildFallbackRequestorOrgTicket(row) {
+    const ticket = row && typeof row === "object" ? row : {};
+    const requestorName = String(
+      ticket.requestor_name_translated
+      || ticket.requestor_name
+      || ticket.requester_name
+      || ticket.requesterName
+      || ""
+    ).replace(/\s+/g, " ").trim();
+    const requestorEmail = normalizeEmailAddress(
+      ticket.requestor_email
+      || ticket.requester_email
+      || ticket.requesterEmail
+      || ""
+    );
+    const organizationName = String(
+      ticket.organization_name_translated
+      || ticket.organization_name
+      || ticket.organizationName
+      || ticket.organization
+      || ""
+    ).replace(/\s+/g, " ").trim();
+    return {
+      ...ticket,
+      requestor: buildRequestorAnchor(requestorEmail, requestorName),
+      requestor_name: requestorName,
+      requestor_name_translated: requestorName,
+      requestor_email: requestorEmail,
+      requester_name: requestorName || ticket.requester_name || "",
+      requester_email: requestorEmail || ticket.requester_email || "",
+      organization: organizationName,
+      organization_name: organizationName,
+      organization_name_translated: organizationName
+    };
+  }
+
+  function recordRequestorOrgMetrics(source, metrics) {
+    const entry = {
+      at: new Date().toISOString(),
+      source: String(source || "unknown"),
+      metrics: metrics && typeof metrics === "object" ? metrics : {}
+    };
+    requestorOrgMetricsHistory.push(entry);
+    while (requestorOrgMetricsHistory.length > REQUESTOR_ORG_METRICS_HISTORY_LIMIT) {
+      requestorOrgMetricsHistory.shift();
+    }
+    try {
+      if (typeof window !== "undefined") {
+        window.__ZIP_REQUESTOR_ORG_METRICS__ = requestorOrgMetricsHistory.slice();
+      }
+    } catch (_) {}
+    try {
+      sendRuntimeMessage({
+        type: "ZIP_TICKET_ENRICHMENT_METRICS",
+        payload: entry
+      });
+    } catch (_) {}
+  }
+
+  async function enrichTicketsWithRequestorOrg(tickets, options) {
+    const rows = Array.isArray(tickets) ? tickets : [];
+    if (!rows.length) {
+      return { tickets: [], metrics: { ticketCount: 0, featureFlagEnabled: true } };
+    }
+
+    const opts = options && typeof options === "object" ? options : {};
+    const source = String(opts.source || "tickets").trim() || "tickets";
+    const enabled = await isRequestorOrgEnrichmentEnabled(opts);
+    if (!enabled) {
+      const fallbackRows = rows.map((row) => buildFallbackRequestorOrgTicket(row));
+      const disabledMetrics = {
+        ticketCount: fallbackRows.length,
+        featureFlagEnabled: false
+      };
+      recordRequestorOrgMetrics(source, disabledMetrics);
+      return { tickets: fallbackRows, metrics: disabledMetrics };
+    }
+
+    const moduleApi = getTicketEnrichmentModule();
+    if (!moduleApi) {
+      const fallbackRows = rows.map((row) => buildFallbackRequestorOrgTicket(row));
+      const missingModuleMetrics = {
+        ticketCount: fallbackRows.length,
+        featureFlagEnabled: true,
+        moduleMissing: true
+      };
+      recordRequestorOrgMetrics(source, missingModuleMetrics);
+      return { tickets: fallbackRows, metrics: missingModuleMetrics };
+    }
+
+    try {
+      const enriched = await moduleApi.enrichTicketsWithRequestorOrg(rows, {
+        baseUrl: BASE,
+        fetchJson,
+        targetLocale: resolveTicketLocale(opts),
+        translationCache: getRequestorOrgTranslationCache(moduleApi),
+        translator: getRequestorOrgTranslator(moduleApi)
+      });
+      const outputRows = Array.isArray(enriched && enriched.tickets)
+        ? enriched.tickets.map((row) => buildFallbackRequestorOrgTicket(row))
+        : rows.map((row) => buildFallbackRequestorOrgTicket(row));
+      const metrics = {
+        ...(enriched && enriched.metrics && typeof enriched.metrics === "object" ? enriched.metrics : {}),
+        ticketCount: outputRows.length,
+        featureFlagEnabled: true,
+        targetLocale: resolveTicketLocale(opts)
+      };
+      recordRequestorOrgMetrics(source, metrics);
+      return { tickets: outputRows, metrics };
+    } catch (error) {
+      const fallbackRows = rows.map((row) => buildFallbackRequestorOrgTicket(row));
+      const failedMetrics = {
+        ticketCount: fallbackRows.length,
+        featureFlagEnabled: true,
+        error: error && error.message ? error.message : "enrichment_failed"
+      };
+      recordRequestorOrgMetrics(source, failedMetrics);
+      return { tickets: fallbackRows, metrics: failedMetrics };
+    }
+  }
+
+  async function loadTickets(userId, options) {
     const assigneeId = String(userId || "").trim();
     if (!assigneeId) return { tickets: [] };
-    return loadTicketsByAssigneeId(assigneeId);
+    return loadTicketsByAssigneeId(assigneeId, {
+      ...(options && typeof options === "object" ? options : {}),
+      source: "loadTickets"
+    });
   }
 
-  async function loadTicketsByOrg(orgId) {
+  async function loadTicketsByOrg(orgId, options) {
     if (!orgId) return { tickets: [] };
     const query = "type:ticket organization_id:" + orgId + NON_CLOSED_STATUS_QUERY;
-    return searchTickets(query);
+    return searchTickets(query, {
+      ...(options && typeof options === "object" ? options : {}),
+      source: "loadTicketsByOrg"
+    });
   }
 
-  async function searchTickets(query) {
+  async function searchTickets(query, options) {
     let nextUrl = BASE + "/api/v2/search.json?query=" + encodeURIComponent(query);
     const all = [];
     const seenTicketIds = new Set();
@@ -579,7 +985,11 @@
       });
       nextUrl = res.payload.next_page || null;
     }
-    return { tickets: all };
+    const enriched = await enrichTicketsWithRequestorOrg(all, {
+      ...(options && typeof options === "object" ? options : {}),
+      source: "searchTickets"
+    });
+    return { tickets: enriched.tickets, metrics: enriched.metrics };
   }
 
   function parseSearchCount(payload) {
@@ -758,7 +1168,7 @@
     return { orgId: id, count: result.count || 0, error: result.error };
   }
 
-  async function loadTicketsByView(viewId) {
+  async function loadTicketsByView(viewId, options) {
     if (!viewId) return { tickets: [] };
     const all = [];
     const seenTicketIds = new Set();
@@ -785,7 +1195,11 @@
       });
       nextUrl = res.payload.next_page || null;
     }
-    return { tickets: all };
+    const enriched = await enrichTicketsWithRequestorOrg(all, {
+      ...(options && typeof options === "object" ? options : {}),
+      source: "loadTicketsByView"
+    });
+    return { tickets: enriched.tickets, metrics: enriched.metrics };
   }
 
   /** GET /api/v2/groups/assignable – list all assignable groups (for By Group dropdown). */
@@ -876,10 +1290,13 @@
   }
 
   /** Search API: tickets in group (assignee group), with closed excluded. */
-  async function loadTicketsByGroupId(groupId) {
+  async function loadTicketsByGroupId(groupId, options) {
     if (!groupId) return { tickets: [] };
     const query = "type:ticket group_id:" + String(groupId) + NON_CLOSED_STATUS_QUERY;
-    return searchTickets(query);
+    return searchTickets(query, {
+      ...(options && typeof options === "object" ? options : {}),
+      source: "loadTicketsByGroupId"
+    });
   }
 
   async function loadGroupTicketCount(groupId) {
@@ -891,10 +1308,13 @@
   }
 
   /** Search API: tickets by assignee_id (closed excluded). Replaces /users/{id}/tickets/assigned. */
-  async function loadTicketsByAssigneeId(userId) {
+  async function loadTicketsByAssigneeId(userId, options) {
     if (!userId) return { tickets: [] };
     const query = "type:ticket assignee_id:" + String(userId) + NON_CLOSED_STATUS_QUERY;
-    return searchTickets(query);
+    return searchTickets(query, {
+      ...(options && typeof options === "object" ? options : {}),
+      source: "loadTicketsByAssigneeId"
+    });
   }
 
   async function loadAssigneeTicketCount(userId) {
@@ -1060,7 +1480,9 @@
 
       const script = document.createElement("script");
       script.id = SLACK_TOKEN_BRIDGE_SCRIPT_ID;
-      script.src = chrome.runtime.getURL(SLACK_TOKEN_BRIDGE_SCRIPT_PATH);
+      const bridgeScriptUrl = getRuntimeUrl(SLACK_TOKEN_BRIDGE_SCRIPT_PATH);
+      if (!bridgeScriptUrl) return;
+      script.src = bridgeScriptUrl;
       script.async = false;
       script.dataset.eventName = SLACK_BRIDGE_EVENT_NAME;
       script.dataset.messageType = SLACK_BRIDGE_MESSAGE_TYPE;
@@ -1524,6 +1946,84 @@
     return String(seconds) + "." + String(micros).padStart(6, "0");
   }
 
+  function parseSlackTsParts(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    const match = raw.match(/^(\d+)(?:\.(\d+))?$/);
+    if (!match) return null;
+    const seconds = Number.parseInt(match[1], 10);
+    const micros = Number.parseInt(String(match[2] || "0").slice(0, 6).padEnd(6, "0"), 10);
+    if (!Number.isFinite(seconds) || seconds < 0) return null;
+    if (!Number.isFinite(micros) || micros < 0) return null;
+    return { seconds, micros };
+  }
+
+  function compareSlackTs(leftValue, rightValue) {
+    const left = parseSlackTsParts(leftValue);
+    const right = parseSlackTsParts(rightValue);
+    if (!left || !right) return 0;
+    if (left.seconds < right.seconds) return -1;
+    if (left.seconds > right.seconds) return 1;
+    if (left.micros < right.micros) return -1;
+    if (left.micros > right.micros) return 1;
+    return 0;
+  }
+
+  function slackTsToMicros(value) {
+    const parts = parseSlackTsParts(value);
+    if (!parts) return null;
+    return (parts.seconds * 1000000) + parts.micros;
+  }
+
+  function normalizeSlackReadCursorTs(readCursorTs, messageTs) {
+    const targetTs = String(messageTs || "").trim();
+    const fallbackTs = toPriorSlackTs(targetTs);
+    const candidateTs = String(readCursorTs || "").trim();
+    if (!candidateTs) return fallbackTs;
+    if (compareSlackTs(candidateTs, targetTs) >= 0) return fallbackTs;
+    return candidateTs;
+  }
+
+  async function getSlackLatestMessageTs(workspaceOrigin, channelId, reasonPrefix) {
+    const targetChannel = String(channelId || "").trim();
+    if (!targetChannel) return "";
+    const result = await postSlackApi(workspaceOrigin, "/api/conversations.history", {
+      channel: targetChannel,
+      limit: 1,
+      inclusive: "false",
+      _x_reason: String(reasonPrefix || "zip-slack-history").trim() + "-latest"
+    }).catch(() => null);
+    if (!result || !result.ok) return "";
+    const payload = result.payload && typeof result.payload === "object" ? result.payload : {};
+    const messages = Array.isArray(payload.messages) ? payload.messages : [];
+    if (!messages.length) return "";
+    return String(messages[0] && messages[0].ts || "").trim();
+  }
+
+  async function isSlackMessageUnreadInChannel(workspaceOrigin, channelId, messageTs, readCursorTs, reasonPrefix) {
+    const targetChannel = String(channelId || "").trim();
+    const targetTs = String(messageTs || "").trim();
+    if (!targetChannel || !targetTs) return false;
+    const cursorTs = normalizeSlackReadCursorTs(readCursorTs, targetTs);
+    const result = await postSlackApi(workspaceOrigin, "/api/conversations.info", {
+      channel: targetChannel,
+      include_num_members: "false",
+      _x_reason: String(reasonPrefix || "zip-slack-mark-unread").trim() + "-verify"
+    }).catch(() => null);
+    if (!result || !result.ok) return false;
+    const payload = result.payload && typeof result.payload === "object" ? result.payload : {};
+    const channel = payload.channel && typeof payload.channel === "object" ? payload.channel : {};
+    const lastRead = String(channel.last_read || "").trim();
+    if (!lastRead) return false;
+    if (compareSlackTs(lastRead, targetTs) >= 0) return false;
+    if (compareSlackTs(lastRead, cursorTs) < 0) return false;
+    const targetMicros = slackTsToMicros(targetTs);
+    const lastReadMicros = slackTsToMicros(lastRead);
+    if (targetMicros == null || lastReadMicros == null) return false;
+    const deltaSeconds = (targetMicros - lastReadMicros) / 1000000;
+    return deltaSeconds >= 0 && deltaSeconds <= 2.5;
+  }
+
   function isSingularityAckMessageText(value) {
     const text = normalizeSlackTextForDedup(value);
     if (!text) return false;
@@ -1563,44 +2063,31 @@
     });
   }
 
-  async function markSlackMessageUnread(workspaceOrigin, channelId, messageTs, reasonPrefix) {
+  async function markSlackMessageUnread(workspaceOrigin, channelId, messageTs, reasonPrefix, readCursorTs) {
     const targetChannel = String(channelId || "").trim();
     const targetTs = String(messageTs || "").trim();
     if (!targetChannel || !targetTs) return false;
 
     const reasonBase = String(reasonPrefix || "zip-slack-mark-unread").trim() || "zip-slack-mark-unread";
-    const delays = [0, 260, 840];
+    const cursorTs = normalizeSlackReadCursorTs(readCursorTs, targetTs);
+    const delays = [0, 180];
     for (let pass = 0; pass < delays.length; pass += 1) {
       if (delays[pass] > 0) await waitMs(delays[pass]);
-      const priorTs = toPriorSlackTs(targetTs);
-      const attempts = [];
-      attempts.push(() => slackConversationsMark(
+      const markResult = await slackConversationsMark(
         workspaceOrigin,
         targetChannel,
-        priorTs,
-        reasonBase + "-mark-prior"
-      ));
-      if (priorTs !== "0.000000") {
-        attempts.push(() => slackConversationsMark(
+        cursorTs,
+        reasonBase + "-mark-cursor"
+      ).catch(() => null);
+      if (markResult && markResult.ok) {
+        const verified = await isSlackMessageUnreadInChannel(
           workspaceOrigin,
           targetChannel,
-          "0.000000",
-          reasonBase + "-mark-zero"
-        ));
-      }
-      attempts.push(() => slackThreadMark(
-        workspaceOrigin,
-        targetChannel,
-        targetTs,
-        targetTs,
-        false
-      ));
-
-      for (let i = 0; i < attempts.length; i += 1) {
-        try {
-          const result = await attempts[i]();
-          if (result && result.ok) return true;
-        } catch (_) {}
+          targetTs,
+          cursorTs,
+          reasonBase
+        );
+        if (verified) return true;
       }
     }
     return false;
@@ -2171,14 +2658,17 @@
       return { ok: false, error: "Unable to resolve Slack DM channel." };
     }
 
-    const post = await postSlackApi(workspaceOrigin, "/api/chat.postMessage", {
+    const postFields = {
       channel: channelId,
       text: markdownText,
       mrkdwn: "true",
       unfurl_links: "false",
       unfurl_media: "false",
       _x_reason: "zip-slack-it-to-me"
-    });
+    };
+    delete postFields.thread_ts;
+    delete postFields.reply_broadcast;
+    const post = await postSlackApi(workspaceOrigin, "/api/chat.postMessage", postFields);
     if (!post || !post.ok) {
       return {
         ok: false,
@@ -2187,12 +2677,6 @@
     }
     const postPayload = post.payload && typeof post.payload === "object" ? post.payload : {};
     const postedTs = String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim();
-    const unreadMarked = await markSlackMessageUnread(
-      workspaceOrigin,
-      channelId,
-      postedTs,
-      "zip-slack-it-to-me"
-    );
     return {
       ok: true,
       channel: String(postPayload.channel || channelId || userId).trim(),
@@ -2201,7 +2685,7 @@
       team_id: teamId,
       user_name: userName,
       avatar_url: avatarUrl,
-      unread_marked: unreadMarked
+      unread_marked: false
     };
   }
 
@@ -2579,11 +3063,7 @@
   }
 
   function openZipOptionsFromContent() {
-    try {
-      chrome.runtime.sendMessage({ type: "ZIP_OPEN_OPTIONS" }, () => {
-        void chrome.runtime.lastError;
-      });
-    } catch (_) {}
+    sendRuntimeMessage({ type: "ZIP_OPEN_OPTIONS" });
   }
 
   function removeZipKeyBanner() {
@@ -2646,17 +3126,16 @@
 
   function syncZipKeyBanner() {
     if (!isZendeskPage()) return;
-    try {
-      chrome.runtime.sendMessage({ type: "ZIP_CHECK_SECRETS" }, (response) => {
-        if (chrome.runtime.lastError) {
-          ensureZipKeyBanner();
-          return;
-        }
-        const ok = !!(response && response.ok);
-        if (ok) removeZipKeyBanner();
-        else ensureZipKeyBanner();
-      });
-    } catch (_) {
+    const sent = sendRuntimeMessage({ type: "ZIP_CHECK_SECRETS" }, (response, runtimeError) => {
+      if (runtimeError) {
+        ensureZipKeyBanner();
+        return;
+      }
+      const ok = !!(response && response.ok);
+      if (ok) removeZipKeyBanner();
+      else ensureZipKeyBanner();
+    });
+    if (!sent) {
       ensureZipKeyBanner();
     }
   }
@@ -2664,6 +3143,12 @@
   if (isSlackPage()) {
     // Defer bridge injection until a Slack action requires API access.
     readCapturedSlackToken();
+  }
+
+  // Login/sign-in Zendesk pages do not need ZIP runtime wiring and can have
+  // transient extension runtime invalidation during reload/update.
+  if (isZendeskAuthPage()) {
+    return;
   }
 
   if (isZendeskPage()) {
@@ -2675,7 +3160,9 @@
     });
   }
 
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  const runtime = getChromeRuntime();
+  if (runtime && runtime.onMessage && typeof runtime.onMessage.addListener === "function") {
+    runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg && msg.type === "ZIP_KEY_CLEARED") {
       syncZipKeyBanner();
       return;
@@ -2741,11 +3228,11 @@
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "loadTickets") {
-          const result = await loadTickets(inner.userId || inner.user_id || "");
+          const result = await loadTickets(inner.userId || inner.user_id || "", inner);
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "loadTicketsByOrg") {
-          const result = await loadTicketsByOrg(inner.orgId || "");
+          const result = await loadTicketsByOrg(inner.orgId || "", inner);
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "loadOrganizations") {
@@ -2769,7 +3256,7 @@
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "loadTicketsByView") {
-          const result = await loadTicketsByView(inner.viewId || "");
+          const result = await loadTicketsByView(inner.viewId || "", inner);
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "loadGroupAgents") {
@@ -2781,7 +3268,7 @@
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "loadTicketsByGroupId") {
-          const result = await loadTicketsByGroupId(inner.groupId || "");
+          const result = await loadTicketsByGroupId(inner.groupId || "", inner);
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "loadGroupTicketCount") {
@@ -2789,7 +3276,7 @@
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "loadTicketsByAssigneeId") {
-          const result = await loadTicketsByAssigneeId(inner.userId || "");
+          const result = await loadTicketsByAssigneeId(inner.userId || inner.user_id || "", inner);
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "loadAssigneeTicketCount") {
@@ -2804,7 +3291,8 @@
         return { type: "ZIP_RESPONSE", requestId, error: (err && err.message) || "Unknown error" };
       }
     };
-    run().then(sendResponse);
-    return true;
-  });
+      run().then(sendResponse);
+      return true;
+    });
+  }
 })();
