@@ -24,6 +24,8 @@ test("background sanitizes Slack self-DM payloads to always send new messages", 
   assert.match(source, /delete source\.thread_ts;/);
   assert.match(source, /delete source\.reply_broadcast;/);
   assert.match(source, /forceNewMessage:\s*true/);
+  assert.match(source, /mrkdwn:\s*true,/);
+  assert.match(source, /parse:\s*"none"/);
   assert.match(source, /postSlackApiWithBearerToken\(webApiOrigin,\s*"\/api\/chat\.postMessage",\s*postFields,\s*attemptToken\)/);
   assert.match(source, /delivery_mode:\s*"bot_direct_channel"/);
 });
@@ -33,6 +35,8 @@ test("content self-DM action strips thread fields before chat.postMessage", () =
   assert.match(source, /async function slackSendMarkdownToSelfAction\(inner\)/);
   assert.match(source, /delete postFields\.thread_ts;/);
   assert.match(source, /delete postFields\.reply_broadcast;/);
+  assert.match(source, /mrkdwn:\s*true,/);
+  assert.match(source, /parse:\s*"none"/);
   assert.match(source, /postSlackApi\(workspaceOrigin,\s*"\/api\/chat\.postMessage",\s*postFields\)/);
 });
 
@@ -40,7 +44,11 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   assert.match(source, /const sendPayload = \{[\s\S]*forceNewMessage:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*requireNativeNewMessage:\s*false[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*preferBotDmDelivery:\s*true[\s\S]*\};/);
+  assert.match(source, /const botDeliveryToken = isPassAiSlackBotApiToken\(slackApiTokens\.botToken \|\| ""\)/);
+  assert.match(source, /const sendPayload = \{[\s\S]*requireBotDelivery:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*allowBotDelivery:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*skipUnreadMark:\s*true[\s\S]*\};/);
-  assert.match(source, /const sendPayload = \{[\s\S]*botToken:\s*slackApiTokens\.botToken \|\| ""[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*directChannelId:\s*normalizePassAiSlackDirectChannelId\(state\.passAiSlackDirectChannelId \|\| ""\)[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*botToken:\s*botDeliveryToken[\s\S]*\};/);
 });
