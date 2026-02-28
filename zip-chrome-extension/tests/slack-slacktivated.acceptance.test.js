@@ -46,7 +46,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(html, /data-slack-format="underline"/);
   assert.match(html, /data-slack-format="strike"/);
   assert.match(html, /data-slack-format="link"/);
-  assert.match(html, /data-slack-format="numbered"/);
+  assert.doesNotMatch(html, /data-slack-format="numbered"/);
   assert.match(html, /data-slack-format="bulleted"/);
   assert.match(html, /data-slack-format="quote"/);
   assert.match(html, /data-slack-format="code"/);
@@ -205,8 +205,8 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /return "• " \+ parts\.join\(" "\);/);
   assert.match(js, /const ZIP_TOOL_BETA_ARTICLE_URL = "https:\/\/tve\.zendesk\.com\/hc\/en-us\/articles\/46503360732436-ZIP-TOOL-beta";/);
   assert.match(js, /const ZIP_TOOL_SIGNATURE_TEXT_SLUG = "\/\/ <" \+ ZIP_TOOL_BETA_ARTICLE_URL \+ "\|via ZipTool>";/);
-  assert.match(js, /const ZIP_TOOL_SIGNATURE_ICON_SLUG = "\/\/ <" \+ ZIP_TOOL_BETA_ARTICLE_URL \+ "\|:ziptool:>";/);
-  assert.doesNotMatch(js, /ZIP_TOOL_SIGNATURE_ICON_SLUG = ".*via ZipTool/);
+  assert.doesNotMatch(js, /const ZIP_TOOL_SIGNATURE_ICON_SLUG = "\/\/ <" \+ ZIP_TOOL_BETA_ARTICLE_URL \+ "\|:ziptool:>";/);
+  assert.doesNotMatch(js, /return normalized \+ "\\n\\n" \+ ZIP_TOOL_SIGNATURE_ICON_SLUG;/);
   assert.match(js, /SLACK_TO_ZIPTOOL delivered/);
   assert.match(js, /preferBotDmDelivery:\s*false/);
   assert.match(js, /allowBotDelivery:\s*false/);
