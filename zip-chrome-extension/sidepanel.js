@@ -84,6 +84,9 @@
   const PASS_AI_SLACK_AUTH_POLL_MAX_ATTEMPTS = 36;
   const SLACK_IT_TO_ME_MAX_ROWS = 120;
   const SLACK_IT_TO_ME_MAX_MESSAGE_CHARS = 36000;
+  const ZIP_TOOL_BETA_ARTICLE_URL = "https://tve.zendesk.com/hc/en-us/articles/46503360732436-ZIP-TOOL-beta";
+  const ZIP_TOOL_SIGNATURE_TEXT_SLUG = "// <" + ZIP_TOOL_BETA_ARTICLE_URL + "|via ZipTool>";
+  const ZIP_TOOL_SIGNATURE_ICON_SLUG = "// <" + ZIP_TOOL_BETA_ARTICLE_URL + "|:ziptool:>";
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
   const DEFAULT_FOOTER_HINT = "Tip: Click your avatar for ZIP menu actions";
   const FOOTER_HINT_TOOLTIP = "Click your avatar to open the ZIP context menu.";
@@ -151,6 +154,10 @@
     passAiSlackUserId: "",
     passAiSlackUserName: "",
     passAiSlackAvatarUrl: "",
+    passAiSlackDirectChannelId: "",
+    passAiSlackStatusIcon: "",
+    passAiSlackStatusIconUrl: "",
+    passAiSlackStatusMessage: "",
     passAiSlackWebReady: false,
     passAiSlackSessionOnly: false,
     passAiSlackAuthError: "",
@@ -159,6 +166,9 @@
     passAiDeleteInFlight: false,
     passAiPanelVisible: false,
     slackItToMeLoading: false,
+    slackMeNoteLoading: false,
+    slackMeNoteStatus: "",
+    slackMeNoteStatusIsError: false,
     zipConfigReady: false,
     zipConfigReason: "",
     zipConfigMissingFields: [],
@@ -752,6 +762,7 @@
     configDropAction: $("zipConfigDropAction"),
     configFileInput: $("zipConfigFileInput"),
     loginBtn: $("zipLoginBtn"),
+    loginCtaText: $("zipLoginCtaText"),
     docsMenu: $("zipDocsMenu"),
     appVersionLink: $("zipAppVersionLink"),
     appVersion: $("zipAppVersion"),
@@ -763,7 +774,8 @@
     contextMenuBuild: $("zipContextMenuBuild"),
     contextMenuToggleZdApi: $("zipContextMenuToggleZdApi"),
     contextMenuToggleSide: $("zipContextMenuToggleSide"),
-    contextMenuAskEric: $("zipContextMenuAskEric"),
+    contextMenuAskTeam: $("zipContextMenuAskTeam"),
+    contextMenuSlackMe: $("zipContextMenuSlackMe"),
     contextMenuClearKey: $("zipContextMenuClearKey"),
     contextMenuGetLatest: $("zipContextMenuGetLatest"),
     contextMenuAppearanceRow: $("zipContextMenuAppearanceRow"),
@@ -771,6 +783,16 @@
     contextMenuThemeColorToggle: $("zipContextMenuThemeColorToggle"),
     contextMenuToggleZdApiLabel: $("zipContextMenuToggleZdApiLabel"),
     contextMenuThemeFlyout: $("zipContextMenuThemeFlyout"),
+    slackMeDialogBackdrop: $("zipSlackMeDialogBackdrop"),
+    slackMeDialog: $("zipSlackMeDialog"),
+    slackMeInput: $("zipSlackMeInput"),
+    slackMeStatus: $("zipSlackMeStatus"),
+    slackMeSendBtn: $("zipSlackMeSendBtn"),
+    slackMeCloseBtn: $("zipSlackMeCloseBtn"),
+    slackMeSending: $("zipSlackMeSending"),
+    slackMeRecipientAvatar: $("zipSlackMeRecipientAvatar"),
+    slackMeRecipientAvatarFallback: $("zipSlackMeRecipientAvatarFallback"),
+    slackMeRecipientLabel: $("zipSlackMeRecipientLabel"),
     rawTitle: $("zipRawTitle"),
     rawThead: $("zipRawThead"),
     rawBody: $("zipRawBody"),
@@ -781,6 +803,10 @@
     passAiSubmitHint: $("zipPassAiSubmitHint"),
     slacktivatedBtn: $("zipSlacktivatedBtn"),
     slacktivatedIcon: $("zipSlacktivatedIcon"),
+    slacktivatedStatusWrap: $("zipSlacktivatedStatusWrap"),
+    slacktivatedStatusIconImg: $("zipSlacktivatedStatusIconImg"),
+    slacktivatedStatusIcon: $("zipSlacktivatedStatusIcon"),
+    slacktivatedStatusMessage: $("zipSlacktivatedStatusMessage"),
     passAiToggleBtn: $("zipTogglePassAiBtn"),
     passAiToggleIcon: $("zipTogglePassAiIcon"),
     askPassAiBtn: $("zipAskPassAiBtn"),
@@ -1330,10 +1356,16 @@
 
   function syncContextMenuAuthVisibility() {
     const loggedIn = !!state.user;
+    const slackReady = isPassAiSlacktivated();
     if (!els.contextMenuToggleZdApi) return;
     els.contextMenuToggleZdApi.classList.toggle("hidden", !loggedIn);
     els.contextMenuToggleZdApi.disabled = !loggedIn;
     els.contextMenuToggleZdApi.setAttribute("aria-hidden", loggedIn ? "false" : "true");
+    if (!els.contextMenuSlackMe) return;
+    els.contextMenuSlackMe.classList.toggle("hidden", !loggedIn);
+    els.contextMenuSlackMe.disabled = !(loggedIn && slackReady && !state.slackMeNoteLoading);
+    els.contextMenuSlackMe.title = slackReady ? "@SLACK ME" : SLACKTIVATED_LOGIN_TOOLTIP;
+    els.contextMenuSlackMe.setAttribute("aria-hidden", loggedIn ? "false" : "true");
   }
 
   function applyZdApiContainerVisibility(show, persist) {
@@ -1356,11 +1388,37 @@
     applyZdApiContainerVisibility(!state.showZdApiContainers, true);
   }
 
+  function syncLoginCtaDirectionalCopy(sideValue) {
+    const side = sideValue === "left" || sideValue === "right" ? sideValue : "unknown";
+    if (els.loginCtaText) {
+      if (side === "left") {
+        els.loginCtaText.textContent = "START ZENDESK ->";
+      } else if (side === "right") {
+        els.loginCtaText.textContent = "<- START ZENDESK";
+      } else {
+        els.loginCtaText.textContent = "START ZENDESK";
+      }
+    }
+    if (!els.loginBtn) return;
+    const directionLabel = side === "right"
+      ? "left"
+      : side === "left"
+        ? "right"
+        : "main browser tab";
+    const buttonHint = side === "unknown"
+      ? "Start here. Open Zendesk in the main browser tab and sign in."
+      : ("Start here. Open Zendesk on the " + directionLabel + " and sign in.");
+    els.loginBtn.dataset.sidepanelSide = side;
+    els.loginBtn.title = buttonHint;
+    els.loginBtn.setAttribute("aria-label", buttonHint);
+  }
+
   function applySidePanelContext(context) {
     const side = context && (context.layout === "left" || context.layout === "right") ? context.layout : "unknown";
     state.sidePanelLayout = side;
     document.body.dataset.sidepanelSide = side;
     document.body.dataset.sidepanelLayoutSupported = context && context.capabilities && context.capabilities.getLayout ? "1" : "0";
+    syncLoginCtaDirectionalCopy(side);
   }
 
   function loadSidePanelContext() {
@@ -2108,6 +2166,438 @@
     els.contextMenu.classList.add("hidden");
   }
 
+  function isSlackMeDialogOpen() {
+    return !!(
+      els.slackMeDialogBackdrop
+      && !els.slackMeDialogBackdrop.classList.contains("hidden")
+    );
+  }
+
+  function syncSlackMeRecipientIdentity() {
+    const displayName = getSlacktivatedDisplayName();
+    const labelText = displayName ? (displayName + " (you)") : "you";
+    if (els.slackMeRecipientLabel) {
+      els.slackMeRecipientLabel.textContent = labelText;
+    }
+    const avatarUrl = normalizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "");
+    if (els.slackMeRecipientAvatar) {
+      if (avatarUrl) {
+        els.slackMeRecipientAvatar.src = avatarUrl;
+      } else {
+        els.slackMeRecipientAvatar.removeAttribute("src");
+      }
+      els.slackMeRecipientAvatar.classList.toggle("hidden", !avatarUrl);
+    }
+    if (els.slackMeRecipientAvatarFallback) {
+      const fallbackChar = String(displayName || "Y").trim().charAt(0).toUpperCase() || "Y";
+      els.slackMeRecipientAvatarFallback.textContent = fallbackChar;
+      els.slackMeRecipientAvatarFallback.classList.toggle("hidden", !!avatarUrl);
+    }
+  }
+
+  function setSlackMeDialogStatus(message, isError) {
+    const text = normalizePassAiCommentBody(message || "");
+    state.slackMeNoteStatus = text;
+    state.slackMeNoteStatusIsError = !!(text && isError);
+  }
+
+  function clearSlackMeDialogStatus() {
+    state.slackMeNoteStatus = "";
+    state.slackMeNoteStatusIsError = false;
+  }
+
+  function hideSlackMeDialog(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const force = !!opts.force;
+    const keepText = !!opts.keepText;
+    const keepStatus = !!opts.keepStatus;
+    if (state.slackMeNoteLoading && !force) return;
+    if (!els.slackMeDialogBackdrop) return;
+    els.slackMeDialogBackdrop.classList.add("hidden");
+    els.slackMeDialogBackdrop.setAttribute("aria-hidden", "true");
+    if (els.slackMeInput && !keepText) {
+      els.slackMeInput.value = "";
+    }
+    if (!keepStatus) {
+      clearSlackMeDialogStatus();
+    }
+    syncSlackMeDialogUi();
+  }
+
+  function syncSlackMeDialogUi() {
+    const dialogOpen = isSlackMeDialogOpen();
+    const slackReady = isPassAiSlacktivated();
+    syncSlackMeRecipientIdentity();
+    const noteText = normalizeSlackMeDraftText(
+      els.slackMeInput && typeof els.slackMeInput.value === "string"
+        ? els.slackMeInput.value
+        : ""
+    );
+    const canSend = !!(
+      dialogOpen
+      && slackReady
+      && noteText
+      && !state.slackMeNoteLoading
+    );
+    if (els.slackMeSendBtn) {
+      els.slackMeSendBtn.disabled = !canSend;
+      els.slackMeSendBtn.setAttribute("aria-busy", state.slackMeNoteLoading ? "true" : "false");
+    }
+    if (els.slackMeInput) {
+      els.slackMeInput.disabled = state.slackMeNoteLoading;
+    }
+    if (els.slackMeCloseBtn) {
+      els.slackMeCloseBtn.disabled = state.slackMeNoteLoading;
+    }
+    if (els.slackMeSending) {
+      els.slackMeSending.classList.toggle("hidden", !state.slackMeNoteLoading);
+    }
+    if (els.slackMeStatus) {
+      const statusText = normalizePassAiCommentBody(state.slackMeNoteStatus || "");
+      els.slackMeStatus.textContent = statusText;
+      els.slackMeStatus.classList.toggle("hidden", !(dialogOpen && statusText));
+      els.slackMeStatus.classList.toggle("is-error", !!state.slackMeNoteStatusIsError);
+    }
+  }
+
+  function getSlackMeInputSelectionState() {
+    if (!els.slackMeInput || els.slackMeInput.disabled) return null;
+    const input = els.slackMeInput;
+    const value = typeof input.value === "string" ? input.value : "";
+    const max = value.length;
+    const rawStart = Number.isFinite(input.selectionStart) ? Number(input.selectionStart) : max;
+    const rawEnd = Number.isFinite(input.selectionEnd) ? Number(input.selectionEnd) : rawStart;
+    const start = Math.max(0, Math.min(max, rawStart));
+    const end = Math.max(start, Math.min(max, rawEnd));
+    return {
+      input,
+      value,
+      start,
+      end,
+      selected: value.slice(start, end)
+    };
+  }
+
+  function replaceSlackMeInputRange(start, end, replacement, nextSelectionStart, nextSelectionEnd) {
+    const selection = getSlackMeInputSelectionState();
+    if (!selection) return false;
+    const input = selection.input;
+    const value = selection.value;
+    const safeStart = Math.max(0, Math.min(value.length, Number(start) || 0));
+    const safeEnd = Math.max(safeStart, Math.min(value.length, Number(end) || safeStart));
+    const nextValue = value.slice(0, safeStart) + replacement + value.slice(safeEnd);
+    input.value = nextValue;
+    const max = nextValue.length;
+    const defaultCursor = safeStart + replacement.length;
+    const normalizedStart = Number.isFinite(nextSelectionStart)
+      ? Math.max(0, Math.min(max, Number(nextSelectionStart)))
+      : defaultCursor;
+    const normalizedEnd = Number.isFinite(nextSelectionEnd)
+      ? Math.max(normalizedStart, Math.min(max, Number(nextSelectionEnd)))
+      : normalizedStart;
+    try {
+      input.focus();
+      input.setSelectionRange(normalizedStart, normalizedEnd);
+    } catch (_) {}
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
+  function normalizeSlackMeDraftText(value) {
+    return String(value == null ? "" : value)
+      .replace(/\r\n?/g, "\n")
+      .replace(/\u00a0/g, " ")
+      .trim();
+  }
+
+  function getSlackMeInputLineContext(selectionState) {
+    const selection = selectionState && typeof selectionState === "object"
+      ? selectionState
+      : getSlackMeInputSelectionState();
+    if (!selection) return null;
+    const value = selection.value;
+    const cursor = selection.start;
+    const lineStart = value.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+    const rawLineEnd = value.indexOf("\n", cursor);
+    const lineEnd = rawLineEnd >= 0 ? rawLineEnd : value.length;
+    return {
+      lineStart,
+      lineEnd,
+      lineText: value.slice(lineStart, lineEnd),
+      cursor,
+      cursorInLine: cursor - lineStart
+    };
+  }
+
+  function parseSlackMeListLine(lineText) {
+    const line = String(lineText == null ? "" : lineText);
+    const match = /^(\s*)([-*+•]|(\d+)\.)\s+(.*)$/.exec(line);
+    if (!match) return null;
+    const indent = match[1] || "";
+    const markerToken = match[2] || "";
+    const numberedValue = match[3] ? Number(match[3]) : NaN;
+    const content = match[4] || "";
+    return {
+      indent,
+      markerToken,
+      markerPrefix: indent + markerToken + " ",
+      numbered: Number.isFinite(numberedValue),
+      numberedValue: Number.isFinite(numberedValue) ? Math.max(1, numberedValue) : 0,
+      content
+    };
+  }
+
+  function handleSlackMeListContinuationEnter() {
+    const selection = getSlackMeInputSelectionState();
+    if (!selection) return false;
+    if (selection.start !== selection.end) return false;
+    const lineContext = getSlackMeInputLineContext(selection);
+    if (!lineContext) return false;
+    const listLine = parseSlackMeListLine(lineContext.lineText);
+    if (!listLine) return false;
+    const lineContent = lineContext.lineText.slice(listLine.markerPrefix.length).trim();
+    if (!lineContent) {
+      return replaceSlackMeInputRange(
+        lineContext.lineStart,
+        lineContext.lineStart + listLine.markerPrefix.length,
+        "",
+        lineContext.lineStart,
+        lineContext.lineStart
+      );
+    }
+    const nextMarker = listLine.numbered
+      ? String(listLine.numberedValue + 1) + ". "
+      : ((listLine.markerToken === "•" ? "•" : "-") + " ");
+    const insertion = "\n" + listLine.indent + nextMarker;
+    return replaceSlackMeInputRange(
+      selection.start,
+      selection.end,
+      insertion,
+      selection.start + insertion.length,
+      selection.start + insertion.length
+    );
+  }
+
+  function applySlackMeWrappedSelection(prefix, suffix, placeholder, keepSelection) {
+    const selection = getSlackMeInputSelectionState();
+    if (!selection) return false;
+    const selected = selection.selected;
+    const inner = selected || placeholder || "";
+    const replacement = prefix + inner + suffix;
+    const insertStart = selection.start + prefix.length;
+    const insertEnd = insertStart + inner.length;
+    if (selected || !keepSelection) {
+      return replaceSlackMeInputRange(
+        selection.start,
+        selection.end,
+        replacement,
+        selection.start + replacement.length,
+        selection.start + replacement.length
+      );
+    }
+    return replaceSlackMeInputRange(selection.start, selection.end, replacement, insertStart, insertEnd);
+  }
+
+  function applySlackMeLinePrefix(prefix, numbered) {
+    const selection = getSlackMeInputSelectionState();
+    if (!selection) return false;
+    const value = selection.value;
+    const lineStart = value.lastIndexOf("\n", Math.max(0, selection.start - 1)) + 1;
+    const rawLineEnd = value.indexOf("\n", selection.end);
+    const lineEnd = rawLineEnd >= 0 ? rawLineEnd : value.length;
+    const block = value.slice(lineStart, lineEnd);
+    const lines = block.split("\n");
+    let count = 0;
+    const replaced = lines.map((line) => {
+      const stripped = line.replace(/^\s*(?:[-*+]\s+|\d+\.\s+|>\s+)?/, "");
+      const content = stripped || "item";
+      if (numbered) {
+        count += 1;
+        return count + ". " + content;
+      }
+      return prefix + content;
+    }).join("\n");
+    return replaceSlackMeInputRange(lineStart, lineEnd, replaced, lineStart, lineStart + replaced.length);
+  }
+
+  function looksLikeSlackMeUrl(value) {
+    const normalized = String(value || "").trim();
+    if (!normalized) return false;
+    return /^(https?:\/\/|www\.)/i.test(normalized);
+  }
+
+  function normalizeSlackMeUrl(value) {
+    const normalized = String(value || "").replace(/\s+/g, "").trim();
+    if (!normalized) return "";
+    if (/^https?:\/\//i.test(normalized)) return normalized;
+    if (/^www\./i.test(normalized)) return "https://" + normalized;
+    return "https://" + normalized;
+  }
+
+  function insertSlackMeText(text) {
+    const selection = getSlackMeInputSelectionState();
+    if (!selection) return false;
+    const replacement = String(text == null ? "" : text);
+    return replaceSlackMeInputRange(
+      selection.start,
+      selection.end,
+      replacement,
+      selection.start + replacement.length,
+      selection.start + replacement.length
+    );
+  }
+
+  function applySlackMeLinkFormat() {
+    const selection = getSlackMeInputSelectionState();
+    if (!selection) return false;
+    const selected = String(selection.selected || "").trim();
+    if (selected && looksLikeSlackMeUrl(selected)) {
+      const normalized = normalizeSlackMeUrl(selected);
+      return replaceSlackMeInputRange(
+        selection.start,
+        selection.end,
+        normalized,
+        selection.start + normalized.length,
+        selection.start + normalized.length
+      );
+    }
+    if (selected) {
+      const replacement = selected + " https://";
+      return replaceSlackMeInputRange(
+        selection.start,
+        selection.end,
+        replacement,
+        selection.start + selected.length + 1,
+        selection.start + replacement.length
+      );
+    }
+    return insertSlackMeText("https://");
+  }
+
+  function applySlackMeToolbarAction(action) {
+    const command = String(action || "").trim().toLowerCase();
+    if (!command || !els.slackMeInput || els.slackMeInput.disabled) return false;
+    let changed = false;
+    if (command === "bold") changed = applySlackMeWrappedSelection("*", "*", "bold text", true);
+    else if (command === "italic") changed = applySlackMeWrappedSelection("_", "_", "italic text", true);
+    else if (command === "underline") changed = applySlackMeWrappedSelection("_", "_", "underlined text", true);
+    else if (command === "strike") changed = applySlackMeWrappedSelection("~", "~", "strikethrough", true);
+    else if (command === "code") changed = applySlackMeWrappedSelection("`", "`", "code", true);
+    else if (command === "codeblock") changed = applySlackMeWrappedSelection("```\n", "\n```", "code block", true);
+    else if (command === "bulleted") changed = applySlackMeLinePrefix("- ", false);
+    else if (command === "numbered") changed = applySlackMeLinePrefix("", true);
+    else if (command === "quote") changed = applySlackMeLinePrefix("> ", false);
+    else if (command === "link") changed = applySlackMeLinkFormat();
+    else if (command === "emoji") changed = insertSlackMeText("🙂");
+    else if (command === "mention") changed = insertSlackMeText("@");
+    else if (command === "plain") {
+      try {
+        els.slackMeInput.focus();
+      } catch (_) {}
+      changed = false;
+    }
+    if (changed && state.slackMeNoteStatus) clearSlackMeDialogStatus();
+    if (changed) syncSlackMeDialogUi();
+    return changed;
+  }
+
+  function openSlackMeDialog() {
+    hideContextMenu();
+    if (!state.user) return;
+    if (!isPassAiSlacktivated()) {
+      setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+      return;
+    }
+    if (!els.slackMeDialogBackdrop) return;
+    state.slackMeNoteLoading = false;
+    clearSlackMeDialogStatus();
+    els.slackMeDialogBackdrop.classList.remove("hidden");
+    els.slackMeDialogBackdrop.setAttribute("aria-hidden", "false");
+    if (els.slackMeInput) {
+      els.slackMeInput.value = "";
+    }
+    syncSlackMeDialogUi();
+    if (els.slackMeInput) {
+      window.setTimeout(() => {
+        try {
+          els.slackMeInput.focus();
+        } catch (_) {}
+      }, 0);
+    }
+  }
+
+  async function sendSlackMeNoteFromDialog() {
+    if (state.slackMeNoteLoading) return;
+    let shouldCloseSlackMeDialog = false;
+    if (!isPassAiSlacktivated()) {
+      setSlackMeDialogStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+      setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+      syncSlackMeDialogUi();
+      return;
+    }
+    const noteText = normalizeSlackMeDraftText(
+      els.slackMeInput && typeof els.slackMeInput.value === "string"
+        ? els.slackMeInput.value
+        : ""
+    );
+    if (!noteText) {
+      setSlackMeDialogStatus("Enter a Slack note before sending.", true);
+      setStatus("Enter a Slack note before sending.", true);
+      syncSlackMeDialogUi();
+      return;
+    }
+    clearSlackMeDialogStatus();
+    state.slackMeNoteLoading = true;
+    applyGlobalBusyUi();
+    syncContextMenuAuthVisibility();
+    syncSlackMeDialogUi();
+    try {
+      const slackApiTokens = getPassAiSlackApiTokenConfig();
+      await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
+      const response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", {
+        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+        userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+        userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+        avatarUrl: state.passAiSlackAvatarUrl || "",
+        directChannelId: "",
+        markdownText: buildSlackMeNoteMarkdown(noteText),
+        botToken: "",
+        userToken: slackApiTokens.userToken || "",
+        autoBootstrapSlackTab: true,
+        preferApiFirst: true,
+        preferBotDmDelivery: false,
+        requireNativeNewMessage: false,
+        requireBotDelivery: false,
+        allowBotDelivery: false,
+        skipUnreadMark: true,
+        forceNewMessage: true
+      });
+      if (!response || response.ok !== true) {
+        const responseCode = String(response && response.code || "").trim().toLowerCase();
+        const responseMessage = normalizePassAiCommentBody(response && (response.error || response.message)) || "Slack send failed.";
+        const responseCodeLabel = responseCode ? ("[" + responseCode + "] ") : "";
+        throw new Error(responseCodeLabel + responseMessage);
+      }
+      const deliveryMode = String(response && response.delivery_mode || "").trim();
+      const deliverySuffix = deliveryMode ? (" Delivery mode: " + deliveryMode + ".") : "";
+      setStatus("@SLACK ME sent." + deliverySuffix, false);
+      shouldCloseSlackMeDialog = true;
+    } catch (err) {
+      const message = normalizePassAiCommentBody(err && err.message) || "Slack send failed.";
+      setSlackMeDialogStatus("@SLACK ME failed: " + message, true);
+      setStatus("@SLACK ME failed: " + message, true);
+    } finally {
+      state.slackMeNoteLoading = false;
+      applyGlobalBusyUi();
+      syncContextMenuAuthVisibility();
+      if (shouldCloseSlackMeDialog) {
+        hideSlackMeDialog();
+      } else {
+        syncSlackMeDialogUi();
+      }
+    }
+  }
+
   function applyContextMenuUpdateState(updateInfo) {
     if (!els.contextMenuGetLatest) return;
     const showGetLatest = !!(updateInfo && updateInfo.updateAvailable);
@@ -2205,12 +2695,12 @@
         setStatus("ZIP side panel updated.", false);
         return;
       }
-      if (action === "askEric") {
+      if (action === "askTeam") {
         if (response && response.ok === false) {
-          setStatus("Ask Eric failed: " + (response.error || "Unknown error"), true);
+          setStatus("Ask the Team failed: " + (response.error || "Unknown error"), true);
           return;
         }
-        setStatus("Opening Ask Eric email draft…", false);
+        setStatus("Opening Ask the Team email draft…", false);
         return;
       }
       if (action === "getLatest") {
@@ -2870,6 +3360,7 @@
       || state.passAiSlackAuthPolling
       || state.passAiDeleteInFlight
       || state.slackItToMeLoading
+      || state.slackMeNoteLoading
       || slackAuthCheckInFlight
     );
   }
@@ -3209,7 +3700,25 @@
     return normalizedCode || normalizedMessage;
   }
 
+  function getSlacktivatedStatusSnapshot() {
+    return {
+      icon: normalizePassAiSlackStatusIcon(state.passAiSlackStatusIcon || ""),
+      iconUrl: normalizePassAiSlackStatusIconUrl(state.passAiSlackStatusIconUrl || ""),
+      message: normalizePassAiSlackStatusMessage(state.passAiSlackStatusMessage || "")
+    };
+  }
+
+  function buildSlacktivatedStatusLabel(status) {
+    const snapshot = status && typeof status === "object" ? status : getSlacktivatedStatusSnapshot();
+    const parts = [];
+    if (snapshot.icon) parts.push(snapshot.icon);
+    if (snapshot.message) parts.push(snapshot.message);
+    return parts.join(" ").trim();
+  }
+
   function syncSlacktivatedIndicator() {
+    const status = getSlacktivatedStatusSnapshot();
+    const hasStatus = !!(status.icon || status.iconUrl || status.message);
     if (els.slacktivatedIcon) {
       const defaultSrc = String(
         (els.slacktivatedIcon.dataset && els.slacktivatedIcon.dataset.defaultSrc)
@@ -3223,12 +3732,41 @@
         ? ("Slack avatar for " + getSlacktivatedDisplayName())
         : "ZIP Slack app status";
     }
+    if (els.slacktivatedStatusWrap) {
+      const shouldShowStatus = !!(isPassAiSlacktivated() && hasStatus);
+      els.slacktivatedStatusWrap.classList.toggle("hidden", !shouldShowStatus);
+    }
+    if (els.slacktivatedStatusIconImg) {
+      const showImage = !!(isPassAiSlacktivated() && hasStatus && status.iconUrl);
+      if (showImage) {
+        els.slacktivatedStatusIconImg.src = status.iconUrl;
+      } else {
+        els.slacktivatedStatusIconImg.removeAttribute("src");
+      }
+      els.slacktivatedStatusIconImg.classList.toggle("hidden", !showImage);
+    }
+    if (els.slacktivatedStatusIcon) {
+      const iconText = status.icon || "";
+      els.slacktivatedStatusIcon.textContent = iconText;
+      const showTextIcon = !!(isPassAiSlacktivated() && hasStatus && !status.iconUrl && iconText);
+      els.slacktivatedStatusIcon.classList.toggle("hidden", !showTextIcon);
+    }
+    if (els.slacktivatedStatusMessage) {
+      els.slacktivatedStatusMessage.textContent = status.message || "";
+    }
     if (els.slacktivatedBtn) {
       const ready = isPassAiSlacktivated();
       els.slacktivatedBtn.classList.toggle("is-slacktivated", ready);
       els.slacktivatedBtn.classList.toggle("is-slack-pending", !ready);
+      els.slacktivatedBtn.classList.toggle("has-status", !!(ready && hasStatus));
+      const statusLabel = buildSlacktivatedStatusLabel(status);
       const title = ready
-        ? ("Hey " + getSlacktivatedDisplayName() + ", ZIP is SLACKTIVATED!!!")
+        ? (
+          "Hey "
+          + getSlacktivatedDisplayName()
+          + ", ZIP is SLACKTIVATED!!!"
+          + (statusLabel ? (" Status: " + statusLabel) : "")
+        )
         : SLACKTIVATED_LOGIN_TOOLTIP;
       els.slacktivatedBtn.title = title;
       els.slacktivatedBtn.setAttribute("aria-label", title);
@@ -3250,12 +3788,14 @@
       const canUseSlackItToMe = slackReady
         && !state.passAiSlackAuthPolling
         && !state.slackItToMeLoading;
-      const slackItToMeTitle = slackReady ? "SLACK IT TO ME" : SLACKTIVATED_LOGIN_TOOLTIP;
+      const slackItToMeTitle = slackReady ? "SLACK TO ZIPTOOL PANEL" : SLACKTIVATED_LOGIN_TOOLTIP;
       els.slackItToMeBtn.classList.remove("hidden");
       els.slackItToMeBtn.disabled = !canUseSlackItToMe;
       els.slackItToMeBtn.title = slackItToMeTitle;
       els.slackItToMeBtn.setAttribute("aria-label", slackItToMeTitle);
     }
+    syncContextMenuAuthVisibility();
+    syncSlackMeDialogUi();
 
     if (!slackReady && state.passAiPanelVisible && !state.passAiLoading) {
       state.passAiPanelVisible = false;
@@ -3674,6 +4214,77 @@
     return "`[" + escapeSlackMrkdwn(normalized) + "]`";
   }
 
+  function restoreSlackMeProtectedSegments(text, segments) {
+    return String(text || "").replace(/__ZIP_SLACKME_SEGMENT_(\d+)__/g, (match, idx) => {
+      const index = Number(idx);
+      if (!Number.isFinite(index)) return match;
+      return Object.prototype.hasOwnProperty.call(segments, index) ? segments[index] : match;
+    });
+  }
+
+  function withSlackMeProtectedCodeSegments(text, formatter) {
+    const source = String(text || "");
+    const segments = [];
+    const placeholder = source.replace(/```[\s\S]*?```|`[^`\n]+`/g, (chunk) => {
+      const token = "__ZIP_SLACKME_SEGMENT_" + segments.length + "__";
+      segments.push(chunk);
+      return token;
+    });
+    const formatted = typeof formatter === "function" ? formatter(placeholder) : placeholder;
+    return restoreSlackMeProtectedSegments(formatted, segments);
+  }
+
+  function convertSlackMeDraftToMrkdwn(value) {
+    const normalized = normalizeSlackMeDraftText(value || "");
+    if (!normalized) return "";
+    return withSlackMeProtectedCodeSegments(normalized, (input) => {
+      let text = String(input || "");
+      text = text.replace(/<br\s*\/?>/gi, "\n");
+      text = text.replace(/<\/(?:p|div|li|h[1-6]|blockquote|pre|ul|ol)>/gi, "\n");
+      text = text.replace(/<(?:p|div|li|h[1-6]|blockquote|pre|ul|ol)\b[^>]*>/gi, "");
+      text = text.replace(/<(?:strong|b)>([^<\n]+)<\/(?:strong|b)>/gi, "*$1*");
+      text = text.replace(/<(?:em|i|u)>([^<\n]+)<\/(?:em|i|u)>/gi, "_$1_");
+      text = text.replace(/<(?:del|s|strike)>([^<\n]+)<\/(?:del|s|strike)>/gi, "~$1~");
+      text = text.replace(/<a\b[^>]*href=(["'])([^"']+)\1[^>]*>([\s\S]*?)<\/a>/gi, (match, quote, urlValue, labelValue) => {
+        const safeUrl = sanitizeSlackLinkTarget(urlValue);
+        const label = String(labelValue || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        if (!safeUrl) return label;
+        if (!label || label === safeUrl) return "<" + safeUrl + ">";
+        return "<" + safeUrl + "|" + escapeSlackMrkdwn(label) + ">";
+      });
+      text = text.replace(/<[^>]+>/g, " ");
+      text = text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (match, labelValue, urlValue) => {
+        const safeUrl = sanitizeSlackLinkTarget(urlValue);
+        const label = String(labelValue || "").trim();
+        if (!safeUrl) return label;
+        if (!label || label === safeUrl) return "<" + safeUrl + ">";
+        return "<" + safeUrl + "|" + escapeSlackMrkdwn(label) + ">";
+      });
+      text = text.replace(/\*\*([^*\n][^*\n]*?)\*\*/g, "*$1*");
+      text = text.replace(/__([^_\n][^_\n]*?)__/g, "_$1_");
+      text = text.replace(/~~([^~\n][^~\n]*?)~~/g, "~$1~");
+      text = text.replace(/^\s{0,3}#{1,6}\s+(.+)$/gm, "*$1*");
+      text = text.replace(/^\s*[-*+]\s+\[( |x|X)\]\s+/gm, (match, checked) => {
+        return "• [" + (String(checked || "").trim() ? "x" : " ") + "] ";
+      });
+      text = text.replace(/^\s*[-*+]\s+/gm, "• ");
+      text = text
+        .replace(/\r\n?/g, "\n")
+        .replace(/[ \t\f\v]+/g, " ")
+        .replace(/\n[ \t]+/g, "\n")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      return text;
+    });
+  }
+
+  function buildSlackMeNoteMarkdown(noteText) {
+    const normalized = convertSlackMeDraftToMrkdwn(noteText || "");
+    if (!normalized) return "";
+    return normalized + "\n\n" + ZIP_TOOL_SIGNATURE_ICON_SLUG;
+  }
+
   function buildSlackItToMeMarkdown(rows) {
     const ticketRows = Array.isArray(rows) ? rows : [];
     const cappedRows = ticketRows.slice(0, SLACK_IT_TO_ME_MAX_ROWS);
@@ -3688,7 +4299,7 @@
       "*" + escapeSlackMrkdwn(heading) + "*",
       ""
     ];
-    const signatureLine = "// <https://tve.zendesk.com/hc/en-us/articles/46503360732436-ZIP-TOOL-beta|via ZipTool>";
+    const signatureLine = ZIP_TOOL_SIGNATURE_TEXT_SLUG;
 
     const rowLines = cappedRows.map((row) => {
       const ticketId = row && row.id != null ? String(row.id).trim() : "";
@@ -3771,28 +4382,38 @@
     state.slackItToMeLoading = true;
     applyGlobalBusyUi();
     updateTicketActionButtons();
-    setStatus("Sending visible ticket list to @ME in Slack…", false);
+    setStatus("Sending visible ticket list to ZipTool panel in Slack…", false);
     try {
       const markdownText = buildSlackItToMeMarkdown(rows);
       const slackApiTokens = getPassAiSlackApiTokenConfig();
+      const botDeliveryToken = isPassAiSlackBotApiToken(slackApiTokens.botToken || "")
+        ? (slackApiTokens.botToken || "")
+        : (
+          isPassAiSlackBotApiToken(slackApiTokens.userToken || "")
+            ? (slackApiTokens.userToken || "")
+            : ""
+        );
       await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
       const sendPayload = {
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
         userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
         userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
         avatarUrl: state.passAiSlackAvatarUrl || "",
+        directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
         markdownText,
-        botToken: slackApiTokens.botToken || "",
+        botToken: botDeliveryToken,
         userToken: slackApiTokens.userToken || "",
         autoBootstrapSlackTab: true,
         preferApiFirst: true,
+        preferBotDmDelivery: true,
         requireNativeNewMessage: false,
+        requireBotDelivery: true,
         allowBotDelivery: true,
         skipUnreadMark: true,
         forceNewMessage: true
       };
 
-      setStatus("Sending visible ticket list to @ME via Slack API…", false);
+      setStatus("Sending visible ticket list to ZipTool panel via Slack API…", false);
       let response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", sendPayload);
 
       if (!response || response.ok !== true) {
@@ -3806,7 +4427,8 @@
           };
         } else {
         const responseMessage = normalizePassAiCommentBody(response && (response.error || response.message)) || "Slack send failed.";
-        throw new Error(responseMessage);
+        const responseCodeLabel = responseCode ? ("[" + responseCode + "] ") : "";
+        throw new Error(responseCodeLabel + responseMessage);
         }
       }
 
@@ -3817,6 +4439,7 @@
         userId: response.user_id || response.userId || state.passAiSlackUserId || "",
         userName: response.user_name || response.userName || state.passAiSlackUserName || "",
         avatarUrl: response.avatar_url || response.avatarUrl || state.passAiSlackAvatarUrl || "",
+        directChannelId: response.direct_channel_id || response.directChannelId || state.passAiSlackDirectChannelId || "",
         teamId: response.team_id || response.teamId || "",
         enterpriseId: response.enterprise_id || response.enterpriseId || ""
       });
@@ -3829,7 +4452,9 @@
       const unconfirmedSuffix = response.unread_unconfirmed === true
         ? " Slack unread confirmation is delayed; message delivery succeeded."
         : "";
-      setStatus("SLACK_IT_TO_ME delivered to @" + getSlacktivatedDisplayName() + summarySuffix + "." + unreadSuffix + unconfirmedSuffix, false);
+      const deliveryMode = String(response && response.delivery_mode || "").trim();
+      const deliverySuffix = deliveryMode ? (" Delivery mode: " + deliveryMode + ".") : "";
+      setStatus("SLACK_TO_ZIPTOOL delivered to your ZipTool panel" + summarySuffix + "." + unreadSuffix + unconfirmedSuffix + deliverySuffix, false);
     } catch (err) {
       const message = normalizePassAiCommentBody(err && err.message) || "Unable to send visible ticket list.";
       setStatus("SLACK_IT_TO_ME failed: " + message, true);
@@ -4456,6 +5081,7 @@
 
   function showLogin() {
     stopPassAiSlackAuthPolling();
+    hideSlackMeDialog({ force: true });
     maybeCloseZipOpenedSlackLoginTab("show_login_reset", 0).catch(() => {});
     closeTrackedSlackWorkerTab("show_login_reset").catch(() => {});
     hideToast();
@@ -4489,10 +5115,15 @@
     state.passAiSlackUserId = "";
     state.passAiSlackUserName = "";
     state.passAiSlackAvatarUrl = "";
+    state.passAiSlackDirectChannelId = "";
+    state.passAiSlackStatusIcon = "";
+    state.passAiSlackStatusIconUrl = "";
+    state.passAiSlackStatusMessage = "";
     state.passAiSlackWebReady = false;
     state.passAiSlackAuthError = "";
     state.passAiPanelVisible = false;
     state.slackItToMeLoading = false;
+    state.slackMeNoteLoading = false;
     state.ticketEmailUserEmailCacheById = Object.create(null);
     state.ticketEmailRequesterByTicketId = Object.create(null);
     state.ticketEmailCopyCacheByTicketId = Object.create(null);
@@ -5129,9 +5760,48 @@
     return "";
   }
 
+  function normalizePassAiSlackStatusIconName(value) {
+    const name = String(value || "").trim().toLowerCase();
+    if (!name) return "";
+    return /^[a-z0-9_+\-]{1,64}$/.test(name) ? (":" + name + ":") : "";
+  }
+
+  function normalizePassAiSlackStatusIcon(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const alias = normalizePassAiSlackStatusIconName(raw);
+    if (alias) return alias;
+    if (/^:[a-z0-9_+\-]{1,64}:$/i.test(raw)) return raw.toLowerCase();
+    const normalized = raw.replace(/\s+/g, " ").trim();
+    if (!normalized) return "";
+    return normalized.slice(0, 32);
+  }
+
+  function normalizePassAiSlackStatusIconUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+      const parsed = new URL(raw);
+      if (String(parsed.protocol || "").toLowerCase() !== "https:") return "";
+      return parsed.toString();
+    } catch (_) {}
+    return "";
+  }
+
+  function normalizePassAiSlackStatusMessage(value) {
+    const normalized = String(value || "").replace(/\s+/g, " ").trim();
+    if (!normalized) return "";
+    return normalized.slice(0, 160);
+  }
+
   function normalizePassAiSlackChannelId(value) {
     const channelId = String(value || "").trim().toUpperCase();
     return /^[CGD][A-Z0-9]{8,}$/.test(channelId) ? channelId : "";
+  }
+
+  function normalizePassAiSlackDirectChannelId(value) {
+    const channelId = String(value || "").trim().toUpperCase();
+    return /^D[A-Z0-9]{8,}$/.test(channelId) ? channelId : "";
   }
 
   function normalizeZipConfigServiceName(value) {
@@ -5717,6 +6387,10 @@
       userId: normalizePassAiSlackUserId(raw.userId || raw.user_id || ""),
       userName: normalizePassAiSlackDisplayName(raw.userName || raw.user_name || ""),
       avatarUrl: normalizePassAiSlackAvatarUrl(raw.avatarUrl || raw.avatar_url || ""),
+      directChannelId: normalizePassAiSlackDirectChannelId(raw.directChannelId || raw.direct_channel_id || ""),
+      statusIcon: normalizePassAiSlackStatusIcon(raw.statusIcon || raw.status_icon || ""),
+      statusIconUrl: normalizePassAiSlackStatusIconUrl(raw.statusIconUrl || raw.status_icon_url || ""),
+      statusMessage: normalizePassAiSlackStatusMessage(raw.statusMessage || raw.status_message || ""),
       teamId: String(raw.teamId || raw.team_id || "").trim().toUpperCase(),
       enterpriseId: String(raw.enterpriseId || raw.enterprise_id || "").trim().toUpperCase(),
       verifiedAtMs: Number.isFinite(verifiedAtMs) && verifiedAtMs > 0 ? verifiedAtMs : Date.now()
@@ -5759,6 +6433,10 @@
       userId: cached.userId || "",
       userName: cached.userName || "",
       avatarUrl: cached.avatarUrl || "",
+      directChannelId: cached.directChannelId || "",
+      statusIcon: cached.statusIcon || "",
+      statusIconUrl: cached.statusIconUrl || "",
+      statusMessage: cached.statusMessage || "",
       teamId: cached.teamId || "",
       enterpriseId: cached.enterpriseId || "",
       skipPersist: true
@@ -5817,6 +6495,10 @@
   async function persistZipKeyConfig(config) {
     const normalized = config && typeof config === "object" ? config : null;
     if (!normalized) throw new Error("ZIP.KEY configuration payload is invalid.");
+    const normalizedUserToken = normalizePassAiSlackApiToken(normalized.api && normalized.api.userToken);
+    const normalizedBotToken = normalizePassAiSlackApiToken(normalized.api && normalized.api.botToken);
+    const resolvedBotToken = normalizedBotToken
+      || (isPassAiSlackBotApiToken(normalizedUserToken) ? normalizedUserToken : "");
 
     const services = normalizeZipConfigServices(
       normalized.services || (normalized.meta && normalized.meta.services) || null
@@ -5837,7 +6519,8 @@
         redirectUri: normalizeZipKeyRedirectUri(normalized.oidc && normalized.oidc.redirectUri)
       },
       api: {
-        userToken: normalizePassAiSlackApiToken(normalized.api && normalized.api.userToken)
+        userToken: normalizedUserToken,
+        botToken: resolvedBotToken
       },
       singularity: {
         channelId: normalizePassAiSlackChannelId(normalized.singularity && normalized.singularity.channelId),
@@ -6364,6 +7047,10 @@
     const priorUserId = normalizePassAiSlackUserId(state.passAiSlackUserId || "");
     const priorUserName = normalizePassAiSlackDisplayName(state.passAiSlackUserName || "");
     const priorAvatarUrl = normalizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "");
+    const priorDirectChannelId = normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || "");
+    const priorStatusIcon = normalizePassAiSlackStatusIcon(state.passAiSlackStatusIcon || "");
+    const priorStatusIconUrl = normalizePassAiSlackStatusIconUrl(state.passAiSlackStatusIconUrl || "");
+    const priorStatusMessage = normalizePassAiSlackStatusMessage(state.passAiSlackStatusMessage || "");
     const zendeskAvatarUrl = getCurrentZendeskAvatarUrl();
     const priorAvatarIsZendesk = !!(
       priorAvatarUrl
@@ -6378,6 +7065,18 @@
       || ""
     );
     const requestedAvatarUrl = normalizePassAiSlackAvatarUrl(nextState && (nextState.avatarUrl || nextState.avatar_url || ""));
+    const requestedDirectChannelId = normalizePassAiSlackDirectChannelId(
+      nextState && (nextState.directChannelId || nextState.direct_channel_id || "")
+    );
+    const requestedStatusIcon = normalizePassAiSlackStatusIcon(
+      nextState && (nextState.statusIcon || nextState.status_icon || "")
+    );
+    const requestedStatusIconUrl = normalizePassAiSlackStatusIconUrl(
+      nextState && (nextState.statusIconUrl || nextState.status_icon_url || "")
+    );
+    const requestedStatusMessage = normalizePassAiSlackStatusMessage(
+      nextState && (nextState.statusMessage || nextState.status_message || "")
+    );
     const preservePreviousIdentity = !requestedUserId || !priorUserId || requestedUserId === priorUserId;
     const hasRequestedWebReady = !!(
       nextState
@@ -6409,6 +7108,18 @@
     state.passAiSlackAvatarUrl = state.passAiSlackReady
       ? (requestedAvatarUrl || (preservePreviousIdentity && !priorAvatarIsZendesk ? priorAvatarUrl : ""))
       : "";
+    state.passAiSlackDirectChannelId = state.passAiSlackReady
+      ? (requestedDirectChannelId || (preservePreviousIdentity ? priorDirectChannelId : ""))
+      : "";
+    state.passAiSlackStatusIcon = state.passAiSlackReady
+      ? (requestedStatusIcon || (preservePreviousIdentity ? priorStatusIcon : ""))
+      : "";
+    state.passAiSlackStatusIconUrl = state.passAiSlackReady
+      ? (requestedStatusIconUrl || (preservePreviousIdentity ? priorStatusIconUrl : ""))
+      : "";
+    state.passAiSlackStatusMessage = state.passAiSlackReady
+      ? (requestedStatusMessage || (preservePreviousIdentity ? priorStatusMessage : ""))
+      : "";
     if (state.passAiSlackReady) {
       state.passAiSlackAuthError = "";
     } else {
@@ -6432,6 +7143,10 @@
       userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
       userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
       avatarUrl: state.passAiSlackAvatarUrl || "",
+      directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
+      statusIcon: normalizePassAiSlackStatusIcon(state.passAiSlackStatusIcon || ""),
+      statusIconUrl: normalizePassAiSlackStatusIconUrl(state.passAiSlackStatusIconUrl || ""),
+      statusMessage: normalizePassAiSlackStatusMessage(state.passAiSlackStatusMessage || ""),
       teamId: String((nextState && (nextState.teamId || nextState.team_id)) || "").trim().toUpperCase(),
       enterpriseId: String((nextState && (nextState.enterpriseId || nextState.enterprise_id)) || "").trim().toUpperCase(),
       verifiedAtMs: Date.now()
@@ -6484,13 +7199,17 @@
     let apiFailureCode = "";
     let apiFailureMessage = "";
     try {
-      const configuredUserToken = getPassAiSlackApiTokenConfig().userToken || "";
+      const configuredTokens = getPassAiSlackApiTokenConfig();
+      const configuredUserToken = configuredTokens.userToken || "";
+      const configuredBotToken = configuredTokens.botToken || "";
       const apiStatus = await sendBackgroundRequest("ZIP_SLACK_API_AUTH_TEST", {
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
         userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
         userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+        directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
         // Avoid feeding back stale/non-Slack avatar URLs; let background resolve Slack profile avatar.
         avatarUrl: "",
+        botToken: isPassAiSlackBotApiToken(configuredBotToken) ? configuredBotToken : "",
         userToken: isPassAiSlackUserApiToken(configuredUserToken) ? configuredUserToken : ""
       });
       if (apiStatus && apiStatus.ok === true) {
@@ -6502,6 +7221,30 @@
         );
         let apiAvatarUrl = normalizePassAiSlackAvatarUrl(
           apiStatus.avatar_url || apiStatus.avatarUrl || state.passAiSlackAvatarUrl || ""
+        );
+        let apiDirectChannelId = normalizePassAiSlackDirectChannelId(
+          apiStatus.direct_channel_id
+          || apiStatus.directChannelId
+          || state.passAiSlackDirectChannelId
+          || ""
+        );
+        let apiStatusIcon = normalizePassAiSlackStatusIcon(
+          apiStatus.status_icon
+          || apiStatus.statusIcon
+          || state.passAiSlackStatusIcon
+          || ""
+        );
+        let apiStatusIconUrl = normalizePassAiSlackStatusIconUrl(
+          apiStatus.status_icon_url
+          || apiStatus.statusIconUrl
+          || state.passAiSlackStatusIconUrl
+          || ""
+        );
+        let apiStatusMessage = normalizePassAiSlackStatusMessage(
+          apiStatus.status_message
+          || apiStatus.statusMessage
+          || state.passAiSlackStatusMessage
+          || ""
         );
         let apiAvatarErrorCode = String(
           apiStatus.avatar_error_code
@@ -6561,13 +7304,19 @@
           userId: apiUserId,
           userName: apiUserName,
           avatarUrl: apiAvatarUrl,
+          directChannelId: apiDirectChannelId,
+          statusIcon: apiStatusIcon,
+          statusIconUrl: apiStatusIconUrl,
+          statusMessage: apiStatusMessage,
           teamId: apiTeamId,
           enterpriseId: apiEnterpriseId
         });
         recordSlackProbeEvent("slack_probe_api_auth_ok", {
           userId: apiUserId,
           teamId: apiTeamId,
-          hasAvatar: !!apiAvatarUrl
+          hasAvatar: !!apiAvatarUrl,
+          hasDirectChannel: !!apiDirectChannelId,
+          hasStatus: !!(apiStatusIcon || apiStatusMessage || apiStatusIconUrl)
         });
         if (!silent) {
           const avatarDiagnostic = !apiAvatarUrl
@@ -6687,6 +7436,24 @@
         || ""
       );
       let webAvatarUrl = normalizePassAiSlackAvatarUrl(response.avatar_url || response.avatarUrl || "");
+      let webStatusIcon = normalizePassAiSlackStatusIcon(
+        response.status_icon
+        || response.statusIcon
+        || state.passAiSlackStatusIcon
+        || ""
+      );
+      let webStatusIconUrl = normalizePassAiSlackStatusIconUrl(
+        response.status_icon_url
+        || response.statusIconUrl
+        || state.passAiSlackStatusIconUrl
+        || ""
+      );
+      let webStatusMessage = normalizePassAiSlackStatusMessage(
+        response.status_message
+        || response.statusMessage
+        || state.passAiSlackStatusMessage
+        || ""
+      );
       let webAvatarErrorCode = String(
         response.avatar_error_code
         || response.avatarErrorCode
@@ -6745,6 +7512,9 @@
         userId: webUserId,
         userName: webUserName,
         avatarUrl: webAvatarUrl,
+        statusIcon: webStatusIcon,
+        statusIconUrl: webStatusIconUrl,
+        statusMessage: webStatusMessage,
         teamId: webTeamId,
         enterpriseId: webEnterpriseId
       });
@@ -6762,7 +7532,8 @@
       recordSlackProbeEvent("slack_probe_web_auth_ok", {
         userId: webUserId,
         teamId: webTeamId,
-        hasAvatar: !!webAvatarUrl
+        hasAvatar: !!webAvatarUrl,
+        hasStatus: !!(webStatusIcon || webStatusMessage || webStatusIconUrl)
       });
       if (!silent) {
         const avatarDiagnostic = !webAvatarUrl
@@ -9840,7 +10611,13 @@
       if (!scrolledMenu && !scrolledFlyout) hideContextMenu();
     }, true);
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") hideContextMenu();
+      if (e.key !== "Escape") return;
+      if (isSlackMeDialogOpen()) {
+        e.preventDefault();
+        hideSlackMeDialog();
+        return;
+      }
+      hideContextMenu();
     });
     if (els.contextMenuBackdrop) {
       els.contextMenuBackdrop.addEventListener("pointerdown", (e) => {
@@ -9861,9 +10638,14 @@
         setStatus(state.showZdApiContainers ? "ZD API panels shown." : "ZD API panels hidden.", false);
       });
     }
-    if (els.contextMenuAskEric) {
-      els.contextMenuAskEric.addEventListener("click", () => {
-        runContextMenuAction("askEric");
+    if (els.contextMenuAskTeam) {
+      els.contextMenuAskTeam.addEventListener("click", () => {
+        runContextMenuAction("askTeam");
+      });
+    }
+    if (els.contextMenuSlackMe) {
+      els.contextMenuSlackMe.addEventListener("click", () => {
+        openSlackMeDialog();
       });
     }
     if (els.contextMenuGetLatest) {
@@ -9888,6 +10670,90 @@
         event.preventDefault();
         event.stopPropagation();
         toggleContextMenuThemeColorFlyout();
+      });
+    }
+    if (els.slackMeDialogBackdrop) {
+      els.slackMeDialogBackdrop.addEventListener("pointerdown", (event) => {
+        if (event.target !== els.slackMeDialogBackdrop) return;
+        event.preventDefault();
+        hideSlackMeDialog();
+      });
+    }
+    if (els.slackMeDialog) {
+      els.slackMeDialog.addEventListener("pointerdown", (event) => {
+        event.stopPropagation();
+      });
+    }
+    if (els.slackMeCloseBtn) {
+      els.slackMeCloseBtn.addEventListener("click", () => {
+        hideSlackMeDialog();
+      });
+    }
+    if (els.slackMeInput) {
+      els.slackMeInput.addEventListener("input", () => {
+        if (state.slackMeNoteStatus) {
+          clearSlackMeDialogStatus();
+        }
+        syncSlackMeDialogUi();
+      });
+      els.slackMeInput.addEventListener("keydown", (event) => {
+        if ((event.metaKey || event.ctrlKey) && !event.altKey) {
+          const key = String(event.key || "").toLowerCase();
+          if (key === "b") {
+            event.preventDefault();
+            applySlackMeToolbarAction("bold");
+            return;
+          }
+          if (key === "i") {
+            event.preventDefault();
+            applySlackMeToolbarAction("italic");
+            return;
+          }
+          if (key === "u") {
+            event.preventDefault();
+            applySlackMeToolbarAction("underline");
+            return;
+          }
+          if (key === "s") {
+            event.preventDefault();
+            applySlackMeToolbarAction("strike");
+            return;
+          }
+          if (key === "k") {
+            event.preventDefault();
+            applySlackMeToolbarAction("link");
+            return;
+          }
+        }
+        if (event.key !== "Enter") return;
+        if (event.isComposing) return;
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault();
+          sendSlackMeNoteFromDialog().catch(() => {});
+          return;
+        }
+        if (event.shiftKey || event.altKey) return;
+        if (handleSlackMeListContinuationEnter()) {
+          event.preventDefault();
+          return;
+        }
+        event.preventDefault();
+        sendSlackMeNoteFromDialog().catch(() => {});
+      });
+    }
+    if (els.slackMeDialog) {
+      els.slackMeDialog.addEventListener("click", (event) => {
+        const target = event.target && event.target.closest
+          ? event.target.closest("[data-slack-format]")
+          : null;
+        if (!target) return;
+        event.preventDefault();
+        applySlackMeToolbarAction(target.getAttribute("data-slack-format"));
+      });
+    }
+    if (els.slackMeSendBtn) {
+      els.slackMeSendBtn.addEventListener("click", () => {
+        sendSlackMeNoteFromDialog().catch(() => {});
       });
     }
     if (els.docsMenu) {
@@ -10201,6 +11067,7 @@
     document.body.classList.add("zip-logged-out");
     if (els.status) els.status.title = FOOTER_HINT_TOOLTIP;
     wireEvents();
+    syncLoginCtaDirectionalCopy(state.sidePanelLayout);
     await runZipLocalStorageMigration().catch(() => {});
     await refreshZipSecretConfigFromStorage().catch(() => {});
     await loadThemeState().catch(() => {});

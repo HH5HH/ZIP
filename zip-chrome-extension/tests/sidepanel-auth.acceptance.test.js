@@ -578,6 +578,14 @@ test("sidepanel requires ZIP.KEY gate before Zendesk login", () => {
   assert.doesNotMatch(source, /ZIP\.KEY cleared\. Drop the latest ZIP\.KEY file to continue\./);
 });
 
+test("sidepanel ZIP.KEY persistence forwards bot token alongside user token", () => {
+  const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
+  assert.match(source, /const normalizedUserToken = normalizePassAiSlackApiToken\(normalized\.api && normalized\.api\.userToken\);/);
+  assert.match(source, /const normalizedBotToken = normalizePassAiSlackApiToken\(normalized\.api && normalized\.api\.botToken\);/);
+  assert.match(source, /const resolvedBotToken = normalizedBotToken/);
+  assert.match(source, /api:\s*\{[\s\S]*userToken:\s*normalizedUserToken,[\s\S]*botToken:\s*resolvedBotToken[\s\S]*\}/);
+});
+
 test("sidepanel Clear ZIP.KEY action requires explicit user confirmation", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
   assert.match(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset ZIP now\?/);
@@ -637,6 +645,8 @@ test("content script supports authoritative session probe and logout/session eve
   assert.match(source, /type === "ZIP_SESSION_PROBE"/);
   assert.match(source, /type:\s*"ZD_SESSION_OK"/);
   assert.match(source, /type:\s*"ZD_LOGOUT"/);
+  assert.match(source, /probeZendeskSession\(\{\s*reason:\s*"auth_page_bootstrap"\s*\}\)/);
+  assert.match(source, /emitZendeskLogout\("auth_page_probe_failed",\s*401\)/);
   assert.match(source, /msg && msg\.type === "ZIP_KEY_CLEARED"/);
   assert.match(source, /type:\s*"ZIP_CHECK_SECRETS"/);
   assert.match(source, /type:\s*"ZIP_OPEN_OPTIONS"/);
@@ -687,5 +697,53 @@ test("ZD session events are accepted only from trusted Zendesk content senders",
     harness.calls.runtimeSendMessage.some((entry) => entry && entry.type === "AUTHENTICATED"),
     true,
     "trusted Zendesk content sender should update auth state"
+  );
+
+  harness.resetCalls();
+  const untrustedLogout = await harness.sendRuntimeMessage(
+    { type: "ZD_LOGOUT", status: 401, reason: "test_logout" },
+    { url: "https://example.com/logout" }
+  );
+  assert.equal(untrustedLogout && untrustedLogout.ok, false);
+  assert.equal(
+    harness.calls.runtimeSendMessage.some((entry) => entry && entry.type === "LOGGED_OUT"),
+    false,
+    "untrusted logout sender must not mutate auth state"
+  );
+
+  harness.resetCalls();
+  const trustedLogout = await harness.sendRuntimeMessage(
+    { type: "ZD_LOGOUT", status: 401, reason: "test_logout" },
+    { url: ZENDESK_DASHBOARD_URL }
+  );
+  assert.equal(trustedLogout && trustedLogout.ok, true);
+  assert.equal(
+    harness.calls.runtimeSendMessage.some((entry) => entry && entry.type === "LOGGED_OUT"),
+    true,
+    "trusted Zendesk logout sender should update auth state"
+  );
+
+  harness.resetCalls();
+  const trustedLogoutByDocumentUrl = await harness.sendRuntimeMessage(
+    { type: "ZD_LOGOUT", status: 401, reason: "tab_lookup_logout" },
+    { documentUrl: ZENDESK_DASHBOARD_URL }
+  );
+  assert.equal(trustedLogoutByDocumentUrl && trustedLogoutByDocumentUrl.ok, true);
+  assert.equal(
+    harness.calls.runtimeSendMessage.some((entry) => entry && entry.type === "LOGGED_OUT"),
+    true,
+    "trusted Zendesk documentUrl sender should pass when sender URL is unavailable"
+  );
+
+  harness.resetCalls();
+  const untrustedLogoutByDocumentUrl = await harness.sendRuntimeMessage(
+    { type: "ZD_LOGOUT", status: 401, reason: "tab_lookup_logout" },
+    { documentUrl: "https://example.com/logout" }
+  );
+  assert.equal(untrustedLogoutByDocumentUrl && untrustedLogoutByDocumentUrl.ok, false);
+  assert.equal(
+    harness.calls.runtimeSendMessage.some((entry) => entry && entry.type === "LOGGED_OUT"),
+    false,
+    "non-Zendesk documentUrl sender must remain blocked"
   );
 });

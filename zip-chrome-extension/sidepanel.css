@@ -617,9 +617,20 @@ body.zip-busy-cursor * {
   background: var(--zip-control-bg);
   overflow: hidden;
   position: relative;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
   margin-top: calc((var(--space-xxs) * -0.5) - 1px);
+}
+
+.slacktivated-avatar-wrap {
+  inline-size: var(--zip-density-control-height);
+  block-size: var(--zip-density-control-height);
+  min-inline-size: var(--zip-density-control-height);
+  min-block-size: var(--zip-density-control-height);
+  border-radius: 999px;
+  overflow: hidden;
+  flex: 0 0 auto;
 }
 
 .slacktivated-icon {
@@ -628,6 +639,53 @@ body.zip-busy-cursor * {
   object-fit: cover;
   border-radius: 999px;
   display: block;
+}
+
+.slacktivated-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-inline-size: 0;
+  max-inline-size: min(28ch, 40vw);
+  margin-inline: 2px var(--space-xxs);
+  padding-inline: 2px;
+}
+
+.slacktivated-status-icon-img,
+.slacktivated-status-icon {
+  inline-size: 14px;
+  block-size: 14px;
+  min-inline-size: 14px;
+  min-block-size: 14px;
+  flex: 0 0 auto;
+}
+
+.slacktivated-status-icon-img {
+  object-fit: contain;
+  border-radius: 3px;
+}
+
+.slacktivated-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.slacktivated-status-message {
+  font-size: var(--spectrum-font-size-75);
+  line-height: 1.1;
+  color: var(--fg-default);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slacktivated-indicator.has-status {
+  inline-size: auto;
+  min-inline-size: var(--zip-density-control-height);
+  border-radius: var(--spectrum-corner-radius-200);
 }
 
 #zipSlacktivatedBtn,
@@ -1542,6 +1600,260 @@ body.zip-busy-cursor * {
   }
 }
 
+.zip-slack-me-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: color-mix(in srgb, var(--zip-shadow-strong) 34%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.zip-slack-me-dialog {
+  width: min(980px, calc(100vw - 12px));
+  max-width: calc(100vw - 12px);
+  border: 1px solid var(--zip-menu-border);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--zip-menu-grad-a) 88%, transparent) 0%, var(--zip-menu-grad-b) 54%, var(--zip-menu-grad-c) 100%),
+    var(--zip-menu-panel-bg);
+  color: var(--zip-menu-fg);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--zip-menu-fg) 10%, transparent),
+    0 18px 34px var(--zip-shadow-strong);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.zip-slack-me-recipient-field {
+  border: 2px solid color-mix(in srgb, var(--zip-menu-border) 78%, var(--spectrum-focus-color) 22%);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--zip-menu-item-base-bg) 88%, transparent);
+  padding: 8px;
+}
+
+.zip-slack-me-recipient-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid color-mix(in srgb, var(--zip-menu-border) 68%, transparent);
+  border-radius: 9px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, rgb(var(--zip-accent-1000)) 24%, transparent) 0%, color-mix(in srgb, rgb(var(--zip-accent-900)) 12%, transparent) 100%),
+    color-mix(in srgb, var(--zip-menu-item-hover-bg) 86%, transparent);
+  padding: 4px 8px 4px 4px;
+  gap: 8px;
+}
+
+.zip-slack-me-recipient-avatar-wrap {
+  inline-size: 30px;
+  block-size: 30px;
+  border-radius: 7px;
+  overflow: hidden;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, rgb(var(--zip-accent-1000)) 32%, transparent);
+}
+
+.zip-slack-me-recipient-avatar {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.zip-slack-me-recipient-avatar-fallback {
+  font-size: 14px;
+  line-height: 1;
+  font-weight: var(--spectrum-font-weight-bold);
+  color: var(--zip-logo-z-stroke);
+}
+
+.zip-slack-me-recipient-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--spectrum-font-size-300);
+  line-height: 1.1;
+  font-weight: var(--spectrum-font-weight-bold);
+  color: var(--zip-menu-fg);
+}
+
+.zip-slack-me-dialog-close {
+  margin-left: auto;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--zip-menu-fg);
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
+  opacity: 0.88;
+}
+
+.zip-slack-me-dialog-close:hover,
+.zip-slack-me-dialog-close:focus-visible {
+  background: color-mix(in srgb, var(--zip-menu-item-hover-bg) 82%, transparent);
+  opacity: 1;
+  outline: none;
+}
+
+.zip-slack-me-editor-shell {
+  border: 2px solid color-mix(in srgb, var(--spectrum-focus-color) 72%, var(--zip-menu-border) 28%);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--zip-menu-item-base-bg) 92%, transparent);
+  padding: 0;
+  display: grid;
+  gap: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--zip-menu-fg) 8%, transparent);
+}
+
+.zip-slack-me-editor-shell:focus-within {
+  border-color: var(--spectrum-focus-color);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--spectrum-focus-ring-color) 70%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--zip-menu-fg) 12%, transparent);
+}
+
+.zip-slack-me-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--zip-menu-border) 82%, transparent);
+}
+
+.zip-slack-me-tool {
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--zip-menu-fg) 76%, var(--zip-menu-fg-subtle));
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: var(--spectrum-font-size-200);
+  line-height: 1;
+}
+
+.zip-slack-me-tool strong,
+.zip-slack-me-tool em {
+  font-size: var(--spectrum-font-size-300);
+}
+
+.zip-slack-me-tool-under {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.zip-slack-me-tool-strike {
+  text-decoration: line-through;
+}
+
+.zip-slack-me-tool:hover,
+.zip-slack-me-tool:focus-visible {
+  background: color-mix(in srgb, var(--zip-menu-item-hover-bg) 78%, transparent);
+  color: var(--zip-menu-fg);
+  outline: none;
+}
+
+.zip-slack-me-tool-sep {
+  inline-size: 1px;
+  block-size: 22px;
+  background: color-mix(in srgb, var(--zip-menu-border) 80%, transparent);
+  margin: 0 4px;
+}
+
+.zip-slack-me-input {
+  width: 100%;
+  min-height: 180px;
+  height: 180px;
+  max-height: min(62vh, 520px);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--zip-menu-fg);
+  padding: 12px 14px;
+  resize: none;
+  font: var(--spectrum-font-weight-regular) var(--spectrum-font-size-300)/1.35 var(--font-system);
+}
+
+.zip-slack-me-input::placeholder {
+  color: color-mix(in srgb, var(--zip-menu-fg-subtle) 90%, transparent);
+}
+
+.zip-slack-me-input:focus {
+  outline: none;
+}
+
+.zip-slack-me-editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px 10px;
+}
+
+.zip-slack-me-utility-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zip-slack-me-tool-utility {
+  min-width: 30px;
+  height: 30px;
+}
+
+#zipSlackMeSendBtn {
+  min-width: 92px;
+  height: 30px;
+  padding-inline: 12px;
+}
+
+.zip-slack-me-sending {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+  color: var(--zip-menu-fg-subtle);
+  font-size: var(--spectrum-font-size-75);
+}
+
+.zip-slack-me-status {
+  border: 1px solid var(--zip-menu-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--zip-menu-item-base-bg) 90%, transparent);
+  color: var(--zip-menu-fg-subtle);
+  font-size: var(--spectrum-font-size-75);
+  line-height: 1.35;
+}
+
+.zip-slack-me-status.is-error {
+  border-color: var(--spectrum-semantic-negative-color-default);
+  background: var(--spectrum-semantic-negative-color-background);
+  color: var(--spectrum-semantic-negative-color-default);
+}
+
 .status {
   margin: 0 0 var(--space-xs);
   padding: var(--space-xs) var(--space-sm);
@@ -1579,8 +1891,7 @@ body.zip-busy-cursor * {
   grid-template-columns: 1fr;
   grid-template-areas:
     "hero"
-    "cta"
-    "copy";
+    "cta";
   gap: var(--space-sm);
   align-items: stretch;
   border: 1px solid var(--border-default);
@@ -1612,6 +1923,98 @@ body.zip-busy-cursor * {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.login-card-left .btn.primary.zip-login-cta {
+  width: min(100%, 660px);
+  min-width: 260px;
+  min-height: clamp(96px, 16vh, 132px);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  border: 2px solid color-mix(in srgb, rgb(var(--zip-accent-1000)) 54%, var(--zip-logo-ring-stroke));
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 26% 16%, var(--zip-logo-gloss-fill) 0%, transparent 54%),
+    linear-gradient(152deg, var(--zip-login-hero-start) 0%, var(--zip-login-hero-mid) 42%, rgb(var(--zip-accent-900)) 100%),
+    rgb(var(--zip-accent-800));
+  color: var(--zip-logo-z-stroke);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--zip-logo-ring-stroke) 34%, transparent),
+    0 10px 20px var(--zip-shadow-mid);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease,
+    filter 140ms ease,
+    transform 140ms ease;
+}
+
+.login-card-left .btn.primary.zip-login-cta:hover,
+.login-card-left .btn.primary.zip-login-cta:focus {
+  border-color: color-mix(in srgb, rgb(var(--zip-accent-1100)) 78%, var(--spectrum-white));
+  background:
+    radial-gradient(circle at 24% 14%, color-mix(in srgb, var(--spectrum-white) 36%, transparent) 0%, transparent 56%),
+    linear-gradient(
+      152deg,
+      color-mix(in srgb, rgb(var(--zip-accent-1100)) 74%, var(--spectrum-white) 26%) 0%,
+      color-mix(in srgb, rgb(var(--zip-accent-1000)) 76%, var(--spectrum-white) 24%) 44%,
+      color-mix(in srgb, rgb(var(--zip-accent-900)) 82%, var(--spectrum-white) 18%) 100%
+    ),
+    rgb(var(--zip-accent-1000));
+  color: var(--zip-logo-z-stroke);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--spectrum-white) 40%, transparent),
+    0 14px 26px var(--zip-shadow-strong),
+    0 0 0 1px color-mix(in srgb, rgb(var(--zip-accent-1100)) 46%, transparent);
+  filter: brightness(1.08) saturate(1.08);
+  transform: translateY(-1px);
+}
+
+.login-card-left .btn.primary.zip-login-cta:active {
+  border-color: color-mix(in srgb, rgb(var(--zip-accent-1100)) 70%, var(--zip-logo-ring-stroke));
+  background:
+    radial-gradient(circle at 24% 14%, color-mix(in srgb, var(--spectrum-white) 30%, transparent) 0%, transparent 56%),
+    linear-gradient(
+      152deg,
+      color-mix(in srgb, rgb(var(--zip-accent-1000)) 84%, var(--spectrum-white) 16%) 0%,
+      color-mix(in srgb, rgb(var(--zip-accent-900)) 86%, var(--spectrum-white) 14%) 46%,
+      color-mix(in srgb, rgb(var(--zip-accent-800)) 90%, var(--spectrum-white) 10%) 100%
+    ),
+    rgb(var(--zip-accent-900));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--spectrum-white) 32%, transparent),
+    0 9px 16px var(--zip-shadow-mid);
+  filter: brightness(1.03) saturate(1.03);
+  transform: translateY(0);
+}
+
+.login-card-left .btn.primary.zip-login-cta:focus-visible {
+  outline: 3px solid var(--spectrum-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.zip-login-cta .zip-login-cta-label {
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 14px;
+}
+
+.zip-login-cta-start {
+  font-size: clamp(24px, 5.8vw, 46px);
+  line-height: 0.95;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  font-weight: var(--spectrum-font-weight-bold);
+  white-space: normal;
+  color: var(--zip-logo-z-stroke);
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--spectrum-black) 32%, transparent);
 }
 
 .zip-config-gate {
@@ -1788,6 +2191,18 @@ body.zip-busy-cursor * {
     width: 100%;
     min-width: 0;
     max-width: none;
+  }
+
+  .zip-login-cta-start {
+    font-size: clamp(22px, 6.2vw, 38px);
+    white-space: normal;
+    text-align: center;
+    line-height: 1.02;
+  }
+
+  .zip-login-cta .zip-login-cta-label {
+    padding-inline: 12px;
+    padding-block: 0;
   }
 
   .login-hero-build {
@@ -2147,7 +2562,6 @@ input::placeholder {
   justify-content: center;
 }
 
-#zipSlackItToMeBtn .spectrum-Button-label,
 #zipExportCsvBtn .spectrum-Button-label {
   display: inline-flex;
   align-items: center;
@@ -2164,6 +2578,20 @@ input::placeholder {
   font-weight: var(--spectrum-font-weight-bold);
   letter-spacing: 0;
   white-space: nowrap;
+}
+
+#zipSlackItToMeBtn {
+  padding: 0;
+}
+
+.zip-slack-panel-icon {
+  inline-size: 16px;
+  block-size: 16px;
+  flex: 0 0 auto;
+}
+
+#zipSlackPanelIcon .zip-logo-z {
+  stroke-width: 12;
 }
 
 #zipPassAiResultsBox {

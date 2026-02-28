@@ -2123,6 +2123,40 @@
     return "";
   }
 
+  function normalizeSlackStatusIconName(value) {
+    const name = String(value || "").trim().toLowerCase();
+    if (!name) return "";
+    return /^[a-z0-9_+\-]{1,64}$/.test(name) ? (":" + name + ":") : "";
+  }
+
+  function normalizeSlackStatusIcon(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const alias = normalizeSlackStatusIconName(raw);
+    if (alias) return alias;
+    if (/^:[a-z0-9_+\-]{1,64}:$/i.test(raw)) return raw.toLowerCase();
+    const normalized = raw.replace(/\s+/g, " ").trim();
+    if (!normalized) return "";
+    return normalized.slice(0, 32);
+  }
+
+  function normalizeSlackStatusIconUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+      const parsed = new URL(raw, String(window.location && window.location.origin || ""));
+      if (String(parsed.protocol || "").toLowerCase() !== "https:") return "";
+      return parsed.toString();
+    } catch (_) {}
+    return "";
+  }
+
+  function normalizeSlackStatusMessage(value) {
+    const normalized = String(value || "").replace(/\s+/g, " ").trim();
+    if (!normalized) return "";
+    return normalized.slice(0, 160);
+  }
+
   function normalizeSlackDisplayName(value) {
     const text = String(value || "").replace(/\s+/g, " ").trim();
     if (!text || text.length > 80) return "";
@@ -2376,6 +2410,63 @@
     return "";
   }
 
+  function pickSlackStatusFromDisplayInfo(displayInfo) {
+    const rows = Array.isArray(displayInfo)
+      ? displayInfo
+      : (displayInfo ? [displayInfo] : []);
+    for (let i = 0; i < rows.length; i += 1) {
+      const entry = rows[i];
+      if (!entry || typeof entry !== "object") continue;
+      const statusIconUrl = normalizeSlackStatusIconUrl(
+        entry.display_url
+        || entry.image_url
+        || entry.url
+        || entry.icon_url
+        || entry.iconUrl
+        || ""
+      );
+      const statusIcon = normalizeSlackStatusIcon(
+        entry.unicode
+        || entry.emoji_string
+        || entry.emoji
+        || entry.display_alias
+        || entry.display_name
+        || entry.name
+        || entry.emoji_name
+        || ""
+      ) || normalizeSlackStatusIconName(entry.name || entry.emoji_name || "");
+      if (statusIcon || statusIconUrl) {
+        return { statusIcon, statusIconUrl };
+      }
+    }
+    return { statusIcon: "", statusIconUrl: "" };
+  }
+
+  function getSlackUserStatus(userPayload) {
+    const user = userPayload && typeof userPayload === "object" ? userPayload : null;
+    const profile = user && user.profile && typeof user.profile === "object" ? user.profile : null;
+    if (!profile) {
+      return { statusIcon: "", statusIconUrl: "", statusMessage: "" };
+    }
+    const fromDisplayInfo = pickSlackStatusFromDisplayInfo(profile.status_emoji_display_info || null);
+    const statusIcon = normalizeSlackStatusIcon(
+      profile.status_emoji
+      || fromDisplayInfo.statusIcon
+      || ""
+    ) || fromDisplayInfo.statusIcon;
+    const statusIconUrl = normalizeSlackStatusIconUrl(
+      profile.status_emoji_url
+      || fromDisplayInfo.statusIconUrl
+      || ""
+    );
+    const statusMessage = normalizeSlackStatusMessage(
+      profile.status_text
+      || profile.status_text_canonical
+      || ""
+    );
+    return { statusIcon, statusIconUrl, statusMessage };
+  }
+
   function getSlackApiErrorCode(result) {
     const source = result && typeof result === "object" ? result : {};
     return String(
@@ -2401,9 +2492,13 @@
       ? source.profile
       : null;
     if (!profile) return null;
+    const status = getSlackUserStatus({ profile });
     return {
       userName: getSlackUserDisplayName({ profile }),
-      avatarUrl: getSlackUserAvatar({ profile })
+      avatarUrl: getSlackUserAvatar({ profile }),
+      statusIcon: status.statusIcon,
+      statusIconUrl: status.statusIconUrl,
+      statusMessage: status.statusMessage
     };
   }
 
@@ -2413,9 +2508,13 @@
       ? source.user
       : null;
     if (!user) return null;
+    const status = getSlackUserStatus(user);
     return {
       userName: getSlackUserDisplayName(user),
-      avatarUrl: getSlackUserAvatar(user)
+      avatarUrl: getSlackUserAvatar(user),
+      statusIcon: status.statusIcon,
+      statusIconUrl: status.statusIconUrl,
+      statusMessage: status.statusMessage
     };
   }
 
@@ -2423,6 +2522,9 @@
     const identity = {
       userName: "",
       avatarUrl: "",
+      statusIcon: "",
+      statusIconUrl: "",
+      statusMessage: "",
       avatarErrorCode: "",
       avatarErrorMessage: ""
     };
@@ -2431,6 +2533,9 @@
       if (!candidate) return;
       if (!identity.userName) identity.userName = normalizeSlackDisplayName(candidate.userName || "");
       if (!identity.avatarUrl) identity.avatarUrl = normalizeSlackAvatarUrl(candidate.avatarUrl || "");
+      if (!identity.statusIcon) identity.statusIcon = normalizeSlackStatusIcon(candidate.statusIcon || "");
+      if (!identity.statusIconUrl) identity.statusIconUrl = normalizeSlackStatusIconUrl(candidate.statusIconUrl || "");
+      if (!identity.statusMessage) identity.statusMessage = normalizeSlackStatusMessage(candidate.statusMessage || "");
     };
     const captureAvatarError = (result, fallbackMessage) => {
       if (identity.avatarUrl) return;
@@ -2487,7 +2592,14 @@
       if (identity.userName && identity.avatarUrl) break;
     }
 
-    if (!identity.userName && !identity.avatarUrl && !identity.avatarErrorCode && !identity.avatarErrorMessage) {
+    if (
+      !identity.userName
+      && !identity.avatarUrl
+      && !identity.statusIcon
+      && !identity.statusMessage
+      && !identity.avatarErrorCode
+      && !identity.avatarErrorMessage
+    ) {
       return null;
     }
     return identity;
@@ -2558,12 +2670,18 @@
     const teamId = String(payload.team_id || payload.team || session.teamId || "").trim();
     let userName = normalizeSlackDisplayName(session.userName || "");
     let avatarUrl = String(session.avatarUrl || "").trim();
+    let statusIcon = "";
+    let statusIconUrl = "";
+    let statusMessage = "";
     let avatarErrorCode = "";
     let avatarErrorMessage = "";
     const profile = await getSlackUserProfile(workspaceOrigin, userId).catch(() => null);
     if (profile) {
       if (!userName) userName = normalizeSlackDisplayName(profile.userName || "");
       if (!avatarUrl) avatarUrl = String(profile.avatarUrl || "").trim();
+      if (!statusIcon) statusIcon = normalizeSlackStatusIcon(profile.statusIcon || "");
+      if (!statusIconUrl) statusIconUrl = normalizeSlackStatusIconUrl(profile.statusIconUrl || "");
+      if (!statusMessage) statusMessage = normalizeSlackStatusMessage(profile.statusMessage || "");
       if (!avatarUrl) {
         avatarErrorCode = String(profile.avatarErrorCode || "").trim().toLowerCase();
         avatarErrorMessage = String(profile.avatarErrorMessage || "").trim();
@@ -2586,6 +2704,9 @@
       team_id: teamId,
       user_name: userName,
       avatar_url: avatarUrl,
+      status_icon: statusIcon,
+      status_icon_url: statusIconUrl,
+      status_message: statusMessage,
       avatar_error_code: avatarErrorCode,
       avatar_error: avatarErrorMessage,
       workspace_origin: workspaceOrigin,
@@ -2661,7 +2782,8 @@
     const postFields = {
       channel: channelId,
       text: markdownText,
-      mrkdwn: "true",
+      mrkdwn: true,
+      parse: "none",
       unfurl_links: "false",
       unfurl_media: "false",
       _x_reason: "zip-slack-it-to-me"
@@ -3148,6 +3270,12 @@
   // Login/sign-in Zendesk pages do not need ZIP runtime wiring and can have
   // transient extension runtime invalidation during reload/update.
   if (isZendeskAuthPage()) {
+    // Run one authoritative probe so background auth state flips immediately
+    // after Zendesk redirects to login/auth pages.
+    probeZendeskSession({ reason: "auth_page_bootstrap" })
+      .catch(() => {
+        emitZendeskLogout("auth_page_probe_failed", 401);
+      });
     return;
   }
 
