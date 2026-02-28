@@ -80,13 +80,13 @@ const AUTH_POLL_LOGGED_OUT_MS = 30 * 1000;
 const AUTH_ABOUT_TO_EXPIRE_MS = 5 * 60 * 1000;
 const MENU_ROOT = "zip_root";
 const MENU_TOGGLE_SIDE = "zip_toggle_side";
-const MENU_ASK_ERIC = "zip_ask_eric";
+const MENU_ASK_TEAM = "zip_ask_team";
 const MENU_GET_LATEST = "zip_get_latest";
 const MENU_CLEAR_KEY_SEPARATOR = "zip_clear_key_separator";
 const MENU_CLEAR_KEY = "zip_clear_key";
 const MENU_THEME_PARENT = "zip_theme_parent";
 const MENU_THEME_PREFIX = "zip_theme_";
-const ASK_ERIC_EMAIL = "minnick@adobe.com";
+const ASK_TEAM_EMAIL = "PrimetimeTAMs@adobe.com";
 const OUTLOOK_DEEPLINK_COMPOSE_URL = "https://outlook.office.com/mail/deeplink/compose";
 const GITHUB_OWNER = "HH5HH";
 const GITHUB_REPO = "ZIP";
@@ -97,7 +97,7 @@ const CHROME_EXTENSIONS_URL = "chrome://extensions";
 const UPDATE_CHECK_TTL_MS = 10 * 60 * 1000;
 const CHROME_SIDEPANEL_SETTINGS_URL = "chrome://settings/?search=side%20panel";
 const MENU_SIDEPANEL_POSITION_LABEL = "⚙ Side panel position";
-const MENU_ASK_ERIC_LABEL = "✉ Ask Eric";
+const MENU_ASK_TEAM_LABEL = "✉ Ask the Team";
 const MENU_APPEARANCE_LABEL = "👁 Appearance";
 const MENU_CLEAR_KEY_LABEL = "⚠ Clear ZIP.KEY (Reset ZIP)";
 const THEME_STORAGE_KEY = "zip.ui.theme.v1";
@@ -956,9 +956,9 @@ function getToggleMenuItemTitle(currentSide) {
   return getZipRootMenuTitle() + " | " + base;
 }
 
-function getAskEricMenuTitle() {
-  if (contextMenuState.grouped) return MENU_ASK_ERIC_LABEL;
-  return getZipRootMenuTitle() + " | " + MENU_ASK_ERIC_LABEL;
+function getAskTeamMenuTitle() {
+  if (contextMenuState.grouped) return MENU_ASK_TEAM_LABEL;
+  return getZipRootMenuTitle() + " | " + MENU_ASK_TEAM_LABEL;
 }
 
 function getClearKeyMenuTitle() {
@@ -1132,20 +1132,43 @@ function isZendeskUrl(urlString) {
   }
 }
 
-function isTrustedZendeskContentSender(sender) {
-  const rawUrl = String(
-    (sender && sender.url)
-    || (sender && sender.tab && sender.tab.url)
-    || ""
-  ).trim();
-  if (!rawUrl) return false;
+function isTrustedZendeskSenderUrl(rawUrl) {
+  const candidate = String(rawUrl || "").trim();
+  if (!candidate) return false;
   try {
-    const url = new URL(rawUrl);
+    const url = new URL(candidate);
     const host = String(url.hostname || "").toLowerCase();
     return host === (config.subdomain + ".zendesk.com");
   } catch (_) {
     return false;
   }
+}
+
+function collectZendeskSenderUrlCandidates(sender) {
+  const candidates = [
+    sender && sender.url,
+    sender && sender.origin,
+    sender && sender.documentUrl,
+    sender && sender.documentOrigin,
+    sender && sender.tab && sender.tab.url
+  ];
+  const seen = new Set();
+  const normalized = [];
+  for (const value of candidates) {
+    const url = String(value || "").trim();
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    normalized.push(url);
+  }
+  return normalized;
+}
+
+function isTrustedZendeskContentSender(sender) {
+  const candidates = collectZendeskSenderUrlCandidates(sender);
+  for (const candidate of candidates) {
+    if (isTrustedZendeskSenderUrl(candidate)) return true;
+  }
+  return false;
 }
 
 function isSlackUrl(urlString) {
@@ -1456,9 +1479,11 @@ async function slackSendMarkdownToSelfViaWorkspaceSession(input, reasonCode) {
           if (result && result.ok === true) {
             const deliveredChannel = String(result.channel || "").trim();
             const deliveredTs = String(result.ts || "").trim();
+            const directChannelId = normalizeSlackDirectChannelId(deliveredChannel);
             return {
               ok: true,
               channel: deliveredChannel,
+              direct_channel_id: directChannelId,
               ts: deliveredTs,
               user_id: String(result.user_id || body.userId || body.user_id || "").trim(),
               team_id: String(result.team_id || "").trim(),
@@ -1603,6 +1628,41 @@ function normalizeSlackAvatarUrl(value) {
   }
 }
 
+function normalizeSlackStatusIconName(value) {
+  const name = String(value || "").trim().toLowerCase();
+  if (!name) return "";
+  return /^[a-z0-9_+\-]{1,64}$/.test(name) ? (":" + name + ":") : "";
+}
+
+function normalizeSlackStatusIcon(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const alias = normalizeSlackStatusIconName(raw);
+  if (alias) return alias;
+  if (/^:[a-z0-9_+\-]{1,64}:$/i.test(raw)) return raw.toLowerCase();
+  const normalized = raw.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  return normalized.slice(0, 32);
+}
+
+function normalizeSlackStatusMessage(value) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  return normalized.slice(0, 160);
+}
+
+function normalizeSlackStatusIconUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "https:") return "";
+    return parsed.toString();
+  } catch (_) {
+    return "";
+  }
+}
+
 function normalizeSlackDisplayName(value) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   if (!text || text.length > 80) return "";
@@ -1660,12 +1720,79 @@ function pickSlackAvatarFromProfile(profile) {
   return "";
 }
 
+function pickSlackStatusFromDisplayInfo(displayInfo) {
+  const rows = Array.isArray(displayInfo)
+    ? displayInfo
+    : (displayInfo ? [displayInfo] : []);
+  for (let i = 0; i < rows.length; i += 1) {
+    const entry = rows[i];
+    if (!entry || typeof entry !== "object") continue;
+    const statusIconUrl = normalizeSlackStatusIconUrl(
+      entry.display_url
+      || entry.image_url
+      || entry.url
+      || entry.icon_url
+      || entry.iconUrl
+      || ""
+    );
+    const statusIcon = normalizeSlackStatusIcon(
+      entry.unicode
+      || entry.emoji_string
+      || entry.emoji
+      || entry.display_alias
+      || entry.display_name
+      || entry.name
+      || entry.emoji_name
+      || ""
+    ) || normalizeSlackStatusIconName(entry.name || entry.emoji_name || "");
+    if (statusIcon || statusIconUrl) {
+      return { statusIcon, statusIconUrl };
+    }
+  }
+  return { statusIcon: "", statusIconUrl: "" };
+}
+
+function pickSlackStatusFromProfile(profile, userRecord) {
+  const source = profile && typeof profile === "object" ? profile : {};
+  const user = userRecord && typeof userRecord === "object" ? userRecord : {};
+  const userProfile = user.profile && typeof user.profile === "object" ? user.profile : {};
+  const displayInfo = pickSlackStatusFromDisplayInfo(
+    source.status_emoji_display_info
+    || userProfile.status_emoji_display_info
+    || null
+  );
+  const statusIcon = normalizeSlackStatusIcon(
+    source.status_emoji
+    || userProfile.status_emoji
+    || displayInfo.statusIcon
+    || ""
+  ) || displayInfo.statusIcon;
+  const statusIconUrl = normalizeSlackStatusIconUrl(
+    source.status_emoji_url
+    || userProfile.status_emoji_url
+    || displayInfo.statusIconUrl
+    || ""
+  );
+  const statusMessage = normalizeSlackStatusMessage(
+    source.status_text
+    || source.status_text_canonical
+    || userProfile.status_text
+    || userProfile.status_text_canonical
+    || ""
+  );
+  return { statusIcon, statusIconUrl, statusMessage };
+}
+
 function extractSlackIdentityFromUsersProfilePayload(payload) {
   const source = payload && typeof payload === "object" ? payload : {};
   const profile = source.profile && typeof source.profile === "object" ? source.profile : {};
+  const status = pickSlackStatusFromProfile(profile, null);
   return {
     userName: pickSlackDisplayNameFromProfile(profile, null),
-    avatarUrl: pickSlackAvatarFromProfile(profile)
+    avatarUrl: pickSlackAvatarFromProfile(profile),
+    statusIcon: status.statusIcon,
+    statusIconUrl: status.statusIconUrl,
+    statusMessage: status.statusMessage
   };
 }
 
@@ -1673,9 +1800,13 @@ function extractSlackIdentityFromUsersInfoPayload(payload) {
   const source = payload && typeof payload === "object" ? payload : {};
   const user = source.user && typeof source.user === "object" ? source.user : {};
   const profile = user.profile && typeof user.profile === "object" ? user.profile : {};
+  const status = pickSlackStatusFromProfile(profile, user);
   return {
     userName: pickSlackDisplayNameFromProfile(profile, user),
-    avatarUrl: pickSlackAvatarFromProfile(profile)
+    avatarUrl: pickSlackAvatarFromProfile(profile),
+    statusIcon: status.statusIcon,
+    statusIconUrl: status.statusIconUrl,
+    statusMessage: status.statusMessage
   };
 }
 
@@ -1684,6 +1815,9 @@ async function fetchSlackIdentityViaApi(workspaceOrigin, token, userId) {
   const identity = {
     userName: "",
     avatarUrl: "",
+    statusIcon: "",
+    statusIconUrl: "",
+    statusMessage: "",
     avatarErrorCode: "",
     avatarErrorMessage: ""
   };
@@ -1691,6 +1825,9 @@ async function fetchSlackIdentityViaApi(workspaceOrigin, token, userId) {
     const candidate = nextIdentity && typeof nextIdentity === "object" ? nextIdentity : {};
     if (!identity.userName) identity.userName = normalizeSlackDisplayName(candidate.userName || "");
     if (!identity.avatarUrl) identity.avatarUrl = normalizeSlackAvatarUrl(candidate.avatarUrl || "");
+    if (!identity.statusIcon) identity.statusIcon = normalizeSlackStatusIcon(candidate.statusIcon || "");
+    if (!identity.statusIconUrl) identity.statusIconUrl = normalizeSlackStatusIconUrl(candidate.statusIconUrl || "");
+    if (!identity.statusMessage) identity.statusMessage = normalizeSlackStatusMessage(candidate.statusMessage || "");
   };
   const captureAvatarError = (result, fallbackMessage) => {
     if (identity.avatarUrl) return;
@@ -1972,6 +2109,11 @@ function normalizeSlackWorkspaceOrigin(value) {
 function normalizeSlackChannelId(value) {
   const channelId = String(value || "").trim().toUpperCase();
   return /^[CGD][A-Z0-9]{8,}$/.test(channelId) ? channelId : "";
+}
+
+function normalizeSlackDirectChannelId(value) {
+  const channelId = String(value || "").trim().toUpperCase();
+  return /^D[A-Z0-9]{8,}$/.test(channelId) ? channelId : "";
 }
 
 function normalizeSingularityMention(value) {
@@ -2544,11 +2686,14 @@ async function resolveSlackApiTokens(input) {
   const userCandidates = uniq([userFromMessage].concat(
     Array.isArray(stored && stored.userCandidates) ? stored.userCandidates : [stored && stored.userToken]
   ));
+  // Classify tokens by prefix so ZIP.KEY values still work if bot/user tokens land in the wrong slot.
+  const botResolved = uniq(botCandidates.concat(userCandidates)).filter((token) => isSlackBotApiToken(token));
+  const userResolved = uniq(userCandidates.concat(botCandidates)).filter((token) => isSlackUserOAuthToken(token));
   return {
-    botToken: botCandidates[0] || "",
-    botCandidates,
-    userToken: userCandidates[0] || "",
-    userCandidates
+    botToken: botResolved[0] || "",
+    botCandidates: botResolved,
+    userToken: userResolved[0] || "",
+    userCandidates: userResolved
   };
 }
 
@@ -2592,6 +2737,13 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
   const body = input && typeof input === "object" ? input : {};
   const tokens = resolvedTokens && typeof resolvedTokens === "object" ? resolvedTokens : {};
   const webApiOrigin = SLACK_WEB_API_ORIGIN;
+  const requestedDirectChannelId = normalizeSlackDirectChannelId(
+    body.directChannelId
+    || body.direct_channel_id
+    || body.channelId
+    || body.channel_id
+    || body.channel
+  );
   const botDeliveryToken = normalizeSlackApiToken(tokens.botToken);
   const botCandidates = Array.isArray(tokens && tokens.botCandidates)
     ? tokens.botCandidates
@@ -2667,40 +2819,89 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
     let tokenInvalidated = false;
     for (let userIdx = 0; userIdx < userIdCandidates.length; userIdx += 1) {
       const userId = userIdCandidates[userIdx];
-      const dmOpen = await postSlackApiWithBearerToken(webApiOrigin, "/api/conversations.open", {
-        users: userId,
-        return_im: "true",
-        _x_reason: "zip-slack-it-to-me-open-dm-bot-bg"
-      }, attemptToken);
-      if (!dmOpen.ok) {
-        lastFailureCode = dmOpen.code || "slack_open_dm_failed";
-        lastFailureError = dmOpen.error || "Unable to open Slack DM channel.";
-        if (isSlackTokenInvalidationCode(lastFailureCode)) {
-          markSlackTokenBackoff(attemptToken);
-          tokenInvalidated = true;
-          break;
+      const messageText = String(body.markdownText || body.text || body.messageText || "").trim();
+      const sendViaChannel = async (channelId, reasonTag) => {
+        const postFields = buildSlackNewMessageFields({
+          channel: channelId,
+          text: messageText,
+          mrkdwn: true,
+          parse: "none",
+          unfurl_links: "false",
+          unfurl_media: "false",
+          _x_reason: reasonTag
+        });
+        return postSlackApiWithBearerToken(webApiOrigin, "/api/chat.postMessage", postFields, attemptToken);
+      };
+      const openDirectChannel = async (reasonTag) => {
+        const dmOpen = await postSlackApiWithBearerToken(webApiOrigin, "/api/conversations.open", {
+          users: userId,
+          return_im: "true",
+          _x_reason: reasonTag
+        }, attemptToken);
+        if (!dmOpen || !dmOpen.ok) {
+          return {
+            ok: false,
+            code: dmOpen && dmOpen.code ? dmOpen.code : "slack_open_dm_failed",
+            error: dmOpen && dmOpen.error ? dmOpen.error : "Unable to open Slack DM channel."
+          };
         }
-        continue;
-      }
-      const dmPayload = dmOpen.payload && typeof dmOpen.payload === "object" ? dmOpen.payload : {};
-      const dmChannel = dmPayload.channel && typeof dmPayload.channel === "object" ? dmPayload.channel : {};
-      const postChannel = String(dmChannel.id || dmPayload.channel_id || dmPayload.channel || "").trim();
+        const dmPayload = dmOpen.payload && typeof dmOpen.payload === "object" ? dmOpen.payload : {};
+        const dmChannel = dmPayload.channel && typeof dmPayload.channel === "object" ? dmPayload.channel : {};
+        const channelId = normalizeSlackDirectChannelId(
+          dmChannel.id
+          || dmPayload.channel_id
+          || dmPayload.channel
+        );
+        if (!channelId) {
+          return {
+            ok: false,
+            code: "slack_dm_channel_missing",
+            error: "Unable to resolve Slack DM channel."
+          };
+        }
+        return { ok: true, channelId };
+      };
+
+      let postChannel = requestedDirectChannelId;
       if (!postChannel) {
-        lastFailureCode = "slack_dm_channel_missing";
-        lastFailureError = "Unable to resolve Slack DM channel.";
-        continue;
+        const dmOpen = await openDirectChannel("zip-slack-it-to-me-open-dm-bot-bg");
+        if (!dmOpen.ok) {
+          lastFailureCode = dmOpen.code || "slack_open_dm_failed";
+          lastFailureError = dmOpen.error || "Unable to open Slack DM channel.";
+          if (isSlackTokenInvalidationCode(lastFailureCode)) {
+            markSlackTokenBackoff(attemptToken);
+            tokenInvalidated = true;
+            break;
+          }
+          continue;
+        }
+        postChannel = String(dmOpen.channelId || "").trim();
       }
 
-      const messageText = String(body.markdownText || body.text || body.messageText || "").trim();
-      const postFields = buildSlackNewMessageFields({
-        channel: postChannel,
-        text: messageText,
-        mrkdwn: "true",
-        unfurl_links: "false",
-        unfurl_media: "false",
-        _x_reason: "zip-slack-it-to-me-bot-bg"
-      });
-      const post = await postSlackApiWithBearerToken(webApiOrigin, "/api/chat.postMessage", postFields, attemptToken);
+      let post = await sendViaChannel(postChannel, "zip-slack-it-to-me-bot-bg");
+      if (
+        (!post || !post.ok)
+        && requestedDirectChannelId
+        && postChannel === requestedDirectChannelId
+      ) {
+        const postCode = String(post && post.code || "").trim().toLowerCase();
+        const shouldRecoverWithDmOpen = postCode === "channel_not_found" || postCode === "not_in_channel";
+        if (shouldRecoverWithDmOpen) {
+          const dmRecover = await openDirectChannel("zip-slack-it-to-me-open-dm-bot-recover-bg");
+          if (!dmRecover.ok) {
+            lastFailureCode = dmRecover.code || "slack_open_dm_failed";
+            lastFailureError = dmRecover.error || "Unable to open Slack DM channel.";
+            if (isSlackTokenInvalidationCode(lastFailureCode)) {
+              markSlackTokenBackoff(attemptToken);
+              tokenInvalidated = true;
+              break;
+            }
+            continue;
+          }
+          postChannel = String(dmRecover.channelId || postChannel).trim();
+          post = await sendViaChannel(postChannel, "zip-slack-it-to-me-bot-recover-bg");
+        }
+      }
       if (!post.ok) {
         lastFailureCode = post.code || "slack_post_failed";
         lastFailureError = post.error || "Unable to send Slack self-DM.";
@@ -2713,9 +2914,11 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
       }
       const postPayload = post.payload && typeof post.payload === "object" ? post.payload : {};
       const postedTs = String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim();
+      const directChannelId = normalizeSlackDirectChannelId(postPayload.channel || postChannel || "");
       return {
         ok: true,
         channel: String(postPayload.channel || postChannel || userId).trim(),
+        direct_channel_id: directChannelId || normalizeSlackDirectChannelId(postChannel),
         ts: postedTs,
         user_id: userId,
         team_id: teamId || "",
@@ -2756,7 +2959,9 @@ async function slackSendMarkdownToSelfViaApi(input) {
   const requireNativeNewMessage = body.requireNativeNewMessage !== false;
   const skipUnreadMark = body.skipUnreadMark !== false;
   const preferApiFirst = body.preferApiFirst !== false;
-  const allowBotDelivery = body.allowBotDelivery === true;
+  const preferBotDmDelivery = body.preferBotDmDelivery !== false;
+  const requireBotDelivery = body.requireBotDelivery === true;
+  const allowBotDelivery = body.allowBotDelivery === true || requireBotDelivery;
   // Prefer SLACKTIVATED user-identity delivery. Bot delivery is fallback.
   const tokens = await resolveSlackApiTokens(body);
   const userDeliveryToken = normalizeSlackApiToken(tokens.userToken);
@@ -2772,6 +2977,21 @@ async function slackSendMarkdownToSelfViaApi(input) {
     tokenAttempts.push(normalizedToken);
   }
   const hasUserOAuthCandidate = tokenAttempts.length > 0;
+  let primaryBotFailure = null;
+  if (allowBotDelivery && preferBotDmDelivery) {
+    const primaryBotDelivery = await slackSendMarkdownToSelfViaBotApi(body, tokens);
+    if (primaryBotDelivery && primaryBotDelivery.ok) {
+      return primaryBotDelivery;
+    }
+    primaryBotFailure = primaryBotDelivery || null;
+    if (requireBotDelivery) {
+      return {
+        ok: false,
+        code: String((primaryBotFailure && primaryBotFailure.code) || "slack_bot_delivery_failed"),
+        error: String((primaryBotFailure && primaryBotFailure.error) || "Unable to send Slack @ME message with bot delivery.")
+      };
+    }
+  }
 
   let primarySessionDelivery = null;
   let primarySessionError = "";
@@ -2830,9 +3050,16 @@ async function slackSendMarkdownToSelfViaApi(input) {
   // If no explicit Slack user OAuth token is available, rely on session guidance.
   if (!hasUserOAuthCandidate) {
     if (allowBotDelivery) {
-      const botFallback = await slackSendMarkdownToSelfViaBotApi(body, tokens);
+      const botFallback = primaryBotFailure || await slackSendMarkdownToSelfViaBotApi(body, tokens);
       if (botFallback && botFallback.ok) {
         return botFallback;
+      }
+      if (requireBotDelivery) {
+        return {
+          ok: false,
+          code: String((botFallback && botFallback.code) || "slack_bot_delivery_failed"),
+          error: String((botFallback && botFallback.error) || "Unable to send Slack @ME message with bot delivery.")
+        };
       }
       const botFailure = String((botFallback && botFallback.error) || "").trim();
       return {
@@ -2862,9 +3089,16 @@ async function slackSendMarkdownToSelfViaApi(input) {
 
   if (!tokenAttempts.length) {
     if (allowBotDelivery) {
-      const botFallback = await slackSendMarkdownToSelfViaBotApi(body, tokens);
+      const botFallback = primaryBotFailure || await slackSendMarkdownToSelfViaBotApi(body, tokens);
       if (botFallback && botFallback.ok) {
         return botFallback;
+      }
+      if (requireBotDelivery) {
+        return {
+          ok: false,
+          code: String((botFallback && botFallback.code) || "slack_bot_delivery_failed"),
+          error: String((botFallback && botFallback.error) || "Unable to send Slack @ME message with bot delivery.")
+        };
       }
     }
     const sessionFallback = await slackSendMarkdownToSelfViaWorkspaceSession(body, "slack_api_token_missing");
@@ -2989,7 +3223,8 @@ async function slackSendMarkdownToSelfViaApi(input) {
       const postFields = buildSlackNewMessageFields({
         channel: postChannel,
         text: messageText,
-        mrkdwn: "true",
+        mrkdwn: true,
+        parse: "none",
         unfurl_links: "false",
         unfurl_media: "false",
         _x_reason: "zip-slack-it-to-me-bg"
@@ -3044,6 +3279,7 @@ async function slackSendMarkdownToSelfViaApi(input) {
       return {
         ok: true,
         channel: String(postPayload.channel || postChannel || userId).trim(),
+        direct_channel_id: normalizeSlackDirectChannelId(postPayload.channel || postChannel || ""),
         ts: postedTs,
         user_id: userId,
         team_id: teamId || "",
@@ -3059,9 +3295,16 @@ async function slackSendMarkdownToSelfViaApi(input) {
   }
 
   if (allowBotDelivery) {
-    const botFallback = await slackSendMarkdownToSelfViaBotApi(body, tokens);
+    const botFallback = primaryBotFailure || await slackSendMarkdownToSelfViaBotApi(body, tokens);
     if (botFallback && botFallback.ok) {
       return botFallback;
+    }
+    if (requireBotDelivery) {
+      return {
+        ok: false,
+        code: String((botFallback && botFallback.code) || "slack_bot_delivery_failed"),
+        error: String((botFallback && botFallback.error) || "Unable to send Slack @ME message with bot delivery.")
+      };
     }
     if (botFallback && !botFallback.ok && botFallback.error) {
       lastFailureError = String(botFallback.error || lastFailureError);
@@ -3133,6 +3376,14 @@ async function slackAuthTestViaApi(input) {
     if (!isSlackUserOAuthToken(normalizedToken)) continue;
     if (!tokenAttempts.includes(normalizedToken)) tokenAttempts.push(normalizedToken);
   }
+  const requestedDirectChannelId = normalizeSlackDirectChannelId(
+    body.directChannelId || body.direct_channel_id
+  );
+  const botCandidates = Array.isArray(tokens && tokens.botCandidates)
+    ? tokens.botCandidates
+      .map((token) => normalizeSlackApiToken(token))
+      .filter((token) => isSlackBotApiToken(token))
+    : [normalizeSlackApiToken(tokens && tokens.botToken)].filter((token) => isSlackBotApiToken(token));
   if (!tokenAttempts.length) {
     return {
       ok: false,
@@ -3184,15 +3435,39 @@ async function slackAuthTestViaApi(input) {
       || (openIdSession && openIdSession.avatarUrl)
       || ""
     );
+    let statusIcon = normalizeSlackStatusIcon(
+      body.statusIcon
+      || body.status_icon
+      || ""
+    );
+    let statusIconUrl = normalizeSlackStatusIconUrl(
+      body.statusIconUrl
+      || body.status_icon_url
+      || ""
+    );
+    let statusMessage = normalizeSlackStatusMessage(
+      body.statusMessage
+      || body.status_message
+      || ""
+    );
     let avatarErrorCode = "";
     let avatarErrorMessage = "";
-    if (!userName || !avatarUrl) {
+    if (!userName || !avatarUrl || !statusIcon || !statusMessage) {
       const identity = await fetchSlackIdentityViaApi(workspaceOrigin, attemptToken, userId);
       if (!userName) {
         userName = normalizeSlackDisplayName(identity.userName || payload.user || "");
       }
       if (!avatarUrl) {
         avatarUrl = normalizeSlackAvatarUrl(identity.avatarUrl || "");
+      }
+      if (!statusIcon) {
+        statusIcon = normalizeSlackStatusIcon(identity.statusIcon || "");
+      }
+      if (!statusIconUrl) {
+        statusIconUrl = normalizeSlackStatusIconUrl(identity.statusIconUrl || "");
+      }
+      if (!statusMessage) {
+        statusMessage = normalizeSlackStatusMessage(identity.statusMessage || "");
       }
       if (!avatarUrl) {
         avatarErrorCode = String(identity.avatarErrorCode || "").trim().toLowerCase();
@@ -3202,6 +3477,45 @@ async function slackAuthTestViaApi(input) {
     if (!userName) {
       userName = normalizeSlackDisplayName(payload.user || "");
     }
+    let directChannelId = requestedDirectChannelId;
+    let directChannelErrorCode = "";
+    if (!directChannelId && userId && botCandidates.length) {
+      for (let botIdx = 0; botIdx < botCandidates.length; botIdx += 1) {
+        const botToken = normalizeSlackApiToken(botCandidates[botIdx]);
+        if (!botToken) continue;
+        if (isSlackTokenTemporarilyBackedOff(botToken)) {
+          directChannelErrorCode = "slack_bot_token_backoff";
+          continue;
+        }
+        const dmOpen = await postSlackApiWithBearerToken(SLACK_WEB_API_ORIGIN, "/api/conversations.open", {
+          users: userId,
+          return_im: "true",
+          _x_reason: "zip-slacktivation-open-dm-bot-bg"
+        }, botToken);
+        if (!dmOpen || !dmOpen.ok) {
+          directChannelErrorCode = String(dmOpen && dmOpen.code || "slack_open_dm_failed").trim().toLowerCase();
+          if (isSlackTokenInvalidationCode(directChannelErrorCode)) {
+            markSlackTokenBackoff(botToken);
+          }
+          continue;
+        }
+        const dmPayload = dmOpen.payload && typeof dmOpen.payload === "object" ? dmOpen.payload : {};
+        const dmChannel = dmPayload.channel && typeof dmPayload.channel === "object" ? dmPayload.channel : {};
+        const candidateChannelId = normalizeSlackDirectChannelId(
+          dmChannel.id
+          || dmPayload.channel_id
+          || dmPayload.channel
+        );
+        if (!candidateChannelId) {
+          directChannelErrorCode = "slack_dm_channel_missing";
+          continue;
+        }
+        clearSlackTokenBackoff(botToken);
+        directChannelId = candidateChannelId;
+        directChannelErrorCode = "";
+        break;
+      }
+    }
     return {
       ok: true,
       ready: true,
@@ -3210,6 +3524,11 @@ async function slackAuthTestViaApi(input) {
       team_id: teamId,
       user_name: userName,
       avatar_url: avatarUrl,
+      status_icon: statusIcon,
+      status_icon_url: statusIconUrl,
+      status_message: statusMessage,
+      direct_channel_id: directChannelId,
+      direct_channel_error_code: directChannelId ? "" : directChannelErrorCode,
       avatar_error_code: avatarErrorCode,
       avatar_error: avatarErrorMessage
     };
@@ -3861,9 +4180,9 @@ async function createGroupedContextMenus(currentSide, shouldShowGetLatest) {
   });
   await createThemeContextMenuItems(MENU_ROOT);
   await createContextMenuItem({
-    id: MENU_ASK_ERIC,
+    id: MENU_ASK_TEAM,
     parentId: MENU_ROOT,
-    title: getAskEricMenuTitle(),
+    title: getAskTeamMenuTitle(),
     contexts: MENU_CONTEXTS
   });
   await createContextMenuItem({
@@ -3897,8 +4216,8 @@ async function createGroupedContextMenus(currentSide, shouldShowGetLatest) {
 async function createFlatContextMenus(currentSide, shouldShowGetLatest) {
   await createThemeContextMenuItems(null);
   await createContextMenuItem({
-    id: MENU_ASK_ERIC,
-    title: getAskEricMenuTitle(),
+    id: MENU_ASK_TEAM,
+    title: getAskTeamMenuTitle(),
     contexts: MENU_CONTEXTS
   });
   await createContextMenuItem({
@@ -4018,30 +4337,37 @@ async function ensureAssignedFilterTabInCurrentWindow(urlOverride) {
   }
 }
 
-async function openAskEricEmail(tab) {
-  const lines = [
-    "Hi Eric,",
-    "",
-    "Question / feedback:",
-    ""
-  ];
+async function openAskTeamEmail(tab) {
   const currentVersion = getZipBuildVersion() || "?";
   let latestVersion = "";
   try {
     const updateInfo = await refreshUpdateState({ force: false });
     latestVersion = updateInfo && updateInfo.latestVersion ? String(updateInfo.latestVersion).trim() : "";
   } catch (_) {}
-  const versionLine = latestVersion && latestVersion !== currentVersion
-    ? ("Running ZIP v" + currentVersion + ", Latest ZIP is v" + latestVersion)
-    : ("Running ZIP v" + currentVersion);
-  lines.push(versionLine);
-  if (tab && tab.url) lines.push("Context URL: " + tab.url);
-  const subject = "ZIPv" + currentVersion + " Feedback";
+  const localBuild = String(currentVersion || "?").trim() || "?";
+  const latestBuild = String(latestVersion || "").trim() || "?";
+  const contextUrl = tab && tab.url
+    ? String(tab.url).replace(/\s+/g, " ").trim()
+    : "";
+  const contextLine = contextUrl
+    ? ("Context URL: " + contextUrl)
+    : "Context URL: (none)";
+  const lines = [
+    "",
+    "",
+    "",
+    "",
+    "I run ZIP " + localBuild + ", Latest ZIP is " + latestBuild,
+    contextLine,
+    "When a problem comes along, you must ZIP it!"
+  ];
+  const bodyText = lines.join("\n").replace(/\r\n?/g, "\n").trimEnd();
+  const subject = "ZIP! ";
   const encode = (value) => encodeURIComponent(String(value == null ? "" : value));
   const url = OUTLOOK_DEEPLINK_COMPOSE_URL
-    + "?to=" + encode(ASK_ERIC_EMAIL)
+    + "?to=" + encode(ASK_TEAM_EMAIL)
     + "&subject=" + encode(subject)
-    + "&body=" + encode(lines.join("\n"));
+    + "&body=" + encode(bodyText);
   try {
     await chrome.tabs.create({ url });
     return { ok: true };
@@ -4299,8 +4625,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     clearZipSecrets().catch(() => {});
     return;
   }
-  if (info.menuItemId === MENU_ASK_ERIC) {
-    openAskEricEmail(tab).catch(() => {});
+  if (info.menuItemId === MENU_ASK_TEAM) {
+    openAskTeamEmail(tab).catch(() => {});
   }
 });
 
@@ -4563,9 +4889,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return setTheme(requestedTheme, { persist: true, refreshMenus: true, broadcast: true });
       }
       if (action === "toggleSide") return toggleZipSidePanelSide(undefined);
-      if (action === "askEric") {
+      if (action === "askTeam" || action === "askEric") {
         const tab = await getActiveTab();
-        return openAskEricEmail(tab);
+        return openAskTeamEmail(tab);
       }
       if (action === "getLatest") {
         return openGetLatestFlow();

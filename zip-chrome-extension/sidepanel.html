@@ -19,13 +19,20 @@
         title="ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/"
         aria-label="ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/"
       >
-        <img
-          id="zipSlacktivatedIcon"
-          class="slacktivated-icon"
-          src="icons/icon128.png"
-          data-default-src="icons/icon128.png"
-          alt="ZIP Slack session status"
-        />
+        <span class="slacktivated-avatar-wrap" aria-hidden="true">
+          <img
+            id="zipSlacktivatedIcon"
+            class="slacktivated-icon"
+            src="icons/icon128.png"
+            data-default-src="icons/icon128.png"
+            alt="ZIP Slack session status"
+          />
+        </span>
+        <span id="zipSlacktivatedStatusWrap" class="slacktivated-status hidden">
+          <img id="zipSlacktivatedStatusIconImg" class="slacktivated-status-icon-img hidden" alt="" />
+          <span id="zipSlacktivatedStatusIcon" class="slacktivated-status-icon" aria-hidden="true"></span>
+          <span id="zipSlacktivatedStatusMessage" class="slacktivated-status-message"></span>
+        </span>
       </button>
     </div>
     <select id="zipDocsMenu" class="docs-menu zip-select-control" title="Open Adobe Pass resources" aria-label="Open Adobe Pass resources">
@@ -83,13 +90,18 @@
             />
             <p id="zipConfigGateMeta" class="zip-config-gate-meta">Supports ZIPKEY1 files.</p>
           </section>
-          <button id="zipLoginBtn" class="btn primary spectrum-Button spectrum-Button--fill spectrum-Button--accent spectrum-Button--sizeM hidden" disabled>
-            <span class="spectrum-Button-label">Sign in with Zendesk</span>
+          <button
+            id="zipLoginBtn"
+            class="btn primary zip-login-cta spectrum-Button spectrum-Button--fill spectrum-Button--accent spectrum-Button--sizeM hidden"
+            title="Zendesk this way"
+            aria-label="Zendesk this way"
+            disabled
+          >
+            <span class="spectrum-Button-label zip-login-cta-label">
+              <span id="zipLoginCtaText" class="zip-login-cta-start">START ZENDESK</span>
+            </span>
           </button>
         </div>
-        <blockquote id="zipAppDescription" class="login-card-description" cite="">
-          <!-- Filled from manifest description by sidepanel.js -->
-        </blockquote>
       </div>
     </div>
     <div id="zipAppScreen" class="hidden">
@@ -142,8 +154,14 @@
               <path d="M12 5a7 7 0 1 1-6.93 8h2.03a5 5 0 1 0 1.24-4.1L11 11H4V4l2.81 2.81A8.96 8.96 0 0 1 12 5z" fill="currentColor"></path>
             </svg>
           </button>
-          <button id="zipSlackItToMeBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="SLACK IT TO ME" aria-label="SLACK IT TO ME" disabled>
-            <span class="spectrum-Button-label">@ME</span>
+          <button id="zipSlackItToMeBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="SLACK TO ZIPTOOL PANEL" aria-label="SLACK TO ZIPTOOL PANEL" disabled>
+            <svg id="zipSlackPanelIcon" class="zip-logo-svg zip-slack-panel-icon" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
+              <circle class="zip-logo-aura" cx="64" cy="64" r="62"></circle>
+              <circle class="zip-logo-circle" cx="64" cy="64" r="56"></circle>
+              <circle class="zip-logo-gloss" cx="64" cy="64" r="56"></circle>
+              <circle class="zip-logo-ring" cx="64" cy="64" r="56"></circle>
+              <path class="zip-logo-z" d="M39 36H90L40 92H91"></path>
+            </svg>
           </button>
           <button id="zipExportCsvBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Export current table as csv" aria-label="Export current ticket table as csv" disabled>
             <span class="spectrum-Button-label">CSV</span>
@@ -250,14 +268,24 @@
       <button id="zipContextMenuThemeColorToggle" class="zip-context-menu-chip zip-context-menu-color-chip" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Open theme color picker">Blue</button>
     </div>
     <div class="zip-context-menu-divider" role="separator"></div>
-    <button id="zipContextMenuAskEric" class="zip-context-menu-item" type="button" role="menuitem">
+    <button id="zipContextMenuAskTeam" class="zip-context-menu-item" type="button" role="menuitem">
       <span class="zip-context-menu-item-icon" aria-hidden="true">
         <svg class="zip-context-menu-item-icon-svg" viewBox="0 0 20 20" focusable="false">
           <rect x="2.5" y="4.5" width="15" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
           <path d="M3 6l7 5 7-5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
         </svg>
       </span>
-      <span class="zip-context-menu-item-label">Ask Eric</span>
+      <span class="zip-context-menu-item-label">Ask the Team</span>
+    </button>
+    <button id="zipContextMenuSlackMe" class="zip-context-menu-item" type="button" role="menuitem">
+      <span class="zip-context-menu-item-icon" aria-hidden="true">
+        <svg class="zip-context-menu-item-icon-svg" viewBox="0 0 20 20" focusable="false">
+          <rect x="3" y="3" width="14" height="11" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.5"></rect>
+          <path d="M6 17l3.1-3h7.9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M6 7.5h8M6 10.5h6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+        </svg>
+      </span>
+      <span class="zip-context-menu-item-label">@SLACK ME</span>
     </button>
     <button id="zipContextMenuToggleSide" class="zip-context-menu-item" type="button" role="menuitem">
       <span class="zip-context-menu-item-icon" aria-hidden="true">
@@ -290,6 +318,53 @@
     </button>
   </div>
   <div id="zipContextMenuThemeFlyout" class="zip-context-menu-theme-flyout hidden" role="menu" aria-label="Spectrum 2 accent colors"></div>
+  <div id="zipSlackMeDialogBackdrop" class="zip-slack-me-dialog-backdrop hidden" aria-hidden="true">
+    <div id="zipSlackMeDialog" class="zip-slack-me-dialog" role="dialog" aria-modal="true" aria-label="@SLACK ME">
+      <div class="zip-slack-me-recipient-field">
+        <div class="zip-slack-me-recipient-chip">
+          <span class="zip-slack-me-recipient-avatar-wrap" aria-hidden="true">
+            <img id="zipSlackMeRecipientAvatar" class="zip-slack-me-recipient-avatar hidden" alt="" />
+            <span id="zipSlackMeRecipientAvatarFallback" class="zip-slack-me-recipient-avatar-fallback">?</span>
+          </span>
+          <span id="zipSlackMeRecipientLabel" class="zip-slack-me-recipient-label">you</span>
+          <button id="zipSlackMeCloseBtn" class="zip-slack-me-dialog-close" type="button" aria-label="Close Slack note dialog">&times;</button>
+        </div>
+      </div>
+      <label class="zip-visually-hidden" for="zipSlackMeInput">Slack message</label>
+      <div class="zip-slack-me-editor-shell">
+        <div class="zip-slack-me-toolbar" role="toolbar" aria-label="Format Slack note">
+          <button class="zip-slack-me-tool" type="button" data-slack-format="bold" aria-label="Bold"><strong>B</strong></button>
+          <button class="zip-slack-me-tool" type="button" data-slack-format="italic" aria-label="Italic"><em>I</em></button>
+          <button class="zip-slack-me-tool" type="button" data-slack-format="underline" aria-label="Underline"><span class="zip-slack-me-tool-under">U</span></button>
+          <button class="zip-slack-me-tool" type="button" data-slack-format="strike" aria-label="Strikethrough"><span class="zip-slack-me-tool-strike">S</span></button>
+          <span class="zip-slack-me-tool-sep" aria-hidden="true"></span>
+          <button class="zip-slack-me-tool" type="button" data-slack-format="link" aria-label="Insert link">&#128279;</button>
+          <button class="zip-slack-me-tool" type="button" data-slack-format="numbered" aria-label="Numbered list">1.</button>
+          <button class="zip-slack-me-tool" type="button" data-slack-format="bulleted" aria-label="Bulleted list">&#8226;</button>
+          <button class="zip-slack-me-tool" type="button" data-slack-format="quote" aria-label="Quote">&gt;</button>
+          <span class="zip-slack-me-tool-sep" aria-hidden="true"></span>
+          <button class="zip-slack-me-tool" type="button" data-slack-format="code" aria-label="Inline code">&lt;/&gt;</button>
+          <button class="zip-slack-me-tool" type="button" data-slack-format="codeblock" aria-label="Code block">{ }</button>
+        </div>
+        <textarea id="zipSlackMeInput" class="zip-slack-me-input spectrum-Textfield-input" rows="6" placeholder="Type your personal Slack note..."></textarea>
+        <div class="zip-slack-me-editor-footer">
+          <div class="zip-slack-me-utility-tools">
+            <button class="zip-slack-me-tool zip-slack-me-tool-utility" type="button" data-slack-format="plain" aria-label="Plain text">Aa</button>
+            <button class="zip-slack-me-tool zip-slack-me-tool-utility" type="button" data-slack-format="emoji" aria-label="Insert emoji">&#9786;</button>
+            <button class="zip-slack-me-tool zip-slack-me-tool-utility" type="button" data-slack-format="mention" aria-label="Mention">@</button>
+          </div>
+          <button id="zipSlackMeSendBtn" class="btn spectrum-Button spectrum-Button--fill spectrum-Button--accent spectrum-Button--sizeS" type="button">
+            <span class="spectrum-Button-label">SEND</span>
+          </button>
+        </div>
+      </div>
+      <div id="zipSlackMeStatus" class="zip-slack-me-status hidden" aria-live="polite"></div>
+      <span id="zipSlackMeSending" class="zip-slack-me-sending hidden" aria-live="polite">
+        <span class="inline-spinner" aria-hidden="true"></span>
+        <span>Sending…</span>
+      </span>
+    </div>
+  </div>
   <script src="paths.js"></script>
   <script src="theme-palette-data.js"></script>
   <script src="sidepanel-login-fallback.js"></script>
