@@ -223,10 +223,10 @@ test("theme palette v2 has 20 unique swatches with required fields", () => {
 test("theme palette v2 group ordering matches required hue flow", () => {
   const expectedOrder = [
     "azure-blue", "indigo", "violet",
-    "fuchsia", "magenta",
+    "pink", "fuchsia", "magenta",
     "petrus-red", "carmine",
     "pumpkin", "amber", "sunflower",
-    "chartreuse", "emerald", "teal", "turquoise", "cyan",
+    "chartreuse", "celery", "emerald", "cyan",
     "cinnamon", "bronze",
     "silver", "slate-gray", "charcoal"
   ];
@@ -234,6 +234,23 @@ test("theme palette v2 group ordering matches required hue flow", () => {
   const ordered = groups.flatMap((group) => (Array.isArray(group.colorIds) ? group.colorIds : []));
   assert.deepEqual(ordered, expectedOrder, "palette order must follow requested grouped flow");
   assert.equal(new Set(ordered).size, 20, "grouped order must include each swatch once");
+});
+
+test("theme palette legacy accent aliases do not remap active ids", () => {
+  const colorIds = new Set((Array.isArray(palette.colors) ? palette.colors : []).map((entry) => String(entry && entry.id || "").trim().toLowerCase()));
+  const legacyAccentMap = palette && palette.legacyAccentMap && typeof palette.legacyAccentMap === "object"
+    ? palette.legacyAccentMap
+    : {};
+  Object.entries(legacyAccentMap).forEach(([legacyIdRaw, targetIdRaw]) => {
+    const legacyId = String(legacyIdRaw || "").trim().toLowerCase();
+    const targetId = String(targetIdRaw || "").trim().toLowerCase();
+    if (!colorIds.has(legacyId)) return;
+    assert.equal(
+      targetId,
+      legacyId,
+      "legacyAccentMap must not remap active id " + legacyId + " to " + targetId
+    );
+  });
 });
 
 test("theme palette v2 has perceptual separation in Lab space", () => {

@@ -86,6 +86,7 @@
   const SLACK_IT_TO_ME_MAX_MESSAGE_CHARS = 36000;
   const ZIP_TOOL_BETA_ARTICLE_URL = "https://tve.zendesk.com/hc/en-us/articles/46503360732436-ZIP-TOOL-beta";
   const ZIP_TOOL_SIGNATURE_TEXT_SLUG = "// <" + ZIP_TOOL_BETA_ARTICLE_URL + "|via ZipTool>";
+  const ZIP_TOOL_SIGNATURE_ICON_SLUG = ":ziptool: <" + ZIP_TOOL_BETA_ARTICLE_URL + "|beta>";
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
   const DEFAULT_FOOTER_HINT = "Tip: Click your avatar for ZIP menu actions";
   const FOOTER_HINT_TOOLTIP = "Click your avatar to open the ZIP context menu.";
@@ -4281,7 +4282,7 @@
   function buildSlackMeNoteMarkdown(noteText) {
     const normalized = convertSlackMeDraftToMrkdwn(noteText || "");
     if (!normalized) return "";
-    return normalized;
+    return normalized + "\n\n" + ZIP_TOOL_SIGNATURE_ICON_SLUG;
   }
 
   function buildSlackItToMeMarkdown(rows) {
@@ -10698,26 +10699,6 @@
       els.slackMeInput.addEventListener("keydown", (event) => {
         if ((event.metaKey || event.ctrlKey) && !event.altKey) {
           const key = String(event.key || "").toLowerCase();
-          if (key === "b") {
-            event.preventDefault();
-            applySlackMeToolbarAction("bold");
-            return;
-          }
-          if (key === "i") {
-            event.preventDefault();
-            applySlackMeToolbarAction("italic");
-            return;
-          }
-          if (key === "u") {
-            event.preventDefault();
-            applySlackMeToolbarAction("underline");
-            return;
-          }
-          if (key === "s") {
-            event.preventDefault();
-            applySlackMeToolbarAction("strike");
-            return;
-          }
           if (key === "k") {
             event.preventDefault();
             applySlackMeToolbarAction("link");
