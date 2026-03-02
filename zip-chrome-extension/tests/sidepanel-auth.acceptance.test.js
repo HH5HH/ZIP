@@ -280,8 +280,14 @@ function createChromeHarness(options) {
       return calls.setInterval.length;
     },
     clearInterval() {},
-    fetch(url) {
-      calls.fetch.push(url);
+    fetch(url, init) {
+      const requestUrl = String(url || "");
+      calls.fetch.push(requestUrl);
+      if (options && typeof options.fetch === "function") {
+        const scripted = options.fetch({ url: requestUrl, init, calls, mutable });
+        if (scripted && typeof scripted.then === "function") return scripted;
+        if (scripted) return Promise.resolve(scripted);
+      }
       return Promise.resolve({
         ok: false,
         status: 401,
@@ -504,6 +510,66 @@ test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", 
   const stored = harness.storageDump();
   assert.equal(Object.prototype.hasOwnProperty.call(stored, "zip_slack_client_id"), false);
   assert.equal(stored.zip_slack_key_loaded, false);
+});
+
+test("ZIP_CONTEXT_MENU_ACTION getLatest opens commit-pinned ZIP URL when latest main SHA is available", async () => {
+  const latestSha = "0123456789abcdef0123456789abcdef01234567";
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    fetch: ({ url }) => {
+      if (url.includes("/zip-chrome-extension/manifest.json")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ version: "99.88.77" }),
+          text: async () => ""
+        });
+      }
+      if (url.includes("/git/ref/heads/main")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ object: { sha: latestSha } }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+        text: async () => ""
+      });
+    }
+  });
+  harness.resetCalls();
+
+  const response = await harness.sendRuntimeMessage({ type: "ZIP_CONTEXT_MENU_ACTION", action: "getLatest" });
+  assert.equal(response && response.ok, true);
+  assert.equal(String(response && response.latestCommitSha || ""), latestSha);
+  assert.equal(harness.calls.tabsCreate.length, 2, "download and chrome extensions tabs should both be opened");
+  const downloadUrl = String(harness.calls.tabsCreate[0] && harness.calls.tabsCreate[0].url || "");
+  assert.match(
+    downloadUrl,
+    new RegExp("/" + latestSha + "/zip-chrome-extension\\.zip\\?cacheBust=\\d+$")
+  );
+  assert.equal(downloadUrl.includes("/main/zip-chrome-extension.zip"), false, "download URL should not use branch-pinned path");
+  assert.equal(String(harness.calls.tabsCreate[1] && harness.calls.tabsCreate[1].url || ""), "chrome://extensions");
+});
+
+test("ZIP_CONTEXT_MENU_ACTION getLatest falls back to main ZIP URL with cache bust when SHA lookup fails", async () => {
+  const harness = createChromeHarness({ zendeskTabs: [] });
+  harness.resetCalls();
+
+  const response = await harness.sendRuntimeMessage({ type: "ZIP_CONTEXT_MENU_ACTION", action: "getLatest" });
+  assert.equal(response && response.ok, true);
+  assert.equal(String(response && response.latestCommitSha || ""), "");
+  assert.equal(harness.calls.tabsCreate.length, 2, "download and chrome extensions tabs should both be opened");
+  const downloadUrl = String(harness.calls.tabsCreate[0] && harness.calls.tabsCreate[0].url || "");
+  assert.match(
+    downloadUrl,
+    /\/main\/zip-chrome-extension\.zip\?cacheBust=\d+$/
+  );
+  assert.equal(String(harness.calls.tabsCreate[1] && harness.calls.tabsCreate[1].url || ""), "chrome://extensions");
 });
 
 test("automatic Slack token invalidation does not remove canonical ZIP.KEY token storage keys", () => {

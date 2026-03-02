@@ -73,6 +73,8 @@ const ASK_TEAM_EMAIL = "PrimetimeTAMs@adobe.com";
 const OUTLOOK_DEEPLINK_COMPOSE_URL = "https://outlook.office.com/mail/deeplink/compose";
 const GITHUB_OWNER = "HH5HH";
 const GITHUB_REPO = "ZIP";
+const ZIP_LATEST_REF_API_URL = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/git/ref/heads/main";
+const ZIP_LATEST_COMMIT_API_URL = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/commits/main";
 const ZIP_LATEST_MANIFEST_URL = "https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/main/zip-chrome-extension/manifest.json";
 const ZIP_LATEST_MANIFEST_API_URL = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/zip-chrome-extension/manifest.json?ref=main";
 const ZIP_LATEST_PACKAGE_URL = "https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/main/zip-chrome-extension.zip";
@@ -195,6 +197,7 @@ const contextMenuBuildState = {
 const updateState = {
   currentVersion: "",
   latestVersion: "",
+  latestCommitSha: "",
   updateAvailable: false,
   lastCheckedAt: 0,
   checkError: "",
@@ -981,10 +984,71 @@ async function fetchLatestZipVersion() {
   throw lastError || new Error("Latest version unavailable");
 }
 
+function normalizeCommitSha(value) {
+  const sha = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{40}$/.test(sha) ? sha : "";
+}
+
+function extractCommitShaFromRefPayload(payload) {
+  return normalizeCommitSha(payload && payload.object && payload.object.sha);
+}
+
+function extractCommitShaFromCommitPayload(payload) {
+  return normalizeCommitSha(payload && payload.sha);
+}
+
+async function fetchLatestZipCommitShaFromRefApi() {
+  const response = await fetch(ZIP_LATEST_REF_API_URL, { cache: "no-store" });
+  if (!response.ok) throw new Error("HTTP " + response.status);
+  const payload = await response.json();
+  const sha = extractCommitShaFromRefPayload(payload);
+  if (!sha) throw new Error("Git ref API commit SHA unavailable");
+  return sha;
+}
+
+async function fetchLatestZipCommitShaFromCommitApi() {
+  const response = await fetch(ZIP_LATEST_COMMIT_API_URL, { cache: "no-store" });
+  if (!response.ok) throw new Error("HTTP " + response.status);
+  const payload = await response.json();
+  const sha = extractCommitShaFromCommitPayload(payload);
+  if (!sha) throw new Error("Commit API SHA unavailable");
+  return sha;
+}
+
+async function fetchLatestZipCommitSha() {
+  let lastError = null;
+  const resolvers = [fetchLatestZipCommitShaFromRefApi, fetchLatestZipCommitShaFromCommitApi];
+  for (const resolveCommitSha of resolvers) {
+    try {
+      return await resolveCommitSha();
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("Latest commit SHA unavailable");
+}
+
+function withCacheBust(url) {
+  const value = "cacheBust=" + Date.now();
+  const text = String(url || "").trim();
+  if (!text) return "";
+  if (text.includes("?")) return text + "&" + value;
+  return text + "?" + value;
+}
+
+function buildLatestZipPackageUrl(commitSha) {
+  const normalizedSha = normalizeCommitSha(commitSha);
+  const baseUrl = normalizedSha
+    ? ("https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/" + normalizedSha + "/zip-chrome-extension.zip")
+    : ZIP_LATEST_PACKAGE_URL;
+  return withCacheBust(baseUrl);
+}
+
 function getUpdateStatePayload() {
   return {
     currentVersion: updateState.currentVersion || getZipBuildVersion(),
     latestVersion: updateState.latestVersion || "",
+    latestCommitSha: updateState.latestCommitSha || "",
     updateAvailable: !!updateState.updateAvailable,
     checkedAt: updateState.lastCheckedAt || 0,
     checkError: updateState.checkError || ""
@@ -1007,15 +1071,21 @@ async function refreshUpdateState(options = {}) {
 
   updateState.inFlight = (async () => {
     const prevLatestVersion = updateState.latestVersion;
+    const prevLatestCommitSha = updateState.latestCommitSha;
     const prevUpdateAvailable = !!updateState.updateAvailable;
     const prevCheckError = updateState.checkError;
     try {
-      const latestVersion = await fetchLatestZipVersion();
+      const [latestVersion, latestCommitSha] = await Promise.all([
+        fetchLatestZipVersion(),
+        fetchLatestZipCommitSha().catch(() => "")
+      ]);
       updateState.latestVersion = latestVersion;
+      updateState.latestCommitSha = normalizeCommitSha(latestCommitSha);
       updateState.updateAvailable = compareVersions(currentVersion, latestVersion) < 0;
       updateState.checkError = "";
     } catch (err) {
       updateState.latestVersion = "";
+      updateState.latestCommitSha = "";
       updateState.updateAvailable = false;
       updateState.checkError = err && err.message ? err.message : "Version check failed";
     } finally {
@@ -1025,6 +1095,7 @@ async function refreshUpdateState(options = {}) {
     const payload = getUpdateStatePayload();
     const changed = (
       prevLatestVersion !== updateState.latestVersion
+      || prevLatestCommitSha !== updateState.latestCommitSha
       || prevUpdateAvailable !== !!updateState.updateAvailable
       || prevCheckError !== updateState.checkError
     );
@@ -4188,15 +4259,18 @@ async function openAskTeamEmail(tab) {
 }
 
 async function openGetLatestFlow() {
+  await refreshUpdateState({ force: true }).catch(() => {});
+  const downloadUrl = buildLatestZipPackageUrl(updateState.latestCommitSha);
   const result = {
     ok: false,
-    downloadUrl: ZIP_LATEST_PACKAGE_URL,
+    downloadUrl,
     latestVersion: updateState.latestVersion || "",
+    latestCommitSha: updateState.latestCommitSha || "",
     downloadOpened: false,
     extensionsOpened: false
   };
   try {
-    await chrome.tabs.create({ url: ZIP_LATEST_PACKAGE_URL });
+    await chrome.tabs.create({ url: downloadUrl });
     result.downloadOpened = true;
   } catch (_) {}
   try {
