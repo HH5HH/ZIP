@@ -70,7 +70,7 @@ Example payload JSON:
     "slacktivation": {
       "client_id": "YOUR_CLIENT_ID",
       "client_secret": "YOUR_CLIENT_SECRET",
-      "user_token": "xoxp-REQUIRED_USER_TOKEN"
+      "user_token": "REQUIRED_USER_TOKEN"
     }
   }
 }
@@ -85,7 +85,7 @@ Minimal `KEY=VALUE` format (recommended) is also supported:
 ```ini
 slacktivation.client_id=YOUR_SLACK_OIDC_CLIENT_ID
 slacktivation.client_secret=YOUR_SLACK_OIDC_CLIENT_SECRET
-slacktivation.user_token=xoxp-YOUR_REQUIRED_USER_TOKEN
+slacktivation.user_token=YOUR_REQUIRED_USER_TOKEN
 ```
 
 Optional override keys are still supported if needed:
@@ -136,7 +136,8 @@ ZIP is now distributed as a pure Chrome Manifest V3 extension.
 Result: every ZIP code/content commit bumps patch version (`x.y.z` -> `x.y.(z+1)`) automatically.
 
 **Slack credential safety guardrails:**
-- Never commit `zip-chrome-extension/slack-runtime-config.local.js`, `zip-chrome-extension/slack-oidc.local.js`, or `zip-chrome-extension/ZIP.KEY`.
+- Never commit `zip-chrome-extension/ZIP.KEY` or any local Slack secret bootstrap file.
+- Legacy local-config packaging files were removed; ZIP.KEY import is the only supported secret delivery path.
 - Pre-commit hook blocks any commit that introduces real Slack token patterns (`xoxb-` / `xoxp-`) or non-empty Slack client secrets in git-tracked runtime config sources.
 - The same guard also scans tracked `zip-chrome-extension.zip` contents to prevent packaged secret leakage.
 
