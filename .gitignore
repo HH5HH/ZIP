@@ -1,6 +1,10 @@
 .DS_Store
 zeek-info-peek-master-brand-pack.zip
 zip-chrome-extension.zip
+zip-chrome-extension/slack-runtime-config.local.js
+zip-chrome-extension/slack-oidc.local.js
+zip-chrome-extension/ZIP.KEY
+zip-key-payload.json
 dist/
 node_modules/
 ZIP_TEAM_DISTRIBUTION_v*.zip

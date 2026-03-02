@@ -130,9 +130,15 @@ ZIP is now distributed as a pure Chrome Manifest V3 extension.
 
 - Hook: `.githooks/pre-commit`
 - Bump script: `scripts/auto_bump_manifest_version.sh`
+- Slack secret guard script: `scripts/guard_no_slack_secrets.sh`
 - One-time setup (already run in this repo): `scripts/install_git_hooks.sh`
 
 Result: every ZIP code/content commit bumps patch version (`x.y.z` -> `x.y.(z+1)`) automatically.
+
+**Slack credential safety guardrails:**
+- Never commit `zip-chrome-extension/slack-runtime-config.local.js`, `zip-chrome-extension/slack-oidc.local.js`, or `zip-chrome-extension/ZIP.KEY`.
+- Pre-commit hook blocks any commit that introduces real Slack token patterns (`xoxb-` / `xoxp-`) or non-empty Slack client secrets in git-tracked runtime config sources.
+- The same guard also scans tracked `zip-chrome-extension.zip` contents to prevent packaged secret leakage.
 
 ## Spectrum 2 MCP Power Tools
 
