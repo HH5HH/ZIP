@@ -169,6 +169,7 @@
     slackMeNoteLoading: false,
     slackMeNoteStatus: "",
     slackMeNoteStatusIsError: false,
+    slackMeDialogReturnFocusEl: null,
     zipConfigReady: false,
     zipConfigReason: "",
     zipConfigMissingFields: [],
@@ -2206,6 +2207,50 @@
     state.slackMeNoteStatusIsError = false;
   }
 
+  function isSlackMeDialogFocusCandidate(element) {
+    if (!(element instanceof HTMLElement)) return false;
+    if (!element.isConnected) return false;
+    if (element.classList && element.classList.contains("hidden")) return false;
+    if (element.closest && element.closest(".hidden")) return false;
+    if (element.getAttribute("aria-hidden") === "true") return false;
+    if (element.matches && element.matches(":disabled")) return false;
+    if (els.slackMeDialogBackdrop && els.slackMeDialogBackdrop.contains(element)) return false;
+    if (typeof element.getClientRects === "function" && element.getClientRects().length === 0) return false;
+    return typeof element.focus === "function";
+  }
+
+  function getSlackMeDialogReturnFocusTarget() {
+    const candidates = [
+      state.slackMeDialogReturnFocusEl,
+      els.slacktivatedBtn,
+      els.assignedTicketsLink,
+      els.loginBtn
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      const candidate = candidates[i];
+      if (isSlackMeDialogFocusCandidate(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  function moveFocusOutsideSlackMeDialog() {
+    if (!els.slackMeDialogBackdrop || typeof document === "undefined") return;
+    const activeElement = document.activeElement;
+    if (!(activeElement instanceof HTMLElement)) return;
+    if (!els.slackMeDialogBackdrop.contains(activeElement)) return;
+    const target = getSlackMeDialogReturnFocusTarget();
+    if (target) {
+      try {
+        target.focus({ preventScroll: true });
+      } catch (_) {
+        try { target.focus(); } catch (_) {}
+      }
+    }
+    if (els.slackMeDialogBackdrop.contains(document.activeElement)) {
+      try { activeElement.blur(); } catch (_) {}
+    }
+  }
+
   function hideSlackMeDialog(options) {
     const opts = options && typeof options === "object" ? options : {};
     const force = !!opts.force;
@@ -2213,8 +2258,10 @@
     const keepStatus = !!opts.keepStatus;
     if (state.slackMeNoteLoading && !force) return;
     if (!els.slackMeDialogBackdrop) return;
+    moveFocusOutsideSlackMeDialog();
     els.slackMeDialogBackdrop.classList.add("hidden");
     els.slackMeDialogBackdrop.setAttribute("aria-hidden", "true");
+    state.slackMeDialogReturnFocusEl = null;
     if (els.slackMeInput && !keepText) {
       els.slackMeInput.value = "";
     }
@@ -2502,6 +2549,7 @@
   }
 
   function openSlackMeDialog() {
+    const activeBeforeOpen = typeof document !== "undefined" ? document.activeElement : null;
     hideContextMenu();
     if (!state.user) return;
     if (!isPassAiSlacktivated()) {
@@ -2509,6 +2557,14 @@
       return;
     }
     if (!els.slackMeDialogBackdrop) return;
+    if (
+      activeBeforeOpen instanceof HTMLElement
+      && !els.slackMeDialogBackdrop.contains(activeBeforeOpen)
+    ) {
+      state.slackMeDialogReturnFocusEl = activeBeforeOpen;
+    } else {
+      state.slackMeDialogReturnFocusEl = null;
+    }
     state.slackMeNoteLoading = false;
     clearSlackMeDialogStatus();
     els.slackMeDialogBackdrop.classList.remove("hidden");
@@ -2519,6 +2575,7 @@
     syncSlackMeDialogUi();
     if (els.slackMeInput) {
       window.setTimeout(() => {
+        if (!isSlackMeDialogOpen() || !els.slackMeInput) return;
         try {
           els.slackMeInput.focus();
         } catch (_) {}
