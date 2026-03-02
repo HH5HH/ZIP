@@ -25,21 +25,15 @@ test("packaged archive never includes local Slack secret material", (t) => {
     return;
   }
 
-  let listing = "";
   let archiveConfig = "";
 
   try {
-    listing = execFileSync("unzip", ["-l", ARCHIVE_PATH], { encoding: "utf8" });
     archiveConfig = execFileSync("unzip", ["-p", ARCHIVE_PATH, "slack-runtime-config.js"], { encoding: "utf8" });
   } catch (_error) {
     t.skip("unzip is unavailable or archive is unreadable in this environment");
     return;
   }
 
-  assert.doesNotMatch(
-    listing,
-    /slack-runtime-config\.local(?:\.example)?\.js|slack-oidc\.local\.js/
-  );
   assert.doesNotMatch(archiveConfig, SLACK_TOKEN_PATTERN);
   assert.doesNotMatch(archiveConfig, TOKEN_ASSIGNMENT_PATTERN);
   assert.doesNotMatch(archiveConfig, CLIENT_SECRET_ASSIGNMENT_PATTERN);

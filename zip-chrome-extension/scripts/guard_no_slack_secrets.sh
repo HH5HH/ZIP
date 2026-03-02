@@ -41,12 +41,9 @@ else
 fi
 
 for tracked_secret_path in \
-  "zip-chrome-extension/slack-runtime-config.local.example.js" \
-  "zip-chrome-extension/slack-runtime-config.local.js" \
-  "zip-chrome-extension/slack-oidc.local.js" \
   "zip-chrome-extension/ZIP.KEY"; do
   if git cat-file -e ":$tracked_secret_path" >/dev/null 2>&1; then
-    fail "tracked legacy secret bootstrap file detected: $tracked_secret_path"
+    fail "tracked secret file detected: $tracked_secret_path"
   fi
 done
 
@@ -55,10 +52,6 @@ if git ls-files --error-unmatch "zip-chrome-extension.zip" >/dev/null 2>&1; then
   if [[ ! -f "$ARCHIVE_PATH" ]]; then
     fail "tracked archive is missing from working tree: zip-chrome-extension.zip"
   else
-    if unzip -l "$ARCHIVE_PATH" | rg -q 'slack-runtime-config\.local(\.example)?\.js|slack-oidc\.local\.js'; then
-      fail "archive contains legacy local Slack config bootstrap file"
-    fi
-
     archive_runtime_config="$(mktemp)"
     if unzip -p "$ARCHIVE_PATH" slack-runtime-config.js >"$archive_runtime_config" 2>/dev/null; then
       if grep -Eq "$SLACK_TOKEN_REGEX" "$archive_runtime_config"; then

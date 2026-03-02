@@ -41,8 +41,6 @@ OpenID behavior:
 - Without an explicit redirect URI, ZIP uses adobedx workspace-session SLACKTIVATION only (no OpenID redirect page).
 - Production build fallback: when running under extension ID `ibijkkpjfgaocgmpafbcckhhdkpbldoc`, ZIP defaults OpenID redirect URI to `https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-openid` and takes precedence over ZIP.KEY redirect URI overrides.
 
-Legacy `localStorage` Slack keys are migrated to `chrome.storage.local` and removed.
-
 ## ZIP.KEY Unlock Flow
 
 ZIP sidepanel now requires a one-time `ZIP.KEY` import before showing `Sign in with Zendesk`.
@@ -137,7 +135,7 @@ Result: every ZIP code/content commit bumps patch version (`x.y.z` -> `x.y.(z+1)
 
 **Slack credential safety guardrails:**
 - Never commit `zip-chrome-extension/ZIP.KEY` or any local Slack secret bootstrap file.
-- Legacy local-config packaging files were removed; ZIP.KEY import is the only supported secret delivery path.
+- Local-config packaging files were removed; ZIP.KEY import is the only supported secret delivery path.
 - Pre-commit hook blocks any commit that introduces real Slack token patterns (`xoxb-` / `xoxp-`) or non-empty Slack client secrets in git-tracked runtime config sources.
 - The same guard also scans tracked `zip-chrome-extension.zip` contents to prevent packaged secret leakage.
 

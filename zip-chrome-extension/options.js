@@ -210,10 +210,6 @@
       "slacktivation.clientId",
       "slacktivation.oidc.client_id",
       "slacktivation.oidc.clientId",
-      "slack.oidc.clientId",
-      "slackOidc.clientId",
-      "zip_slack_client_id",
-      "zip.passAi.slackOidc.clientId",
       "client_id",
       "clientId"
     ]);
@@ -226,10 +222,6 @@
       "slacktivation.clientSecret",
       "slacktivation.oidc.client_secret",
       "slacktivation.oidc.clientSecret",
-      "slack.oidc.clientSecret",
-      "slackOidc.clientSecret",
-      "zip_slack_client_secret",
-      "zip.passAi.slackOidc.clientSecret",
       "client_secret",
       "clientSecret"
     ]);
@@ -243,10 +235,6 @@
       "services.slacktivation.oidc.scope",
       "slacktivation.scope",
       "slacktivation.oidc.scope",
-      "slack.oidc.scope",
-      "slackOidc.scope",
-      "zip_slack_scope",
-      "zip.passAi.slackOidc.scope",
       "scope"
     ]));
     const redirectPath = normalizeRedirectPath(readZipKeyValue(payload, [
@@ -258,10 +246,6 @@
       "slacktivation.redirectPath",
       "slacktivation.oidc.redirect_path",
       "slacktivation.oidc.redirectPath",
-      "slack.oidc.redirectPath",
-      "slackOidc.redirectPath",
-      "zip_slack_redirect_path",
-      "zip.passAi.slackOidc.redirectPath",
       "redirectPath"
     ]));
     const redirectUri = normalizeRedirectUri(readZipKeyValue(payload, [
@@ -273,10 +257,6 @@
       "slacktivation.redirectUri",
       "slacktivation.oidc.redirect_uri",
       "slacktivation.oidc.redirectUri",
-      "slack.oidc.redirectUri",
-      "slackOidc.redirectUri",
-      "zip_slack_redirect_uri",
-      "zip.passAi.slackOidc.redirectUri",
       "redirect_uri",
       "redirectUri"
     ]));
@@ -289,10 +269,6 @@
       "slacktivation.botToken",
       "slacktivation.api.bot_token",
       "slacktivation.api.botToken",
-      "slack.api.botToken",
-      "slackApi.botToken",
-      "zip_slack_bot_token",
-      "zip.passAi.slackApi.botToken",
       "bot_token",
       "botToken"
     ]));
@@ -305,11 +281,6 @@
       "slacktivation.userToken",
       "slacktivation.api.user_token",
       "slacktivation.api.userToken",
-      "slack.api.userToken",
-      "slackApi.userToken",
-      "zip_slack_user_token",
-      "zip_slack_oauth_token",
-      "zip.passAi.slackApi.userToken",
       "oauth_token",
       "userToken"
     ]));
@@ -335,10 +306,7 @@
           "services.slacktivation.singularityChannelId",
           "slacktivation.singularity_channel_id",
           "slacktivation.singularityChannelId",
-          "slack.singularity.channelId",
           "singularity.channelId",
-          "zip_singularity_channel_id",
-          "zip.passAi.singularityChannelId",
           "channelId"
         ])),
         mention: normalizeMention(readZipKeyValue(payload, [
@@ -346,10 +314,7 @@
           "services.slacktivation.singularityMention",
           "slacktivation.singularity_mention",
           "slacktivation.singularityMention",
-          "slack.singularity.mention",
           "singularity.mention",
-          "zip_singularity_mention",
-          "zip.passAi.singularityMention",
           "mention"
         ]))
       },
