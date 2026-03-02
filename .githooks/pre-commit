@@ -4,6 +4,13 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
+ARCHIVE_GUARD_SCRIPT="$ROOT/scripts/scan_archives_for_secrets.sh"
+if [[ ! -f "$ARCHIVE_GUARD_SCRIPT" ]]; then
+  echo "pre-commit: missing archive secret scan script: $ARCHIVE_GUARD_SCRIPT" >&2
+  exit 1
+fi
+bash "$ARCHIVE_GUARD_SCRIPT" --staged
+
 SECRET_GUARD_SCRIPT="$ROOT/zip-chrome-extension/scripts/guard_no_slack_secrets.sh"
 if [[ ! -f "$SECRET_GUARD_SCRIPT" ]]; then
   echo "pre-commit: missing Slack secret guard script: $SECRET_GUARD_SCRIPT" >&2
