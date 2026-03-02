@@ -713,17 +713,6 @@ body.zip-busy-cursor * {
   opacity: 1;
 }
 
-#zipSlacktivatedBtn.is-network-loading::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  border: 2px solid transparent;
-  border-top-color: var(--fg-primary);
-  animation: zip-avatar-spin 0.7s linear infinite;
-  pointer-events: none;
-}
-
 .topbar .spectrum-Button,
 .topbar .zip-select-control,
 .topbar .spectrum-Textfield-input {
