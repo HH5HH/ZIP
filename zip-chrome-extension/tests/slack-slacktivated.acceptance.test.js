@@ -179,7 +179,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /setPassAiConversationInFlight\(true\);[\s\S]*requestPassAiConversation/);
   assert.match(js, /finally \{[\s\S]*setPassAiConversationInFlight\(false\);[\s\S]*setPassAiLoading\(false\);/);
   assert.match(js, /els\.topAvatarWrap\.classList\.toggle\("loading", zendeskLoading\)/);
-  assert.match(js, /els\.slacktivatedBtn\.classList\.toggle\("is-network-loading", showSlackSpinner\)/);
+  assert.doesNotMatch(js, /els\.slacktivatedBtn\.classList\.toggle\("is-network-loading", showSlackSpinner\)/);
   assert.doesNotMatch(js, /allowTabBootstrap/);
   assert.doesNotMatch(js, /ZIP_SLACK_OAUTH_SIGN_IN/);
   assert.doesNotMatch(js, /PASS_AI_SLACK_WORKSPACE_ORIGIN \+ \"\/signin\"/);
@@ -215,10 +215,9 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.doesNotMatch(js, /\*Visible Rows:\*/);
 });
 
-test("sidepanel styles include dedicated Slack avatar spinner class", () => {
+test("sidepanel styles avoid custom Slack header spinner overlay", () => {
   const css = fs.readFileSync(SIDEPANEL_CSS_PATH, "utf8");
-  assert.match(css, /#zipSlacktivatedBtn\.is-network-loading::after/);
-  assert.match(css, /animation:\s*zip-avatar-spin\s+0\.7s\s+linear\s+infinite/);
+  assert.doesNotMatch(css, /#zipSlacktivatedBtn\.is-network-loading::after/);
   assert.match(css, /\.zip-slack-me-dialog\s*\{[\s\S]*width:\s*min\(980px,\s*calc\(100vw\s*-\s*12px\)\);/);
   assert.match(css, /\.zip-slack-me-recipient-field\s*\{/);
   assert.match(css, /\.zip-slack-me-recipient-chip\s*\{/);

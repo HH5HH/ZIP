@@ -3443,9 +3443,8 @@
         : (els.topAvatarWrap.dataset.idleTitle || "Not logged in");
     }
     if (els.slacktivatedBtn) {
-      const showSlackSpinner = !!(state.user && slackLoading);
-      els.slacktivatedBtn.classList.toggle("is-network-loading", showSlackSpinner);
-      els.slacktivatedBtn.setAttribute("aria-busy", showSlackSpinner ? "true" : "false");
+      const showSlackBusy = !!(state.user && slackLoading);
+      els.slacktivatedBtn.setAttribute("aria-busy", showSlackBusy ? "true" : "false");
     }
     if (els.status) {
       const shouldShowLoading = isLoading && !els.status.classList.contains("error");
