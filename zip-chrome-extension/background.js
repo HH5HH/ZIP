@@ -24,8 +24,6 @@ const ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY = "zip_slack_client_secret";
 const ZIP_SLACK_SCOPE_STORAGE_KEY = "zip_slack_scope";
 const ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY = "zip_slack_redirect_path";
 const ZIP_SLACK_REDIRECT_URI_STORAGE_KEY = "zip_slack_redirect_uri";
-// Legacy cleanup only. Team pinning is no longer part of ZIP.KEY validation.
-const ZIP_SLACK_EXPECTED_TEAM_ID_STORAGE_KEY = "zip_slack_expected_team_id";
 const ZIP_SLACK_BOT_TOKEN_STORAGE_KEY = "zip_slack_bot_token";
 const ZIP_SLACK_USER_TOKEN_STORAGE_KEY = "zip_slack_user_token";
 const ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY = "zip_slack_oauth_token";
@@ -34,21 +32,6 @@ const ZIP_SLACK_KEY_META_STORAGE_KEY = "zip_slack_key_meta";
 const ZIP_SLACK_SESSION_CACHE_STORAGE_KEY = "zip_slack_session_cache_v1";
 const ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY = "zip_singularity_channel_id";
 const ZIP_SINGULARITY_MENTION_STORAGE_KEY = "zip_singularity_mention";
-const ZIP_MIGRATION_V1_DONE_STORAGE_KEY = "zip_migration_v1_done";
-const ZIP_MIGRATION_V1_REPORT_STORAGE_KEY = "zip_migration_v1_report";
-const SLACK_OIDC_CLIENT_ID_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.clientId";
-const SLACK_OIDC_CLIENT_SECRET_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.clientSecret";
-const SLACK_OIDC_SCOPE_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.scope";
-const SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.redirectPath";
-const SLACK_OIDC_REDIRECT_URI_LEGACY_STORAGE_KEY = "zip.passAi.slackOidc.redirectUri";
-const SLACK_EXPECTED_TEAM_LEGACY_STORAGE_KEY = "zip.passAi.expectedSlackTeamId";
-const SLACK_API_BOT_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.botToken";
-const SLACK_API_USER_TOKEN_STORAGE_KEY = "zip.passAi.slackApi.userToken";
-const SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY = "zip.passAi.slackBotToken";
-const SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY = "zip.passAi.slackUserToken";
-const SLACK_SINGULARITY_CHANNEL_LEGACY_STORAGE_KEY = "zip.passAi.singularityChannelId";
-const SLACK_SINGULARITY_MENTION_LEGACY_STORAGE_KEY = "zip.passAi.singularityMention";
-const ZIP_CONFIG_META_LEGACY_STORAGE_KEY = "zip.config.meta.v1";
 // Runtime-config / storage values should populate tokens. Do not hardcode live tokens in source.
 const SLACK_API_DEFAULT_BOT_TOKEN = "";
 const SLACK_API_SECONDARY_BOT_TOKEN = "";
@@ -106,30 +89,12 @@ const ZIP_REQUIRED_SECRET_KEYS = [
   ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY,
   ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY
 ];
-const ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS = [
-  SLACK_OIDC_CLIENT_ID_LEGACY_STORAGE_KEY,
-  SLACK_OIDC_CLIENT_SECRET_LEGACY_STORAGE_KEY,
-  SLACK_OIDC_SCOPE_LEGACY_STORAGE_KEY,
-  SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY,
-  SLACK_OIDC_REDIRECT_URI_LEGACY_STORAGE_KEY,
-  SLACK_EXPECTED_TEAM_LEGACY_STORAGE_KEY,
-  SLACK_API_BOT_TOKEN_STORAGE_KEY,
-  SLACK_API_USER_TOKEN_STORAGE_KEY,
-  SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY,
-  SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY,
-  SLACK_SINGULARITY_CHANNEL_LEGACY_STORAGE_KEY,
-  SLACK_SINGULARITY_MENTION_LEGACY_STORAGE_KEY,
-  "slack_client_id",
-  "slack_client_secret",
-  "slack_token"
-];
 const ZIP_SLACK_STORAGE_KEYS = [
   ZIP_SLACK_CLIENT_ID_STORAGE_KEY,
   ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY,
   ZIP_SLACK_SCOPE_STORAGE_KEY,
   ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY,
   ZIP_SLACK_REDIRECT_URI_STORAGE_KEY,
-  ZIP_SLACK_EXPECTED_TEAM_ID_STORAGE_KEY,
   ZIP_SLACK_BOT_TOKEN_STORAGE_KEY,
   ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
   ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
@@ -138,21 +103,6 @@ const ZIP_SLACK_STORAGE_KEYS = [
   ZIP_SLACK_SESSION_CACHE_STORAGE_KEY,
   ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY,
   ZIP_SINGULARITY_MENTION_STORAGE_KEY
-];
-const ZIP_SLACK_LEGACY_STORAGE_KEYS = [
-  SLACK_OIDC_CLIENT_ID_LEGACY_STORAGE_KEY,
-  SLACK_OIDC_CLIENT_SECRET_LEGACY_STORAGE_KEY,
-  SLACK_OIDC_SCOPE_LEGACY_STORAGE_KEY,
-  SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY,
-  SLACK_OIDC_REDIRECT_URI_LEGACY_STORAGE_KEY,
-  SLACK_EXPECTED_TEAM_LEGACY_STORAGE_KEY,
-  SLACK_API_BOT_TOKEN_STORAGE_KEY,
-  SLACK_API_USER_TOKEN_STORAGE_KEY,
-  SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY,
-  SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY,
-  SLACK_SINGULARITY_CHANNEL_LEGACY_STORAGE_KEY,
-  SLACK_SINGULARITY_MENTION_LEGACY_STORAGE_KEY,
-  ZIP_CONFIG_META_LEGACY_STORAGE_KEY
 ];
 const THEME_PALETTE_DATA = (
   typeof globalThis !== "undefined"
@@ -2211,10 +2161,7 @@ function normalizeZipSecretConfig(input) {
     || slacktivationOidcSource.client_id
     || slacktivationOidcSource.clientId
     || oidcSource.clientId
-    || source.zip_slack_client_id
     || source[ZIP_SLACK_CLIENT_ID_STORAGE_KEY]
-    || source[SLACK_OIDC_CLIENT_ID_LEGACY_STORAGE_KEY]
-    || source.slack_client_id
     || source.client_id
     || ""
   ).trim();
@@ -2225,10 +2172,7 @@ function normalizeZipSecretConfig(input) {
     || slacktivationOidcSource.client_secret
     || slacktivationOidcSource.clientSecret
     || oidcSource.clientSecret
-    || source.zip_slack_client_secret
     || source[ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY]
-    || source[SLACK_OIDC_CLIENT_SECRET_LEGACY_STORAGE_KEY]
-    || source.slack_client_secret
     || source.client_secret
     || ""
   ).trim();
@@ -2237,9 +2181,7 @@ function normalizeZipSecretConfig(input) {
     || slacktivationSource.scope
     || slacktivationOidcSource.scope
     || oidcSource.scope
-    || source.zip_slack_scope
     || source[ZIP_SLACK_SCOPE_STORAGE_KEY]
-    || source[SLACK_OIDC_SCOPE_LEGACY_STORAGE_KEY]
     || ""
   );
   const redirectPath = normalizeZipRedirectPath(
@@ -2249,9 +2191,7 @@ function normalizeZipSecretConfig(input) {
     || slacktivationOidcSource.redirect_path
     || slacktivationOidcSource.redirectPath
     || oidcSource.redirectPath
-    || source.zip_slack_redirect_path
     || source[ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY]
-    || source[SLACK_OIDC_REDIRECT_PATH_LEGACY_STORAGE_KEY]
     || ""
   );
   const redirectUri = normalizeSlackOpenIdRedirectUri(
@@ -2263,9 +2203,7 @@ function normalizeZipSecretConfig(input) {
     || slacktivationOidcSource.redirectUri
     || oidcSource.redirect_uri
     || oidcSource.redirectUri
-    || source.zip_slack_redirect_uri
     || source[ZIP_SLACK_REDIRECT_URI_STORAGE_KEY]
-    || source[SLACK_OIDC_REDIRECT_URI_LEGACY_STORAGE_KEY]
     || ""
   );
   const botToken = normalizeSlackApiToken(
@@ -2275,10 +2213,7 @@ function normalizeZipSecretConfig(input) {
     || slacktivationApiSource.bot_token
     || slacktivationApiSource.botToken
     || apiSource.botToken
-    || source.zip_slack_bot_token
     || source[ZIP_SLACK_BOT_TOKEN_STORAGE_KEY]
-    || source[SLACK_API_BOT_TOKEN_STORAGE_KEY]
-    || source[SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY]
     || source.bot_token
     || ""
   );
@@ -2289,10 +2224,7 @@ function normalizeZipSecretConfig(input) {
     || slacktivationApiSource.user_token
     || slacktivationApiSource.userToken
     || apiSource.userToken
-    || source.zip_slack_user_token
     || source[ZIP_SLACK_USER_TOKEN_STORAGE_KEY]
-    || source[SLACK_API_USER_TOKEN_STORAGE_KEY]
-    || source[SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY]
     || source.user_token
     || ""
   );
@@ -2306,9 +2238,7 @@ function normalizeZipSecretConfig(input) {
     || slacktivationApiSource.userToken
     || apiSource.oauthToken
     || apiSource.userToken
-    || source.zip_slack_oauth_token
     || source[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY]
-    || source.slack_token
     || source.oauth_token
     || userToken
     || ""
@@ -2318,9 +2248,7 @@ function normalizeZipSecretConfig(input) {
     || slacktivationSource.singularity_channel_id
     || slacktivationSource.singularityChannelId
     || singularitySource.channelId
-    || source.zip_singularity_channel_id
     || source[ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY]
-    || source[SLACK_SINGULARITY_CHANNEL_LEGACY_STORAGE_KEY]
     || source.singularity_channel_id
     || ""
   );
@@ -2329,9 +2257,7 @@ function normalizeZipSecretConfig(input) {
     || slacktivationSource.singularity_mention
     || slacktivationSource.singularityMention
     || singularitySource.mention
-    || source.zip_singularity_mention
     || source[ZIP_SINGULARITY_MENTION_STORAGE_KEY]
-    || source[SLACK_SINGULARITY_MENTION_LEGACY_STORAGE_KEY]
     || source.singularity_mention
     || ""
   );
@@ -2403,15 +2329,6 @@ async function readZipSecretsStatus() {
   return computeZipSecretsStatus(stored);
 }
 
-function hasStorageValue(value) {
-  if (value == null) return false;
-  if (typeof value === "string") return !!value.trim();
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value === "boolean") return value;
-  if (typeof value === "object") return Object.keys(value).length > 0;
-  return false;
-}
-
 async function storeZipSecrets(input, options) {
   const normalized = normalizeZipSecretConfig(input);
   const opts = options && typeof options === "object" ? options : {};
@@ -2428,7 +2345,6 @@ async function storeZipSecrets(input, options) {
   setOrRemove(ZIP_SLACK_SCOPE_STORAGE_KEY, normalized.scope);
   setOrRemove(ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY, normalized.redirectPath);
   setOrRemove(ZIP_SLACK_REDIRECT_URI_STORAGE_KEY, normalized.redirectUri);
-  removals.push(ZIP_SLACK_EXPECTED_TEAM_ID_STORAGE_KEY);
   setOrRemove(ZIP_SLACK_BOT_TOKEN_STORAGE_KEY, normalized.botToken);
   setOrRemove(ZIP_SLACK_USER_TOKEN_STORAGE_KEY, normalized.userToken);
   setOrRemove(ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY, normalized.oauthToken);
@@ -2438,7 +2354,7 @@ async function storeZipSecrets(input, options) {
   updates[ZIP_SLACK_KEY_LOADED_STORAGE_KEY] = normalized.keyLoaded;
 
   await setStorageLocal(updates);
-  await removeStorageLocal(removals.concat(ZIP_SLACK_LEGACY_STORAGE_KEYS));
+  await removeStorageLocal(removals);
   if (opts.clearOpenIdSession !== false) {
     await clearSlackOpenIdSession();
   }
@@ -2455,7 +2371,6 @@ async function clearZipSecrets() {
   await removeStorageLocal(
     ZIP_SLACK_STORAGE_KEYS
       .filter((key) => key !== ZIP_SLACK_KEY_LOADED_STORAGE_KEY)
-      .concat(ZIP_SLACK_LEGACY_STORAGE_KEYS)
       .concat([SLACK_OPENID_SESSION_STORAGE_KEY])
   );
   await setStorageLocal({ [ZIP_SLACK_KEY_LOADED_STORAGE_KEY]: false });
@@ -2469,80 +2384,6 @@ async function clearZipSecrets() {
     cleared: true,
     loaded: false,
     missing: ZIP_REQUIRED_SECRET_KEYS.slice()
-  };
-}
-
-async function runChromeStorageLegacyMigration() {
-  const keys = ZIP_SLACK_STORAGE_KEYS.concat(ZIP_SLACK_LEGACY_STORAGE_KEYS);
-  const stored = await readStorageLocal(keys);
-  const hasLegacyValues = ZIP_SLACK_LEGACY_STORAGE_KEYS.some((key) => hasStorageValue(stored && stored[key]));
-  const statusBefore = computeZipSecretsStatus(stored);
-  if (!hasLegacyValues && statusBefore.ok) {
-    return statusBefore;
-  }
-
-  const normalized = normalizeZipSecretConfig(stored);
-  if (hasLegacyValues || normalized.keyLoaded) {
-    await storeZipSecrets(normalized, { clearOpenIdSession: false });
-  }
-  return readZipSecretsStatus();
-}
-
-async function runLocalStorageMigration(input) {
-  const doneState = await readStorageLocal(ZIP_MIGRATION_V1_DONE_STORAGE_KEY);
-  const done = !!(doneState && doneState[ZIP_MIGRATION_V1_DONE_STORAGE_KEY]);
-  if (done) {
-    const status = await readZipSecretsStatus();
-    const normalizedWhenDone = normalizeZipSecretConfig(input);
-    const hasPayloadValues = !!(
-      normalizedWhenDone.clientId
-      || normalizedWhenDone.clientSecret
-      || normalizedWhenDone.botToken
-      || normalizedWhenDone.userToken
-      || normalizedWhenDone.oauthToken
-      || normalizedWhenDone.singularityChannelId
-      || normalizedWhenDone.singularityMention
-    );
-    if (status.ok || !hasPayloadValues) {
-      return {
-        ok: true,
-        skipped: true,
-        migrated: false,
-        status,
-        clearLocalStorageKeys: ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS.slice()
-      };
-    }
-  }
-
-  const normalized = normalizeZipSecretConfig(input);
-  const hasLegacyValues = !!(
-    normalized.clientId
-    || normalized.clientSecret
-    || normalized.botToken
-    || normalized.userToken
-    || normalized.oauthToken
-    || normalized.singularityChannelId
-    || normalized.singularityMention
-  );
-  if (hasLegacyValues) {
-    await storeZipSecrets(normalized, { clearOpenIdSession: false });
-  }
-  const status = await readZipSecretsStatus();
-  await setStorageLocal({
-    [ZIP_MIGRATION_V1_DONE_STORAGE_KEY]: true,
-    [ZIP_MIGRATION_V1_REPORT_STORAGE_KEY]: {
-      migrated: hasLegacyValues,
-      completedAt: nowIso(),
-      loaded: !!status.ok,
-      missing: Array.isArray(status.missing) ? status.missing.slice() : []
-    }
-  });
-
-  return {
-    ok: true,
-    migrated: hasLegacyValues,
-    status,
-    clearLocalStorageKeys: ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS.slice()
   };
 }
 
@@ -2627,24 +2468,16 @@ async function readStoredSlackApiTokens() {
     const stored = await chrome.storage.local.get([
       ZIP_SLACK_BOT_TOKEN_STORAGE_KEY,
       ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
-      ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
-      SLACK_API_BOT_TOKEN_STORAGE_KEY,
-      SLACK_API_USER_TOKEN_STORAGE_KEY,
-      SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY,
-      SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY
+      ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY
     ]);
     const botCandidates = uniq([
       stored && stored[ZIP_SLACK_BOT_TOKEN_STORAGE_KEY],
-      stored && stored[SLACK_API_BOT_TOKEN_STORAGE_KEY],
-      stored && stored[SLACK_API_LEGACY_BOT_TOKEN_STORAGE_KEY],
       SLACK_API_DEFAULT_BOT_TOKEN,
       SLACK_API_SECONDARY_BOT_TOKEN
     ]);
     const userCandidates = uniq([
       stored && stored[ZIP_SLACK_USER_TOKEN_STORAGE_KEY],
       stored && stored[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY],
-      stored && stored[SLACK_API_USER_TOKEN_STORAGE_KEY],
-      stored && stored[SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY],
       SLACK_API_DEFAULT_USER_TOKEN
     ]);
     return {
@@ -2707,30 +2540,8 @@ function isSlackTokenInvalidationCode(code) {
 }
 
 async function invalidateStoredSlackToken(token) {
-  const normalized = normalizeSlackApiToken(token);
-  if (!normalized) return;
-  if (!chrome.storage || !chrome.storage.local || typeof chrome.storage.local.get !== "function") return;
-  try {
-    // Do not mutate canonical ZIP.KEY-managed secrets automatically.
-    // Automatic invalidation is restricted to legacy mirrored token keys so
-    // transient/remote auth issues cannot silently clear ZIP.KEY requirements.
-    const keys = [
-      SLACK_API_USER_TOKEN_STORAGE_KEY,
-      SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY
-    ];
-    const stored = await chrome.storage.local.get(keys);
-    const toRemove = [];
-    for (let i = 0; i < keys.length; i += 1) {
-      const key = keys[i];
-      const value = normalizeSlackApiToken(stored && stored[key]);
-      if (value && value === normalized) {
-        toRemove.push(key);
-      }
-    }
-    if (toRemove.length && typeof chrome.storage.local.remove === "function") {
-      await chrome.storage.local.remove(toRemove);
-    }
-  } catch (_) {}
+  void token;
+  // ZIP.KEY values are never auto-removed from storage by token invalidation paths.
 }
 
 async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
@@ -4562,7 +4373,6 @@ async function getSidePanelContext() {
 }
 
 async function bootstrap() {
-  await runChromeStorageLegacyMigration().catch(() => {});
   await configureSidePanelDefaults();
   await refreshLayoutState();
   await syncAllTabOptions();
@@ -4694,16 +4504,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         ok: false,
         loaded: false,
         error: err && err.message ? err.message : "Unable to import ZIP.KEY payload."
-      }));
-    return true;
-  }
-  if (msg.type === "ZIP_RUN_LOCALSTORAGE_MIGRATION") {
-    runLocalStorageMigration(msg && msg.legacy && typeof msg.legacy === "object" ? msg.legacy : {})
-      .then((status) => sendResponse(status))
-      .catch((err) => sendResponse({
-        ok: false,
-        error: err && err.message ? err.message : "LocalStorage migration failed.",
-        clearLocalStorageKeys: ZIP_LOCALSTORAGE_MIGRATION_SOURCE_KEYS.slice()
       }));
     return true;
   }

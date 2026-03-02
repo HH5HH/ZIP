@@ -63,7 +63,6 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(html, /id="zipSlackPanelIcon"/);
   assert.match(html, /id="zipSlackItToMeBtn"[\s\S]*title="SLACK TO ZIPTOOL PANEL"/);
   assert.match(html, /<script src="slack-runtime-config\.js"><\/script>/);
-  assert.doesNotMatch(html, /slack-oidc\.local\.js/);
   assert.match(html, /id="zipTogglePassAiBtn"[^>]*class="[^"]*\bhidden\b[^"]*"/);
   assert.doesNotMatch(html, /id="zipSlackItToMeBtn"[^>]*class="[^"]*\bhidden\b[^"]*"/);
   assert.doesNotMatch(html, /id="zipSlackLoginBtn"/);
@@ -111,13 +110,8 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /getSlackTabCandidates\(\{\s*injectableOnly: true,\s*includeBackground: true,\s*workspaceOrigin\s*\}\)\.catch/);
   assert.match(js, /if \(!candidateIds\.length && String\(inner && inner\.action \|\| ""\) === "slackAuthTest"\)\s*\{/);
   assert.match(js, /function buildPassAiSlackWorkspaceLandingUrl\(\)\s*\{[\s\S]*PASS_AI_SLACK_WORKSPACE_ORIGIN \+ \"\/\"/);
-  assert.match(js, /const PASS_AI_SLACK_OIDC_CLIENT_ID_STORAGE_KEY = "zip\.passAi\.slackOidc\.clientId";/);
-  assert.match(js, /const PASS_AI_SLACK_OIDC_CLIENT_SECRET_STORAGE_KEY = "zip\.passAi\.slackOidc\.clientSecret";/);
   assert.match(js, /const PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH = "slack-user";/);
-  assert.match(js, /const PASS_AI_SLACK_OIDC_REDIRECT_URI_STORAGE_KEY = "zip\.passAi\.slackOidc\.redirectUri";/);
   assert.match(js, /const ZIP_SLACK_REDIRECT_URI_STORAGE_KEY = "zip_slack_redirect_uri";/);
-  assert.match(js, /const PASS_AI_SLACK_API_BOT_TOKEN_STORAGE_KEY = "zip\.passAi\.slackApi\.botToken";/);
-  assert.match(js, /const PASS_AI_SLACK_API_USER_TOKEN_STORAGE_KEY = "zip\.passAi\.slackApi\.userToken";/);
   assert.match(js, /function isAllowedSlackWorkspaceHost\(host, workspaceHost\)/);
   assert.match(js, /function normalizePassAiSlackAvatarUrl\(value\)/);
   assert.match(js, /function normalizePassAiSlackStatusMessage\(value\)/);
@@ -295,7 +289,6 @@ test("background removes legacy Slack OAuth and popup-login handlers", () => {
   assert.match(source, /msg\.type === "ZIP_CLEAR_KEY"/);
   assert.match(source, /msg\.type === "ZIP_IMPORT_KEY_PAYLOAD"/);
   assert.match(source, /type:\s*"ZIP_KEY_CLEARED"/);
-  assert.match(source, /msg\.type === "ZIP_RUN_LOCALSTORAGE_MIGRATION"/);
   assert.match(source, /action === "clearZipKey"/);
   assert.match(source, /id:\s*MENU_CLEAR_KEY_SEPARATOR,[\s\S]*type:\s*"separator"[\s\S]*id:\s*MENU_CLEAR_KEY/);
   assert.match(source, /const SLACK_OPENID_DEFAULT_REDIRECT_PATH = "slack-user";/);

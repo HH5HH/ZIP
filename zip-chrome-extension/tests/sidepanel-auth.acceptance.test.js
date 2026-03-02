@@ -415,7 +415,7 @@ test("ZIP_REQUEST retries after injecting Zendesk content script when receiver i
   assert.equal(harness.calls.tabsSendMessage.length, 2, "request should retry exactly once");
 });
 
-test("legacy idle storage never blocks session checks", async () => {
+test("idle storage never blocks session checks", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],
     storageSeed: { "zip.auth.idle.v1": true }
@@ -479,33 +479,6 @@ test("ZIP_CHECK_SECRETS reports missing state until ZIP_IMPORT_KEY_PAYLOAD succe
   assert.equal(afterClear.zip_slack_key_loaded, false);
 });
 
-test("ZIP_RUN_LOCALSTORAGE_MIGRATION maps legacy keys to canonical chrome.storage.local keys", async () => {
-  const harness = createChromeHarness({ zendeskTabs: [] });
-  harness.resetCalls();
-
-  const migrated = await harness.sendRuntimeMessage({
-    type: "ZIP_RUN_LOCALSTORAGE_MIGRATION",
-    legacy: {
-      "zip.passAi.slackOidc.clientId": "legacy-client-id",
-      "zip.passAi.slackOidc.clientSecret": "legacy-client-secret",
-      "zip.passAi.slackOidc.scope": "openid profile email",
-      "zip.passAi.slackOidc.redirectPath": "slack-user",
-      "zip.passAi.expectedSlackTeamId": "TLEGACY1234",
-      "zip.passAi.slackApi.userToken": "SLK_TEST_LEGACY_USER_TOKEN",
-      "zip.passAi.singularityMention": "@Singularity"
-    }
-  });
-  assert.equal(migrated && migrated.ok, true);
-  assert.equal(migrated && migrated.migrated, true);
-  assert.equal(Array.isArray(migrated && migrated.clearLocalStorageKeys), true);
-
-  const stored = harness.storageDump();
-  assert.equal(String(stored.zip_slack_client_id || ""), "legacy-client-id");
-  assert.equal(String(stored.zip_slack_client_secret || ""), "legacy-client-secret");
-  assert.equal(stored.zip_slack_key_loaded, true);
-  assert.equal(stored.zip_migration_v1_done, true);
-});
-
 test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", async () => {
   const harness = createChromeHarness({ zendeskTabs: [] });
   harness.resetCalls();
@@ -538,8 +511,8 @@ test("automatic Slack token invalidation does not remove canonical ZIP.KEY token
   const fnMatch = source.match(/async function invalidateStoredSlackToken\(token\)\s*\{[\s\S]*?\n\}/);
   assert.ok(fnMatch, "invalidateStoredSlackToken function not found");
   const body = fnMatch[0];
-  assert.match(body, /SLACK_API_USER_TOKEN_STORAGE_KEY/);
-  assert.match(body, /SLACK_API_LEGACY_USER_TOKEN_STORAGE_KEY/);
+  assert.match(body, /ZIP\.KEY values are never auto-removed/);
+  assert.doesNotMatch(body, /zip\.passAi/);
   assert.doesNotMatch(body, /ZIP_SLACK_USER_TOKEN_STORAGE_KEY/);
   assert.doesNotMatch(body, /ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY/);
 });
