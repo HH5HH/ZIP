@@ -1,0 +1,22 @@
+title = "ZIP Secret Scan Config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "ZIP test fixtures and documentation with placeholder token strings"
+paths = [
+  '''zip-chrome-extension/tests/.*''',
+  '''zip-chrome-extension/README\.md''',
+  '''zip-chrome-extension/ZIP\.KEY\.template''',
+  '''zip-chrome-extension/slack-runtime-config\.local\.example\.js'''
+]
+
+[[allowlists]]
+description = "ZIP placeholder token strings"
+regexes = [
+  '''xoxp-(?:test|legacy|menu|mock)-[A-Za-z0-9-]+''',
+  '''xoxp-(?:REQUIRED_USER_TOKEN|YOUR_REQUIRED_USER_TOKEN|REPLACE_WITH_REQUIRED_USER_TOKEN)''',
+  '''xoxb-(?:test|mock|placeholder)-[A-Za-z0-9-]+''',
+  '''YOUR_CLIENT_(?:ID|SECRET)'''
+]
