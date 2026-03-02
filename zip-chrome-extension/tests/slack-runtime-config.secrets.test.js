@@ -36,7 +36,10 @@ test("packaged archive never includes local Slack secret material", (t) => {
     return;
   }
 
-  assert.doesNotMatch(listing, /slack-runtime-config\.local\.js|slack-oidc\.local\.js/);
+  assert.doesNotMatch(
+    listing,
+    /slack-runtime-config\.local(?:\.example)?\.js|slack-oidc\.local\.js/
+  );
   assert.doesNotMatch(archiveConfig, SLACK_TOKEN_PATTERN);
   assert.doesNotMatch(archiveConfig, TOKEN_ASSIGNMENT_PATTERN);
   assert.doesNotMatch(archiveConfig, CLIENT_SECRET_ASSIGNMENT_PATTERN);
