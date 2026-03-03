@@ -60,6 +60,8 @@
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
   const DEFAULT_FOOTER_HINT = "Tip: Click your avatar for ZIP menu actions";
   const FOOTER_HINT_TOOLTIP = "Click your avatar to open the ZIP context menu.";
+  const TICKET_API_SEARCH_MAX_RESULTS = 20;
+  const TICKET_API_SEARCH_LABEL_MAX_LENGTH = 42;
 
   const TICKET_COLUMNS = [
     { key: "id", label: "Ticket", type: "number" },
@@ -103,6 +105,7 @@
     selectedOrgId: "",
     selectedViewId: "",
     selectedByGroupValue: "",
+    ticketApiSearchQuery: "",
     selectedTicketId: null,
     groupsWithMembers: [],
     groupOptions: [],
@@ -790,6 +793,8 @@
     passAiAnswerBlock: $("zipPassAiAnswerBlock"),
     passAiAnswerPlaceholder: $("zipPassAiAnswerPlaceholder"),
     passAiDynamicReplyHost: $("zipPassAiDynamicReplyHost"),
+    ticketApiSearchInput: $("zipTicketApiSearch"),
+    ticketApiSearchBtn: $("zipTicketApiSearchBtn"),
     ticketSearch: $("zipTicketSearch"),
     statusFilter: $("zipStatusFilter"),
     reloadTicketsBtn: $("zipReloadTicketsBtn"),
@@ -3521,6 +3526,13 @@
         ? "Zendesk activity in progress…"
         : (els.topAvatarWrap.dataset.idleTitle || "Not logged in");
     }
+    if (els.ticketApiSearchInput) {
+      els.ticketApiSearchInput.disabled = !state.user || zendeskLoading;
+      els.ticketApiSearchInput.setAttribute("aria-busy", zendeskLoading ? "true" : "false");
+    }
+    if (els.ticketApiSearchBtn) {
+      els.ticketApiSearchBtn.disabled = !state.user || zendeskLoading;
+    }
     if (els.slacktivatedBtn) {
       const showSlackBusy = !!(state.user && slackLoading);
       els.slacktivatedBtn.setAttribute("aria-busy", showSlackBusy ? "true" : "false");
@@ -4033,6 +4045,27 @@
     return String(selectEl.selectedOptions[0].textContent || "").trim();
   }
 
+  function normalizeTicketApiSearchQuery(value) {
+    return String(value == null ? "" : value).replace(/\s+/g, " ").trim();
+  }
+
+  function getTicketApiSearchSourceLabel() {
+    const query = normalizeTicketApiSearchQuery(state.ticketApiSearchQuery);
+    if (!query) return "Ticket Search";
+    const max = Number(TICKET_API_SEARCH_LABEL_MAX_LENGTH);
+    const limit = Number.isFinite(max) && max > 6 ? Math.trunc(max) : 42;
+    const truncated = query.length > limit
+      ? (query.slice(0, Math.max(6, limit - 1)).trimEnd() + "…")
+      : query;
+    return "Ticket Search: " + truncated;
+  }
+
+  function clearTicketApiSearchContext(options) {
+    const clearInput = !(options && options.clearInput === false);
+    state.ticketApiSearchQuery = "";
+    if (clearInput && els.ticketApiSearchInput) els.ticketApiSearchInput.value = "";
+  }
+
   function normalizeTicketSourceLabel(label, fallback) {
     const fallbackLabel = String(fallback || "").trim();
     const raw = String(label || "").replace(/\s+/g, " ").trim();
@@ -4048,6 +4081,7 @@
     const selectedViewId = String(state.selectedViewId || "").trim();
     const selectedOrgId = String(state.selectedOrgId || "").trim();
     const selectedByGroupValue = String(state.selectedByGroupValue || "").trim();
+    const selectedSearchQuery = normalizeTicketApiSearchQuery(state.ticketApiSearchQuery);
     const currentSource = String(state.ticketSource || "").trim();
 
     const buildViewContext = () => ({
@@ -4079,9 +4113,18 @@
       };
     };
 
+    const buildSearchContext = () => ({
+      kind: "search",
+      id: selectedSearchQuery,
+      label: getTicketApiSearchSourceLabel(),
+      filenamePrefix: "search"
+    });
+
+    if (currentSource === "search" && selectedSearchQuery) return buildSearchContext();
     if (currentSource === "view" && selectedViewId) return buildViewContext();
     if (currentSource === "org" && selectedOrgId) return buildOrgContext();
     if (currentSource === "groupMember" && selectedByGroupValue) return buildGroupContext();
+    if (selectedSearchQuery) return buildSearchContext();
     if (selectedViewId) return buildViewContext();
     if (selectedOrgId) return buildOrgContext();
     if (selectedByGroupValue) return buildGroupContext();
@@ -4105,6 +4148,10 @@
       const prefix = sanitizeFilenamePart(source.filenamePrefix || "agent") || "agent";
       const sourceId = sanitizeFilenamePart(source.id || source.fallbackId || "");
       return prefix + "-" + (sanitizeFilenamePart(source.label) || sourceId || prefix);
+    }
+    if (source.kind === "search") {
+      const queryPart = sanitizeFilenamePart(source.id || "");
+      return "search-" + (queryPart || "tickets");
     }
     if (state.user && state.user.email) {
       return "assigned-" + sanitizeFilenamePart(state.user.email.split("@")[0] || state.user.email);
@@ -9622,6 +9669,36 @@
     }
   }
 
+  async function loadTicketsBySearchQuery(rawQuery, options) {
+    const query = normalizeTicketApiSearchQuery(rawQuery);
+    const opts = options && typeof options === "object" ? options : {};
+    const defaultLimit = Number(TICKET_API_SEARCH_MAX_RESULTS);
+    const requestedLimit = Number(opts.limit);
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(100, Math.trunc(requestedLimit))
+      : defaultLimit;
+    setTicketTableLoading(true);
+    try {
+      const result = await sendToZendeskTab({
+        action: "loadTicketsBySearchQuery",
+        query,
+        limit,
+        locale: getPreferredTicketLocale()
+      });
+      state.tickets = result.tickets || [];
+      recordTicketEnrichmentMetrics("loadTicketsBySearchQuery", result.metrics);
+      if (result.error) throw new Error(result.error);
+      applyFiltersAndRender();
+    } catch (err) {
+      state.tickets = [];
+      state.filteredTickets = [];
+      applyFiltersAndRender();
+      throw err;
+    } finally {
+      setTicketTableLoading(false);
+    }
+  }
+
   function normalizeTicketCount(value) {
     const num = Number(value);
     if (!Number.isFinite(num)) return 0;
@@ -10244,6 +10321,7 @@
   function runAssignedTicketsQuery() {
     if (!state.user || state.user.id == null) return;
     state.ticketSource = "assigned";
+    clearTicketApiSearchContext({ clearInput: true });
     state.selectedOrgId = "";
     state.selectedViewId = "";
     state.selectedByGroupValue = "";
@@ -10251,6 +10329,43 @@
     if (els.viewSelect) els.viewSelect.value = "";
     if (els.groupMemberSelect) els.groupMemberSelect.value = "";
     return loadAssignedTickets();
+  }
+
+  function runTicketApiSearchFromHeaderControls() {
+    if (!state.user) return;
+    if (state.busy || state.ticketTableLoading) return;
+    const query = normalizeTicketApiSearchQuery(els.ticketApiSearchInput && els.ticketApiSearchInput.value);
+    if (!query) {
+      setStatus("Enter a ticket search query first.", true);
+      return;
+    }
+
+    state.ticketSource = "search";
+    state.ticketApiSearchQuery = query;
+    state.selectedOrgId = "";
+    state.selectedViewId = "";
+    state.selectedByGroupValue = "";
+    state.textFilter = "";
+    resetStatusFilterSelection();
+    if (els.ticketSearch) els.ticketSearch.value = "";
+    if (els.orgSelect) els.orgSelect.value = "";
+    if (els.viewSelect) els.viewSelect.value = "";
+    if (els.groupMemberSelect) els.groupMemberSelect.value = "";
+
+    clearTicketTable({ loading: true });
+    setBusy(true);
+    loadTicketsBySearchQuery(query, { limit: TICKET_API_SEARCH_MAX_RESULTS })
+      .then(() => {
+        const shown = state.filteredTickets.length;
+        setStatus(
+          "Ticket search loaded. " + shown + " rows shown (top " + TICKET_API_SEARCH_MAX_RESULTS + ").",
+          false
+        );
+      })
+      .catch((err) => {
+        setStatus("Ticket search failed: " + formatErrorMessage(err, "Unknown error"), true);
+      })
+      .finally(() => setBusy(false));
   }
 
   function formatErrorMessage(err, fallback) {
@@ -10966,6 +11081,8 @@
           await loadTicketsByView(state.selectedViewId);
         } else if (state.ticketSource === "org" && state.selectedOrgId) {
           await loadTicketsByOrg(state.selectedOrgId);
+        } else if (state.ticketSource === "search" && normalizeTicketApiSearchQuery(state.ticketApiSearchQuery)) {
+          await loadTicketsBySearchQuery(state.ticketApiSearchQuery, { limit: TICKET_API_SEARCH_MAX_RESULTS });
         } else if (state.ticketSource === "groupMember" && state.selectedByGroupValue) {
           await loadTicketsByGroupSelectionValue(state.selectedByGroupValue);
         } else {
@@ -10996,10 +11113,25 @@
           .finally(() => setBusy(false));
       });
     }
+    if (els.ticketApiSearchBtn) {
+      els.ticketApiSearchBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        runTicketApiSearchFromHeaderControls();
+      });
+    }
+    if (els.ticketApiSearchInput) {
+      els.ticketApiSearchInput.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        if (event.isComposing) return;
+        event.preventDefault();
+        runTicketApiSearchFromHeaderControls();
+      });
+    }
     if (els.orgSelect) {
       els.orgSelect.addEventListener("change", () => {
         const val = (els.orgSelect.value || "").trim();
         if (!state.user) return;
+        clearTicketApiSearchContext({ clearInput: true });
         state.selectedViewId = "";
         state.selectedByGroupValue = "";
         if (els.viewSelect) els.viewSelect.value = "";
@@ -11027,6 +11159,7 @@
       els.viewSelect.addEventListener("change", () => {
         const val = (els.viewSelect.value || "").trim();
         if (!state.user) return;
+        clearTicketApiSearchContext({ clearInput: true });
         state.selectedOrgId = "";
         state.selectedByGroupValue = "";
         if (els.orgSelect) els.orgSelect.value = "";
@@ -11054,6 +11187,7 @@
       els.groupMemberSelect.addEventListener("change", () => {
         const val = (els.groupMemberSelect.value || "").trim();
         if (!state.user) return;
+        clearTicketApiSearchContext({ clearInput: true });
         state.selectedOrgId = "";
         state.selectedViewId = "";
         if (els.orgSelect) els.orgSelect.value = "";

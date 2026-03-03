@@ -674,6 +674,8 @@
 
   /** Keep active + solved tickets, but never include closed tickets anywhere in ZIP. */
   const NON_CLOSED_STATUS_QUERY = " status:new status:open status:pending status:hold status:solved";
+  const DEFAULT_TICKET_SEARCH_LIMIT = 20;
+  const MAX_TICKET_SEARCH_LIMIT = 100;
   const MAX_SEARCH_TICKET_PAGES = 10;
   const MAX_VIEW_TICKET_PAGES = 10;
 
@@ -689,6 +691,23 @@
   function normalizeTicketId(value) {
     if (value == null) return "";
     return String(value).trim();
+  }
+
+  function normalizeSearchLimit(value, fallback) {
+    const fallbackNum = Number(fallback);
+    const fallbackLimit = Number.isFinite(fallbackNum)
+      ? (fallbackNum > 0 ? Math.min(MAX_TICKET_SEARCH_LIMIT, Math.trunc(fallbackNum)) : 0)
+      : DEFAULT_TICKET_SEARCH_LIMIT;
+    const num = Number(value);
+    if (!Number.isFinite(num) || num <= 0) return fallbackLimit;
+    return Math.min(MAX_TICKET_SEARCH_LIMIT, Math.trunc(num));
+  }
+
+  function buildTicketOnlySearchQuery(rawQuery) {
+    const query = String(rawQuery == null ? "" : rawQuery).replace(/\s+/g, " ").trim();
+    if (!query) return "";
+    if (/\btype\s*:\s*ticket\b/i.test(query)) return query;
+    return "type:ticket " + query;
   }
 
   function isInactiveOrHiddenEntity(entity) {
@@ -960,8 +979,34 @@
     });
   }
 
+  async function loadTicketsBySearchQuery(rawQuery, options) {
+    const query = buildTicketOnlySearchQuery(rawQuery);
+    if (!query) return { tickets: [] };
+    const opts = options && typeof options === "object" ? options : {};
+    const limit = normalizeSearchLimit(opts.limit, DEFAULT_TICKET_SEARCH_LIMIT);
+    return searchTickets(query, {
+      ...opts,
+      limit,
+      perPage: limit,
+      source: "loadTicketsBySearchQuery"
+    });
+  }
+
   async function searchTickets(query, options) {
-    let nextUrl = BASE + "/api/v2/search.json?query=" + encodeURIComponent(query);
+    const opts = options && typeof options === "object" ? options : {};
+    const limit = normalizeSearchLimit(opts.limit, 0);
+    const perPage = normalizeSearchLimit(opts.perPage, limit || MAX_TICKET_SEARCH_LIMIT);
+    const sortBy = String(opts.sortBy || "").trim();
+    const sortOrder = String(opts.sortOrder || "").trim();
+    const params = new URLSearchParams();
+    params.set("query", query);
+    if (sortBy) params.set("sort_by", sortBy);
+    if (sortOrder) params.set("sort_order", sortOrder);
+    if ((Object.prototype.hasOwnProperty.call(opts, "perPage") || limit > 0) && perPage > 0) {
+      params.set("per_page", String(perPage));
+    }
+
+    let nextUrl = BASE + "/api/v2/search.json?" + params.toString();
     const all = [];
     const seenTicketIds = new Set();
     let pages = 0;
@@ -976,20 +1021,27 @@
         return { error: "Ticket search failed (HTTP " + res.status + ")", tickets: [] };
       }
       const rows = Array.isArray(res.payload.results) ? res.payload.results : [];
-      rows.forEach((raw) => {
+      for (let i = 0; i < rows.length; i += 1) {
+        const raw = rows[i];
         const type = String((raw && raw.result_type) || "").toLowerCase();
-        if (type && type !== "ticket") return;
-        if (!includeTicketByStatus(raw)) return;
+        if (type && type !== "ticket") continue;
+        if (!includeTicketByStatus(raw)) continue;
         const normalized = normalizeTicket(raw || {});
         const ticketId = normalizeTicketId(normalized.id);
-        if (!ticketId || seenTicketIds.has(ticketId)) return;
+        if (!ticketId || seenTicketIds.has(ticketId)) continue;
         seenTicketIds.add(ticketId);
         all.push(normalized);
-      });
+        if (limit > 0 && all.length >= limit) break;
+      }
+      if (limit > 0 && all.length >= limit) {
+        nextUrl = null;
+        break;
+      }
       nextUrl = res.payload.next_page || null;
     }
-    const enriched = await enrichTicketsWithRequestorOrg(all, {
-      ...(options && typeof options === "object" ? options : {}),
+    const rowsToEnrich = limit > 0 ? all.slice(0, limit) : all;
+    const enriched = await enrichTicketsWithRequestorOrg(rowsToEnrich, {
+      ...opts,
       source: "searchTickets"
     });
     return { tickets: enriched.tickets, metrics: enriched.metrics };
@@ -3830,6 +3882,10 @@
         }
         if (inner.action === "loadTicketsByOrg") {
           const result = await loadTicketsByOrg(inner.orgId || "", inner);
+          return { type: "ZIP_RESPONSE", requestId, result };
+        }
+        if (inner.action === "loadTicketsBySearchQuery") {
+          const result = await loadTicketsBySearchQuery(inner.query || "", inner);
           return { type: "ZIP_RESPONSE", requestId, result };
         }
         if (inner.action === "loadOrganizations") {

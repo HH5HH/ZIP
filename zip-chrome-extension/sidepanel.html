@@ -110,6 +110,27 @@
       <section class="section">
         <div class="ticket-section-header">
           <h3 class="ticket-section-title"><a href="#" id="zipAssignedTicketsLink" class="ticket-section-link">Assigned Tickets</a></h3>
+          <div class="ticket-section-header-search" role="search" aria-label="Search Zendesk tickets">
+            <label class="zip-visually-hidden" for="zipTicketApiSearch">Search Zendesk tickets</label>
+            <input
+              id="zipTicketApiSearch"
+              class="zip-text-input spectrum-Textfield-input ticket-section-search-input"
+              type="search"
+              placeholder="Search tickets"
+              aria-label="Search Zendesk tickets"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <button
+              id="zipTicketApiSearchBtn"
+              class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS ticket-section-search-btn"
+              type="button"
+              title="Search tickets"
+              aria-label="Search tickets"
+            >
+              <span class="spectrum-Button-label">Search</span>
+            </button>
+          </div>
           <div id="zipTicketNetworkIndicator" class="ticket-network-indicator hidden" aria-live="polite">
             <span class="inline-spinner" aria-hidden="true"></span>
             <span id="zipTicketNetworkLabel">Building filters…</span>
