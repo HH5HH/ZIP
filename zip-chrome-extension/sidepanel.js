@@ -17,7 +17,6 @@
   const PASS_AI_SLACK_APP_ID = "A0AGPACM3UG";
   const ZIP_OFFICIAL_EXTENSION_ID = "ibijkkpjfgaocgmpafbcckhhdkpbldoc";
   const ZIP_OFFICIAL_SLACK_REDIRECT_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-openid";
-  const PASS_AI_SLACK_SINGULARITY_USER_ID = "U05PQCUFN0H";
   const PASS_AI_SLACK_OIDC_DEFAULT_SCOPE = "openid profile email";
   const PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH = "slack-user";
   const ZIP_KEY_FILE_PREFIX = "ZIPKEY1:";
@@ -26,10 +25,10 @@
   const ZIP_REQUIRED_CONFIG_FIELDS = Object.freeze([
     "slacktivation.client_id",
     "slacktivation.client_secret",
-    "slacktivation.user_token"
+    "slacktivation.user_token",
+    "slacktivation.singularity_channel_id",
+    "slacktivation.singularity_mention"
   ]);
-  const PASS_AI_SLACK_CHANNEL_DEFAULT = "C08SX9ZR891";
-  const PASS_AI_SINGULARITY_MENTION_DEFAULT = "@Singularity";
   const ZIP_SLACK_CLIENT_ID_STORAGE_KEY = "zip_slack_client_id";
   const ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY = "zip_slack_client_secret";
   const ZIP_SLACK_SCOPE_STORAGE_KEY = "zip_slack_scope";
@@ -44,7 +43,6 @@
   const ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY = "zip_singularity_channel_id";
   const ZIP_SINGULARITY_MENTION_STORAGE_KEY = "zip_singularity_mention";
   const SLACKTIVATED_SESSION_CACHE_VERSION = 1;
-  const PASS_AI_SINGULARITY_NAME_PATTERN = "singularity";
   const SLACKTIVATED_PENDING_ICON_URL = "icons/icon128.png";
   const SLACKTIVATED_LOGIN_TOOLTIP = "ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/";
   const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP.KEY and reset ZIP now? This signs you out, clears SLACKTIVATION, and requires re-importing ZIP.KEY.";
@@ -126,6 +124,7 @@
     passAiSlackUserId: "",
     passAiSlackUserName: "",
     passAiSlackAvatarUrl: "",
+    passAiSlackTeamId: "",
     passAiSlackDirectChannelId: "",
     passAiSlackStatusIcon: "",
     passAiSlackStatusIconUrl: "",
@@ -155,8 +154,8 @@
       redirectUri: "",
       userToken: "",
       oauthToken: "",
-      singularityChannelId: PASS_AI_SLACK_CHANNEL_DEFAULT,
-      singularityMention: PASS_AI_SINGULARITY_MENTION_DEFAULT,
+      singularityChannelId: "",
+      singularityMention: "",
       meta: null
     },
     ticketEmailCopyBusyById: Object.create(null),
@@ -899,6 +898,29 @@
     }
   }
 
+  function extractSlackClientTeamIdFromPath(pathname) {
+    const path = String(pathname || "");
+    const match = path.match(/^\/client\/([TE][A-Z0-9]{8,})(?:\/|$)/i);
+    if (!match) return "";
+    return normalizePassAiSlackTeamId(match[1]);
+  }
+
+  function getExpectedSlackWorkspaceTeamId() {
+    return normalizePassAiSlackTeamId(state && state.passAiSlackTeamId || "");
+  }
+
+  function isAppSlackClientTabForExpectedTeam(parsedUrl, expectedTeamId) {
+    const parsed = parsedUrl && typeof parsedUrl === "object" ? parsedUrl : null;
+    if (!parsed) return false;
+    const host = String(parsed.hostname || "").toLowerCase();
+    if (host !== "app.slack.com") return false;
+    const teamId = extractSlackClientTeamIdFromPath(parsed.pathname);
+    if (!teamId) return false;
+    // Q&AI workspace targeting is deterministic only when the expected team is known.
+    if (!expectedTeamId) return false;
+    return teamId === expectedTeamId;
+  }
+
   function isSlackWorkspaceTabUrl(urlValue) {
     const parsed = parseSlackTabUrl(urlValue);
     if (!parsed) return false;
@@ -1051,6 +1073,30 @@
       if (!parsed) continue;
       const host = String(parsed.hostname || "").toLowerCase();
       if (!isAllowedSlackWorkspaceHost(host, workspaceHost)) continue;
+      if (injectableOnly && !isInjectableSlackTabUrl(parsed.toString())) continue;
+      if (!filtered.includes(numericId)) filtered.push(numericId);
+    }
+    return filtered;
+  }
+
+  async function filterSlackTabIdsByExactWorkspaceHost(tabIds, workspaceOrigin, injectableOnly) {
+    const ids = Array.isArray(tabIds) ? tabIds : [];
+    if (!ids.length) return [];
+    const workspaceHost = getSlackWorkspaceHostForTabs(workspaceOrigin || PASS_AI_SLACK_WORKSPACE_ORIGIN);
+    if (!workspaceHost) return [];
+    const expectedTeamId = getExpectedSlackWorkspaceTeamId();
+    const filtered = [];
+    for (let i = 0; i < ids.length; i += 1) {
+      const numericId = Number(ids[i]);
+      if (!Number.isFinite(numericId) || numericId <= 0) continue;
+      const tab = await getTabById(numericId);
+      if (!tab || !tab.url) continue;
+      const parsed = parseSlackTabUrl(tab.url);
+      if (!parsed) continue;
+      const host = String(parsed.hostname || "").toLowerCase();
+      const isExactWorkspaceHost = host === workspaceHost;
+      const isAllowedAppSlackClient = isAppSlackClientTabForExpectedTeam(parsed, expectedTeamId);
+      if (!isExactWorkspaceHost && !isAllowedAppSlackClient) continue;
       if (injectableOnly && !isInjectableSlackTabUrl(parsed.toString())) continue;
       if (!filtered.includes(numericId)) filtered.push(numericId);
     }
@@ -2938,6 +2984,12 @@
     return false;
   }
 
+  function buildPassAiSlackChannelUrlForBootstrap(channelId) {
+    const normalizedChannelId = normalizePassAiSlackChannelId(channelId);
+    if (!normalizedChannelId) return PASS_AI_SLACK_WORKSPACE_ORIGIN + "/";
+    return PASS_AI_SLACK_WORKSPACE_ORIGIN + "/archives/" + encodeURIComponent(normalizedChannelId);
+  }
+
   function isTransientSlackAuthProbeFailureMessage(message) {
     const text = String(message || "").toLowerCase();
     if (!text) return false;
@@ -3145,25 +3197,52 @@
     const opts = options && typeof options === "object" ? options : {};
     const allowCreateTab = opts.allowCreateTab !== false;
     const workspaceOrigin = normalizeSlackWorkspaceOriginForTabs(PASS_AI_SLACK_WORKSPACE_ORIGIN);
-    const landingUrl = workspaceOrigin + "/";
+    const workspaceHost = getSlackWorkspaceHostForTabs(workspaceOrigin);
+    const expectedTeamId = getExpectedSlackWorkspaceTeamId();
+    const requestedLandingUrl = String(opts.landingUrl || "").trim();
+    let landingUrl = workspaceOrigin + "/";
+    if (requestedLandingUrl) {
+      const parsedLanding = parseSlackTabUrl(requestedLandingUrl);
+      const landingHost = String(parsedLanding && parsedLanding.hostname || "").toLowerCase();
+      if (
+        parsedLanding
+        && String(parsedLanding.protocol || "").toLowerCase() === "https:"
+        && (
+          landingHost === workspaceHost
+          || isAppSlackClientTabForExpectedTeam(parsedLanding, expectedTeamId)
+        )
+      ) {
+        landingUrl = parsedLanding.toString();
+      }
+    }
     recordSlackProbeEvent("slack_probe_bootstrap_started", {
       allowCreateTab,
-      workspaceOrigin
+      workspaceOrigin,
+      landingUrl
     });
+    const isExactWorkspaceTab = (tab) => {
+      const parsed = parseSlackTabUrl(tab && tab.url);
+      if (!parsed) return false;
+      const host = String(parsed.hostname || "").toLowerCase();
+      if (!!workspaceHost && host === workspaceHost) return true;
+      return isAppSlackClientTabForExpectedTeam(parsed, expectedTeamId);
+    };
     const findInjectableTab = async () => {
       const injectableTabs = await querySlackTabsFromSidepanel({
         injectableOnly: true,
         workspaceOrigin
       }).catch(() => []);
       if (!Array.isArray(injectableTabs) || !injectableTabs.length) return null;
+      const exactInjectableTabs = injectableTabs.filter((tab) => isExactWorkspaceTab(tab));
+      if (!exactInjectableTabs.length) return null;
       const trackedWorkerId = Number(state && state.slackWorkerTabId);
       if (Number.isFinite(trackedWorkerId) && trackedWorkerId > 0) {
-        const trackedMatch = injectableTabs.find((tab) => Number(tab && tab.id) === trackedWorkerId);
+        const trackedMatch = exactInjectableTabs.find((tab) => Number(tab && tab.id) === trackedWorkerId);
         if (trackedMatch && trackedMatch.id != null) {
           return trackedWorkerId;
         }
       }
-      const candidateId = Number(injectableTabs[0] && injectableTabs[0].id);
+      const candidateId = Number(exactInjectableTabs[0] && exactInjectableTabs[0].id);
       if (!Number.isFinite(candidateId) || candidateId <= 0) return null;
       return candidateId;
     };
@@ -3204,8 +3283,11 @@
       workspaceOrigin
     }).catch(() => []);
     if (!Number.isFinite(candidateTabId) || candidateTabId <= 0) {
-      if (Array.isArray(workspaceTabs) && workspaceTabs.length > 0 && workspaceTabs[0] && workspaceTabs[0].id != null) {
-        candidateTabId = Number(workspaceTabs[0].id);
+      const exactWorkspaceTabs = Array.isArray(workspaceTabs)
+        ? workspaceTabs.filter((tab) => isExactWorkspaceTab(tab))
+        : [];
+      if (exactWorkspaceTabs.length > 0 && exactWorkspaceTabs[0] && exactWorkspaceTabs[0].id != null) {
+        candidateTabId = Number(exactWorkspaceTabs[0].id);
         recordSlackProbeEvent("slack_probe_bootstrap_reused_workspace_tab", { tabId: candidateTabId });
       } else if (allowCreateTab) {
         const opened = await openSlackWorkspaceTab(landingUrl, { active: false, worker: true }).catch(() => null);
@@ -3250,7 +3332,8 @@
     const bootstrapAllowCreateTab = opts.allowCreateTab !== false;
     const onBootstrap = typeof opts.onBootstrap === "function" ? opts.onBootstrap : null;
     let bootstrapAttempted = false;
-    const tryBootstrap = async () => {
+    const tryBootstrap = async (force) => {
+      const forceBootstrap = force === true;
       if (!canBootstrap || bootstrapAttempted) {
         if (!canBootstrap) {
           recordSlackProbeEvent("slack_probe_bootstrap_skipped", { reason: "disabled" });
@@ -3263,7 +3346,7 @@
       }
       const nowMs = Date.now();
       const remainingMs = SLACK_BOOTSTRAP_MIN_GAP_MS - (nowMs - Number(slackBootstrapLastAt || 0));
-      if (remainingMs > 0) {
+      if (!forceBootstrap && remainingMs > 0) {
         recordSlackProbeEvent("slack_probe_bootstrap_skipped", {
           reason: "cooldown",
           cooldownRemainingMs: remainingMs
@@ -3275,16 +3358,32 @@
       slackBootstrapLastAt = nowMs;
       recordSlackProbeEvent("slack_probe_bootstrap_attempt", {
         action: String(inner && inner.action || ""),
-        allowCreateTab: bootstrapAllowCreateTab
+        allowCreateTab: bootstrapAllowCreateTab,
+        forced: forceBootstrap
       });
       if (onBootstrap) {
         try { onBootstrap(); } catch (_) {}
       }
       try {
-        const bootstrapped = await bootstrapSlackWorkspaceForMessaging({ allowCreateTab: bootstrapAllowCreateTab });
+        const action = String(inner && inner.action || "").trim();
+        const isQaiAction = (
+          action === "slackSendToSingularity"
+          || action === "slackPollSingularityThread"
+          || action === "slackDeleteThreadMessages"
+        );
+        const channelId = normalizePassAiSlackChannelId(
+          inner && (inner.channelId || inner.channel_id || inner.channel)
+        );
+        const landingUrl = isQaiAction
+          ? buildPassAiSlackChannelUrlForBootstrap(channelId)
+          : (PASS_AI_SLACK_WORKSPACE_ORIGIN + "/");
+        const bootstrapped = await bootstrapSlackWorkspaceForMessaging({
+          allowCreateTab: bootstrapAllowCreateTab,
+          landingUrl
+        });
         recordSlackProbeEvent(
           bootstrapped ? "slack_probe_bootstrap_success" : "slack_probe_bootstrap_unsatisfied",
-          { action: String(inner && inner.action || "") }
+          { action: String(inner && inner.action || ""), landingUrl }
         );
         return bootstrapped;
       } finally {
@@ -3293,32 +3392,40 @@
     };
 
     let response = null;
+    const action = String(inner && inner.action || "").trim();
     try {
       response = await sendToSlackTab(inner);
     } catch (err) {
       const message = normalizePassAiCommentBody(err && err.message);
+      const forceBootstrap = String(message || "").toLowerCase().includes("no slack tab available");
       recordSlackProbeEvent("slack_probe_tab_send_failed", {
-        action: String(inner && inner.action || ""),
+        action,
         message
       });
-      if (!isSlackWebBootstrapErrorMessage(message) || !(await tryBootstrap())) {
+      if (
+        !isSlackWebBootstrapErrorMessage(message)
+        || !(await tryBootstrap(forceBootstrap))
+      ) {
         throw err;
       }
       response = await sendToSlackTab(inner);
     }
 
     const responseMessage = normalizePassAiCommentBody(response && (response.error || response.message));
-    if ((!response || response.ok !== true) && isSlackWebBootstrapErrorMessage(responseMessage)) {
+    if (
+      (!response || response.ok !== true)
+      && isSlackWebBootstrapErrorMessage(responseMessage)
+    ) {
       recordSlackProbeEvent("slack_probe_tab_response_retry", {
-        action: String(inner && inner.action || ""),
+        action,
         message: responseMessage
       });
-      const bootstrapped = await tryBootstrap();
+      const forceBootstrap = String(responseMessage || "").toLowerCase().includes("no slack tab available");
+      const bootstrapped = await tryBootstrap(forceBootstrap);
       if (bootstrapped) {
         response = await sendToSlackTab(inner);
       }
     }
-    const action = String(inner && inner.action || "").trim();
     const authTestVerified = !!(
       action === "slackAuthTest"
       && response
@@ -6161,6 +6268,8 @@
     if (!clientId) missingFields.push("slacktivation.client_id");
     if (!clientSecret) missingFields.push("slacktivation.client_secret");
     if (!userToken) missingFields.push("slacktivation.user_token");
+    if (!singularityChannelId) missingFields.push("slacktivation.singularity_channel_id");
+    if (!singularityMention) missingFields.push("slacktivation.singularity_mention");
     if (missingFields.length) {
       throw new Error("ZIP.KEY is missing required SLACKTIVATION fields: " + missingFields.join(", ") + ".");
     }
@@ -6231,21 +6340,19 @@
     );
     const singularityChannelId = normalizePassAiSlackChannelId(
       stored[ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY]
-      || PASS_AI_SLACK_CHANNEL_DEFAULT
-    ) || normalizePassAiSlackChannelId(PASS_AI_SLACK_CHANNEL_DEFAULT);
+      || ""
+    );
     const singularityMention = (function normalizeMention(value) {
       const raw = String(value || "").trim();
-      if (!raw) return PASS_AI_SINGULARITY_MENTION_DEFAULT;
+      if (!raw) return "";
       if (/^<@[UW][A-Z0-9]{8,}>$/i.test(raw)) return raw;
       const plain = raw.startsWith("@") ? raw.slice(1).trim() : raw;
-      if (!plain) return PASS_AI_SINGULARITY_MENTION_DEFAULT;
-      if (plain.toLowerCase() === "singularity") return PASS_AI_SINGULARITY_MENTION_DEFAULT;
+      if (!plain) return "";
       return "@" + plain;
     })(
-      stored[ZIP_SINGULARITY_MENTION_STORAGE_KEY]
-      || PASS_AI_SINGULARITY_MENTION_DEFAULT
+      stored[ZIP_SINGULARITY_MENTION_STORAGE_KEY] || ""
     );
-    const hasRequired = !!(clientId && clientSecret && oauthToken);
+    const hasRequired = !!(clientId && clientSecret && oauthToken && singularityChannelId && singularityMention);
     const keyLoaded = stored[ZIP_SLACK_KEY_LOADED_STORAGE_KEY] === true
       || (
         stored[ZIP_SLACK_KEY_LOADED_STORAGE_KEY] == null
@@ -6464,7 +6571,9 @@
     const requiredFieldState = {
       "slacktivation.client_id": !!String(openIdConfig.clientId || "").trim(),
       "slacktivation.client_secret": !!String(openIdConfig.clientSecret || "").trim(),
-      "slacktivation.user_token": !!String(getPassAiSlackApiTokenConfig().userToken || "").trim()
+      "slacktivation.user_token": !!String(getPassAiSlackApiTokenConfig().userToken || "").trim(),
+      "slacktivation.singularity_channel_id": !!String(secretConfig && secretConfig.singularityChannelId || "").trim(),
+      "slacktivation.singularity_mention": !!String(secretConfig && secretConfig.singularityMention || "").trim()
     };
     const missingFields = ZIP_REQUIRED_CONFIG_FIELDS.filter((field) => !requiredFieldState[field]);
 
@@ -6963,6 +7072,7 @@
     const priorUserId = normalizePassAiSlackUserId(state.passAiSlackUserId || "");
     const priorUserName = normalizePassAiSlackDisplayName(state.passAiSlackUserName || "");
     const priorAvatarUrl = normalizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "");
+    const priorTeamId = normalizePassAiSlackTeamId(state.passAiSlackTeamId || "");
     const priorDirectChannelId = normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || "");
     const priorStatusIcon = normalizePassAiSlackStatusIcon(state.passAiSlackStatusIcon || "");
     const priorStatusIconUrl = normalizePassAiSlackStatusIconUrl(state.passAiSlackStatusIconUrl || "");
@@ -6981,6 +7091,9 @@
       || ""
     );
     const requestedAvatarUrl = normalizePassAiSlackAvatarUrl(nextState && (nextState.avatarUrl || nextState.avatar_url || ""));
+    const requestedTeamId = normalizePassAiSlackTeamId(
+      nextState && (nextState.teamId || nextState.team_id || "")
+    );
     const requestedDirectChannelId = normalizePassAiSlackDirectChannelId(
       nextState && (nextState.directChannelId || nextState.direct_channel_id || "")
     );
@@ -7023,6 +7136,9 @@
       : "";
     state.passAiSlackAvatarUrl = state.passAiSlackReady
       ? (requestedAvatarUrl || (preservePreviousIdentity && !priorAvatarIsZendesk ? priorAvatarUrl : ""))
+      : "";
+    state.passAiSlackTeamId = state.passAiSlackReady
+      ? (requestedTeamId || (preservePreviousIdentity ? priorTeamId : ""))
       : "";
     state.passAiSlackDirectChannelId = state.passAiSlackReady
       ? (requestedDirectChannelId || (preservePreviousIdentity ? priorDirectChannelId : ""))
@@ -7986,7 +8102,6 @@
     state.passAiDeleteInFlight = true;
     applyGlobalBusyUi();
     if (triggerButton) triggerButton.disabled = true;
-
     try {
       const response = await sendToSlackTabWithAutoBootstrap({
         action: "slackDeleteSingularityThread",
@@ -8175,18 +8290,14 @@
   }
 
   function getPassAiSingularityChannelId() {
-    const locked = normalizePassAiSlackChannelId(PASS_AI_SLACK_CHANNEL_DEFAULT);
-    if (!locked) return "";
     const secretConfig = state && state.zipSecretConfig && typeof state.zipSecretConfig === "object"
       ? state.zipSecretConfig
       : null;
+    if (!secretConfig || secretConfig.keyLoaded !== true) return "";
     const configured = normalizePassAiSlackChannelId(
       secretConfig && secretConfig.singularityChannelId
     );
-    if (configured && configured !== locked) {
-      return locked;
-    }
-    return locked;
+    return configured || "";
   }
 
   function buildPassAiSlackLoginUrl() {
@@ -8196,11 +8307,10 @@
   function getPassAiSingularityMention() {
     const canonicalize = (value) => {
       const raw = String(value || "").trim();
-      if (!raw) return PASS_AI_SINGULARITY_MENTION_DEFAULT;
+      if (!raw) return "";
       if (/^<@[UW][A-Z0-9]{8,}>$/i.test(raw)) return raw;
       const plain = raw.startsWith("@") ? raw.slice(1).trim() : raw;
-      if (!plain) return PASS_AI_SINGULARITY_MENTION_DEFAULT;
-      if (plain.toLowerCase() === "singularity") return PASS_AI_SINGULARITY_MENTION_DEFAULT;
+      if (!plain) return "";
       return "@" + plain;
     };
 
@@ -8208,9 +8318,18 @@
     const secretConfig = state && state.zipSecretConfig && typeof state.zipSecretConfig === "object"
       ? state.zipSecretConfig
       : null;
+    if (!secretConfig || secretConfig.keyLoaded !== true) return "";
     configured = String(secretConfig && secretConfig.singularityMention || "").trim();
-    const normalized = canonicalize(configured || PASS_AI_SINGULARITY_MENTION_DEFAULT);
+    const normalized = canonicalize(configured);
     return normalized;
+  }
+
+  function getPassAiSingularityNamePattern(mention) {
+    const raw = String(mention || "").trim();
+    if (!raw) return "";
+    if (/^<@[UW][A-Z0-9]{8,}>$/i.test(raw)) return "";
+    const plain = raw.startsWith("@") ? raw.slice(1).trim() : raw;
+    return plain ? plain.toLowerCase() : "";
   }
 
   function getPassAiSlackError(payload, fallback) {
@@ -8230,6 +8349,8 @@
         + "errorCode: " + String(diagnostics.errorCode || "") + "\n"
         + "httpStatus: " + String(diagnostics.httpStatus || 0) + "\n"
         + "scope: " + String(diagnostics.scope || "") + "\n"
+        + "tokenKind: " + String(diagnostics.tokenKind || "") + "\n"
+        + "workspaceOrigin: " + String(diagnostics.workspaceOrigin || "") + "\n"
         + "action: " + String(diagnostics.recommendedAction || "")
       )
       : "";
@@ -8320,6 +8441,7 @@
   }
 
   async function requestPassAiConversation(ticketContext, questionText, debugLines) {
+    await refreshZipSecretConfigFromStorage().catch(() => null);
     const question = normalizePassAiCommentBody(questionText);
     if (!question) throw new Error("Latest customer question is empty.");
 
@@ -8331,6 +8453,10 @@
     const channelId = getPassAiSingularityChannelId();
     if (!channelId) throw new Error("Singularity channel ID is not configured.");
     const mention = getPassAiSingularityMention();
+    if (!mention) throw new Error("Singularity mention is not configured.");
+    const singularityUserIdMatch = mention.match(/^<@([UW][A-Z0-9]{8,})>$/i);
+    const singularityUserId = singularityUserIdMatch ? String(singularityUserIdMatch[1] || "").trim().toUpperCase() : "";
+    const singularityNamePattern = getPassAiSingularityNamePattern(mention);
     const messageText = (mention + " " + question).trim();
 
     appendPassAiDebugLine(debugLines, "ticketId=" + ticketId);
@@ -8339,23 +8465,37 @@
     appendPassAiDebugLine(debugLines, "workspaceOrigin=" + PASS_AI_SLACK_WORKSPACE_ORIGIN);
     appendPassAiDebugLine(debugLines, "slackAppId=" + PASS_AI_SLACK_APP_ID);
     appendPassAiDebugLine(debugLines, "channelId=" + channelId);
+    appendPassAiDebugLine(debugLines, "singularityUserId=" + (singularityUserId || "(from mention only)"));
+    appendPassAiDebugLine(debugLines, "singularityNamePattern=" + (singularityNamePattern || "(none)"));
     appendPassAiDebugLine(debugLines, "POST " + PASS_AI_SLACK_API_ENDPOINT + "/chat.postMessage");
 
-    const sendPayload = await sendToSlackTabWithAutoBootstrap({
-      action: "slackSendToSingularity",
-      workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
-      channelId,
-      ticketId,
-      question,
-      messageText,
-      frontendClientId,
-      singularityUserId: PASS_AI_SLACK_SINGULARITY_USER_ID,
-      mention
-    }, {
-      onBootstrap: () => {
-        setStatus("Preparing adobedx.slack.com web session for Q&AI…", false);
-      }
-    });
+    appendPassAiDebugLine(debugLines, "Q&AI primary send transport=slack_web");
+    let sendPayload = null;
+    try {
+      sendPayload = await sendToSlackTabWithAutoBootstrap({
+        action: "slackSendToSingularity",
+        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+        channelId,
+        ticketId,
+        question,
+        messageText,
+        frontendClientId,
+        singularityUserId,
+        mention
+      }, {
+        onBootstrap: () => {
+          setStatus("Preparing adobedx.slack.com web session for Q&AI…", false);
+        }
+      });
+    } catch (err) {
+      sendPayload = {
+        ok: false,
+        error: normalizePassAiCommentBody(err && err.message) || "Unable to post message to Singularity."
+      };
+    }
+    if (sendPayload && sendPayload.ok === true) {
+      appendPassAiDebugLine(debugLines, "Q&AI send transport=slack_web");
+    }
     if (!sendPayload || sendPayload.ok !== true) {
       throw buildPassAiSlackRequestError(sendPayload, "Unable to post message to Singularity.");
     }
@@ -8392,23 +8532,31 @@
       }
 
       appendPassAiDebugLine(debugLines, "Poll attempt " + String(attempt) + ": " + PASS_AI_SLACK_API_ENDPOINT + "/conversations.replies");
-      const pollPayload = await sendToSlackTabWithAutoBootstrap({
-        action: "slackPollSingularityThread",
-        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
-        channelId: postedChannel,
-        parentTs,
-        singularityUserId: PASS_AI_SLACK_SINGULARITY_USER_ID,
-        singularityNamePattern: PASS_AI_SINGULARITY_NAME_PATTERN,
-        finalMarkerRegex: "FINAL_RESPONSE",
-        frontendClientId,
-        ticketId,
-        limit: 40,
-        cached_latest_updates: pollCachedLatestUpdates
-      }, {
-        onBootstrap: () => {
-          setStatus("Preparing adobedx.slack.com web session for Q&AI replies…", false);
-        }
-      });
+      let pollPayload = null;
+      try {
+        pollPayload = await sendToSlackTabWithAutoBootstrap({
+          action: "slackPollSingularityThread",
+          workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+          channelId: postedChannel,
+          parentTs,
+          singularityUserId,
+          singularityNamePattern,
+          finalMarkerRegex: "FINAL_RESPONSE",
+          frontendClientId,
+          ticketId,
+          limit: 40,
+          cached_latest_updates: pollCachedLatestUpdates
+        }, {
+          onBootstrap: () => {
+            setStatus("Preparing adobedx.slack.com web session for Q&AI replies…", false);
+          }
+        });
+      } catch (err) {
+        pollPayload = {
+          ok: false,
+          error: normalizePassAiCommentBody(err && err.message) || "Unable to fetch thread replies."
+        };
+      }
       lastPollPayload = pollPayload && typeof pollPayload === "object" ? pollPayload : null;
       if (!pollPayload || pollPayload.ok !== true) {
         throw buildPassAiSlackRequestError(pollPayload, "Unable to fetch thread replies.");
@@ -8613,14 +8761,14 @@
           finalText: fallbackText || "Singularity replied without a FINAL marker."
         };
       } else if ((fallbackAckOnly || (Number.isFinite(fallbackReplyCount) && fallbackReplyCount === 1)) && latestReplyText) {
-        throw new Error("Only the initial ACK was received from @Singularity before timeout.");
+        throw new Error("Only the initial ACK was received from the configured Singularity mention before timeout.");
       } else if (Number.isFinite(fallbackNonSingularityReplyCount) && fallbackNonSingularityReplyCount > 0) {
-        throw new Error("Thread activity was detected, but @Singularity has not replied yet.");
+        throw new Error("Thread activity was detected, but the configured Singularity mention has not replied yet.");
       }
     }
 
     if (!finalPayload) {
-      throw new Error("No @Singularity reply was received before timeout.");
+      throw new Error("No reply was received from the configured Singularity mention before timeout.");
     }
 
     const finalText = normalizePassAiAnswerBody(

@@ -89,7 +89,9 @@ const THEME_STORAGE_KEY = "zip.ui.theme.v1";
 const ZIP_REQUIRED_SECRET_KEYS = [
   ZIP_SLACK_CLIENT_ID_STORAGE_KEY,
   ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY,
-  ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY
+  ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
+  ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY,
+  ZIP_SINGULARITY_MENTION_STORAGE_KEY
 ];
 const ZIP_SLACK_STORAGE_KEYS = [
   ZIP_SLACK_CLIENT_ID_STORAGE_KEY,
@@ -224,6 +226,7 @@ let sessionPollTimerId = null;
 let sessionCheckInFlight = false;
 let sessionAboutToExpireSentForDeadline = 0;
 const slackTokenBackoffUntilByToken = new Map();
+const slackMentionUserIdCache = new Map();
 let latestTicketEnrichmentMetrics = null;
 
 function clearSessionPollTimer() {
@@ -1637,6 +1640,178 @@ function normalizeSlackUserId(value) {
   return /^[UW][A-Z0-9]{8,}$/.test(id) ? id : "";
 }
 
+function decodeSlackEntityText(value) {
+  return String(value == null ? "" : value)
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#64;/gi, "@")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'");
+}
+
+function normalizeSlackMentionText(value) {
+  const raw = decodeSlackEntityText(String(value || "").trim());
+  if (!raw) return "";
+  if (/^<@[UW][A-Z0-9]{8,}>$/i.test(raw)) return raw;
+  const plain = raw.startsWith("@") ? raw.slice(1).trim() : raw;
+  if (!plain) return "";
+  return "@" + plain;
+}
+
+function normalizeSlackMentionHandle(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^<@[UW][A-Z0-9]{8,}>$/i.test(raw)) return "";
+  const plain = raw.startsWith("@") ? raw.slice(1) : raw;
+  return String(plain || "").trim().toLowerCase();
+}
+
+function normalizeSlackHandleLoose(value) {
+  const normalized = normalizeSlackMentionHandle(value);
+  if (!normalized) return "";
+  return normalized.replace(/[^a-z0-9._-]+/g, "");
+}
+
+function doesSlackUserMatchMentionHandle(user, handle) {
+  const target = normalizeSlackMentionHandle(handle);
+  if (!target) return false;
+  const targetLoose = normalizeSlackHandleLoose(target);
+  const source = user && typeof user === "object" ? user : {};
+  const profile = source.profile && typeof source.profile === "object" ? source.profile : {};
+  const candidates = [
+    source.name,
+    source.real_name,
+    profile.display_name_normalized,
+    profile.display_name,
+    profile.real_name_normalized,
+    profile.real_name
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  for (let i = 0; i < candidates.length; i += 1) {
+    const candidate = normalizeSlackMentionHandle(candidates[i]);
+    if (!candidate) continue;
+    if (candidate === target) return true;
+    const candidateLoose = normalizeSlackHandleLoose(candidate);
+    if (candidateLoose && targetLoose && candidateLoose === targetLoose) return true;
+  }
+  return false;
+}
+
+function doesSlackMessageIdentityMatchMentionHandle(message, handle) {
+  const target = normalizeSlackMentionHandle(handle);
+  if (!target) return false;
+  const targetLoose = normalizeSlackHandleLoose(target);
+  const source = message && typeof message === "object" ? message : {};
+  const profile = source.user_profile && typeof source.user_profile === "object" ? source.user_profile : {};
+  const botProfile = source.bot_profile && typeof source.bot_profile === "object" ? source.bot_profile : {};
+  const candidates = [
+    source.username,
+    source.app_name,
+    source.user_display_name,
+    profile.display_name_normalized,
+    profile.display_name,
+    profile.real_name_normalized,
+    profile.real_name,
+    botProfile.name,
+    botProfile.app_name
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  for (let i = 0; i < candidates.length; i += 1) {
+    const candidate = normalizeSlackMentionHandle(candidates[i]);
+    if (!candidate) continue;
+    if (candidate === target) return true;
+    const candidateLoose = normalizeSlackHandleLoose(candidate);
+    if (candidateLoose && targetLoose && candidateLoose === targetLoose) return true;
+  }
+  return false;
+}
+
+function parseSlackUserIdFromMention(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^<@([UW][A-Z0-9]{8,})>$/i);
+  return match ? normalizeSlackUserId(match[1] || "") : "";
+}
+
+function stripSlackMentionPrefix(text, mention) {
+  const value = String(text || "");
+  const prefix = String(mention || "").trim();
+  if (!prefix) return value;
+  if (!value.toLowerCase().startsWith(prefix.toLowerCase())) return value;
+  return value.slice(prefix.length).trim();
+}
+
+async function resolveSlackUserIdByMentionViaApi(apiOrigin, token, mention) {
+  const handle = normalizeSlackMentionHandle(mention);
+  if (!handle) return "";
+  const origin = normalizeSlackWorkspaceOrigin(apiOrigin);
+  const cacheKey = origin + "::" + handle;
+  const cached = normalizeSlackUserId(slackMentionUserIdCache.get(cacheKey) || "");
+  if (cached) return cached;
+
+  let cursor = "";
+  for (let page = 0; page < 3; page += 1) {
+    const fields = {
+      limit: 500,
+      _x_reason: "zip-qai-resolve-mention-user-bg"
+    };
+    if (cursor) fields.cursor = cursor;
+    const usersList = await postSlackApiWithBearerToken(origin, "/api/users.list", fields, token);
+    if (!usersList || !usersList.ok) break;
+    const payload = usersList.payload && typeof usersList.payload === "object" ? usersList.payload : {};
+    const members = Array.isArray(payload.members) ? payload.members : [];
+    for (let i = 0; i < members.length; i += 1) {
+      const member = members[i];
+      if (!member || typeof member !== "object") continue;
+      const memberId = normalizeSlackUserId(member.id || member.user_id || "");
+      if (!memberId) continue;
+      if (!doesSlackUserMatchMentionHandle(member, handle)) continue;
+      slackMentionUserIdCache.set(cacheKey, memberId);
+      return memberId;
+    }
+    cursor = String(payload && payload.response_metadata && payload.response_metadata.next_cursor || "").trim();
+    if (!cursor) break;
+  }
+  return "";
+}
+
+async function resolveSlackUserIdFromChannelHistoryViaApi(apiOrigin, token, channelId, mention) {
+  const handle = normalizeSlackMentionHandle(mention);
+  const targetChannel = normalizeSlackChannelId(channelId);
+  if (!handle || !targetChannel) return "";
+  const origin = normalizeSlackWorkspaceOrigin(apiOrigin);
+  const cacheKey = origin + "::" + handle;
+  const cached = normalizeSlackUserId(slackMentionUserIdCache.get(cacheKey) || "");
+  if (cached) return cached;
+
+  const history = await postSlackApiWithBearerToken(origin, "/api/conversations.history", {
+    channel: targetChannel,
+    limit: 120,
+    inclusive: "false",
+    _x_reason: "zip-qai-resolve-mention-history-bg"
+  }, token);
+  if (!history || !history.ok) return "";
+  const payload = history.payload && typeof history.payload === "object" ? history.payload : {};
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  for (let i = 0; i < messages.length; i += 1) {
+    const message = messages[i];
+    if (!message || typeof message !== "object") continue;
+    const messageUserId = normalizeSlackUserId(
+      message.user
+      || message.user_id
+      || (message.user_profile && message.user_profile.id)
+      || ""
+    );
+    if (!messageUserId) continue;
+    if (!doesSlackMessageIdentityMatchMentionHandle(message, handle)) continue;
+    slackMentionUserIdCache.set(cacheKey, messageUserId);
+    return messageUserId;
+  }
+  return "";
+}
+
 function normalizeSlackAvatarUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -2332,7 +2507,7 @@ function normalizeZipSecretConfig(input) {
     || source.singularity_mention
     || ""
   );
-  const hasRequired = !!(clientId && clientSecret && oauthToken);
+  const hasRequired = !!(clientId && clientSecret && oauthToken && singularityChannelId && singularityMention);
 
   return {
     clientId,
@@ -2402,6 +2577,15 @@ async function readZipSecretsStatus() {
 
 async function storeZipSecrets(input, options) {
   const normalized = normalizeZipSecretConfig(input);
+  const missingFields = [];
+  if (!normalized.clientId) missingFields.push("slacktivation.client_id");
+  if (!normalized.clientSecret) missingFields.push("slacktivation.client_secret");
+  if (!(normalized.userToken || normalized.oauthToken)) missingFields.push("slacktivation.user_token");
+  if (!normalized.singularityChannelId) missingFields.push("slacktivation.singularity_channel_id");
+  if (!normalized.singularityMention) missingFields.push("slacktivation.singularity_mention");
+  if (missingFields.length) {
+    throw new Error("ZIP.KEY is missing required SLACKTIVATION fields: " + missingFields.join(", ") + ".");
+  }
   const opts = options && typeof options === "object" ? options : {};
   const updates = {};
   const removals = [];
@@ -2433,6 +2617,8 @@ async function storeZipSecrets(input, options) {
     [ZIP_SLACK_CLIENT_ID_STORAGE_KEY]: normalized.clientId,
     [ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY]: normalized.clientSecret,
     [ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY]: normalized.oauthToken,
+    [ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY]: normalized.singularityChannelId,
+    [ZIP_SINGULARITY_MENTION_STORAGE_KEY]: normalized.singularityMention,
     [ZIP_SLACK_KEY_LOADED_STORAGE_KEY]: normalized.keyLoaded
   });
   return { ok: status.ok, loaded: status.loaded, missing: status.missing };
@@ -2571,9 +2757,9 @@ async function readStoredSlackApiTokens() {
 
 async function resolveSlackApiTokens(input) {
   const body = input && typeof input === "object" ? input : {};
+  const strictProvidedTokens = body.strictProvidedTokens === true;
   const botFromMessage = normalizeSlackApiToken(body.botToken || body.bot_token);
   const userFromMessage = normalizeSlackApiToken(body.userToken || body.user_token);
-  const stored = await readStoredSlackApiTokens();
   const uniq = (values) => {
     const out = [];
     const rows = Array.isArray(values) ? values : [];
@@ -2584,12 +2770,20 @@ async function resolveSlackApiTokens(input) {
     }
     return out;
   };
-  const botCandidates = uniq([botFromMessage].concat(
-    Array.isArray(stored && stored.botCandidates) ? stored.botCandidates : [stored && stored.botToken]
-  ));
-  const userCandidates = uniq([userFromMessage].concat(
-    Array.isArray(stored && stored.userCandidates) ? stored.userCandidates : [stored && stored.userToken]
-  ));
+  let botCandidates = [];
+  let userCandidates = [];
+  if (strictProvidedTokens) {
+    botCandidates = uniq([botFromMessage]);
+    userCandidates = uniq([userFromMessage]);
+  } else {
+    const stored = await readStoredSlackApiTokens();
+    botCandidates = uniq([botFromMessage].concat(
+      Array.isArray(stored && stored.botCandidates) ? stored.botCandidates : [stored && stored.botToken]
+    ));
+    userCandidates = uniq([userFromMessage].concat(
+      Array.isArray(stored && stored.userCandidates) ? stored.userCandidates : [stored && stored.userToken]
+    ));
+  }
   // Classify tokens by prefix so ZIP.KEY values still work if bot/user tokens land in the wrong slot.
   const botResolved = uniq(botCandidates.concat(userCandidates)).filter((token) => isSlackBotApiToken(token));
   const userResolved = uniq(userCandidates.concat(botCandidates)).filter((token) => isSlackUserOAuthToken(token));
@@ -3236,6 +3430,669 @@ async function slackSendMarkdownToSelfViaApi(input) {
       lastFailureCode = "slack_unread_marker_unconfirmed";
       lastFailureError = "Slack delivery succeeded but native unread/new marker was not confirmed.";
     }
+  }
+  return {
+    ok: false,
+    code: lastFailureCode,
+    error: lastFailureError
+  };
+}
+
+function normalizeSlackQaiTokenKind(value) {
+  const kind = String(value || "").trim().toLowerCase();
+  if (kind === "bot") return "bot";
+  if (kind === "user") return "user";
+  return "";
+}
+
+function appendSlackQaiTokenAttempt(attempts, token, kind) {
+  const normalizedToken = normalizeSlackApiToken(token);
+  const normalizedKind = normalizeSlackQaiTokenKind(kind);
+  if (!normalizedToken || !normalizedKind) return;
+  if (normalizedKind === "bot" && !isSlackBotApiToken(normalizedToken)) return;
+  if (normalizedKind === "user" && !isSlackUserOAuthToken(normalizedToken)) return;
+  if (!Array.isArray(attempts)) return;
+  if (attempts.some((row) => row && row.token === normalizedToken)) return;
+  attempts.push({ token: normalizedToken, kind: normalizedKind });
+}
+
+function buildSlackQaiTokenAttempts(tokens, preferredKind) {
+  const resolved = tokens && typeof tokens === "object" ? tokens : {};
+  const userCandidates = Array.isArray(resolved.userCandidates)
+    ? resolved.userCandidates
+    : [resolved.userToken];
+  const botCandidates = Array.isArray(resolved.botCandidates)
+    ? resolved.botCandidates
+    : [resolved.botToken];
+  const attempts = [];
+  const preferred = normalizeSlackQaiTokenKind(preferredKind);
+  const appendUsers = () => {
+    for (let i = 0; i < userCandidates.length; i += 1) {
+      appendSlackQaiTokenAttempt(attempts, userCandidates[i], "user");
+    }
+  };
+  const appendBots = () => {
+    for (let i = 0; i < botCandidates.length; i += 1) {
+      appendSlackQaiTokenAttempt(attempts, botCandidates[i], "bot");
+    }
+  };
+
+  if (preferred === "bot") {
+    appendBots();
+    if (!attempts.length) appendUsers();
+    else appendUsers();
+    return attempts;
+  }
+  if (preferred === "user") {
+    appendUsers();
+    if (!attempts.length) appendBots();
+    else appendBots();
+    return attempts;
+  }
+  // Default to user/session first, then bot fallback for scope/channel compatibility variance.
+  appendUsers();
+  appendBots();
+  return attempts;
+}
+
+function isRetryableSlackQaiApiCode(code) {
+  const normalized = String(code || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized === "invalid_auth"
+    || normalized === "not_authed"
+    || normalized === "token_revoked"
+    || normalized === "account_inactive"
+    || normalized === "missing_scope"
+    || normalized === "insufficient_scope"
+    || normalized === "not_allowed_token_type"
+    || normalized === "channel_not_found"
+    || normalized === "not_in_channel";
+}
+
+function buildSlackQaiApiOrigins(workspaceOrigin) {
+  const origins = [];
+  const pushOrigin = (value) => {
+    const normalized = normalizeSlackWorkspaceOrigin(value);
+    if (!normalized) return;
+    if (!origins.includes(normalized)) origins.push(normalized);
+  };
+  pushOrigin(workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
+  pushOrigin(SLACK_WORKSPACE_ORIGIN);
+  pushOrigin(SLACK_WEB_API_ORIGIN);
+  return origins;
+}
+
+function slackQaiTsToEpochMs(ts) {
+  const value = Number(ts);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.trunc(value * 1000);
+}
+
+function extractSlackQaiRichTextElementsPlain(elements, parts) {
+  const rows = Array.isArray(elements) ? elements : [];
+  const out = Array.isArray(parts) ? parts : [];
+  for (let i = 0; i < rows.length; i += 1) {
+    const node = rows[i];
+    if (!node || typeof node !== "object") continue;
+    const type = String(node.type || "").trim().toLowerCase();
+    if (type === "text") {
+      out.push(String(node.text || ""));
+      continue;
+    }
+    if (type === "link") {
+      out.push(String(node.url || node.text || ""));
+      continue;
+    }
+    if (type === "user") {
+      const userId = String(node.user_id || "").trim();
+      if (userId) out.push("<@" + userId + ">");
+      continue;
+    }
+    if (Array.isArray(node.elements)) {
+      extractSlackQaiRichTextElementsPlain(node.elements, out);
+    }
+    if (Array.isArray(node.items)) {
+      extractSlackQaiRichTextElementsPlain(node.items, out);
+    }
+  }
+  return out;
+}
+
+function extractSlackQaiBlocksText(blocks) {
+  const rows = Array.isArray(blocks) ? blocks : [];
+  const parts = [];
+  for (let i = 0; i < rows.length; i += 1) {
+    const block = rows[i];
+    if (!block || typeof block !== "object") continue;
+    if (Array.isArray(block.elements)) {
+      extractSlackQaiRichTextElementsPlain(block.elements, parts);
+    }
+    if (block.text && typeof block.text === "object") {
+      const plain = String(block.text.text || "").trim();
+      if (plain) parts.push(plain);
+    }
+  }
+  return parts.join("").trim();
+}
+
+function extractSlackQaiMessageText(message) {
+  if (!message || typeof message !== "object") return "";
+  const parts = [];
+  const directText = String(message.text || "").trim();
+  if (directText) parts.push(directText);
+
+  const blockText = extractSlackQaiBlocksText(message.blocks);
+  if (blockText && !parts.includes(blockText)) parts.push(blockText);
+
+  const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+  for (let i = 0; i < attachments.length; i += 1) {
+    const attachment = attachments[i];
+    if (!attachment || typeof attachment !== "object") continue;
+    const lines = [attachment.pretext, attachment.title, attachment.text, attachment.fallback, attachment.from_url]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+    if (lines.length) parts.push(lines.join("\n"));
+  }
+
+  const files = Array.isArray(message.files) ? message.files : [];
+  for (let i = 0; i < files.length; i += 1) {
+    const file = files[i];
+    if (!file || typeof file !== "object") continue;
+    const name = String(file.name || file.title || "attachment").trim();
+    const url = String(file.url_private || file.url_private_download || file.permalink || "").trim();
+    parts.push(url ? (name + ": " + url) : name);
+  }
+
+  return parts.join("\n\n").trim();
+}
+
+function isSlackQaiSingularityMessage(message, options) {
+  if (!message || typeof message !== "object") return false;
+  const opts = options && typeof options === "object" ? options : {};
+  const singularityUserId = normalizeSlackUserId(opts.singularityUserId || "");
+  const messageUserId = normalizeSlackUserId(message.user || "");
+  if (singularityUserId && messageUserId && messageUserId === singularityUserId) return true;
+
+  const singularityNamePattern = String(opts.singularityNamePattern || "").trim().toLowerCase();
+  const botProfile = message.bot_profile && typeof message.bot_profile === "object" ? message.bot_profile : null;
+  const profile = message.user_profile && typeof message.user_profile === "object" ? message.user_profile : null;
+  const identityBlob = [
+    message.username,
+    botProfile && botProfile.name,
+    botProfile && botProfile.app_name,
+    profile && profile.display_name,
+    profile && profile.real_name
+  ].map((value) => String(value || "").trim().toLowerCase()).join(" ");
+  if (!identityBlob || !singularityNamePattern) return false;
+  return identityBlob.includes(singularityNamePattern);
+}
+
+function hasSlackQaiFinalMarker(message, markerRegexText) {
+  const markerSource = String(markerRegexText || "FINAL_RESPONSE").trim();
+  const text = extractSlackQaiMessageText(message);
+  if (markerSource && text) {
+    try {
+      const regex = new RegExp(markerSource, "i");
+      if (regex.test(text)) return true;
+    } catch (_) {
+      if (text.toLowerCase().includes(markerSource.toLowerCase())) return true;
+    }
+  }
+  const metadata = message && message.metadata && typeof message.metadata === "object" ? message.metadata : null;
+  const eventPayload = metadata && metadata.event_payload && typeof metadata.event_payload === "object"
+    ? metadata.event_payload
+    : null;
+  if (!eventPayload) return false;
+  return eventPayload.FINAL_RESPONSE === true
+    || eventPayload.final_response === true
+    || eventPayload.final === true;
+}
+
+function hasSlackQaiCompletionFooterText(value) {
+  const text = String(value || "").replace(/\r\n?/g, "\n").trim().toLowerCase();
+  if (!text) return false;
+  if (text.includes("how helpful was this answer")) return true;
+  if (text.includes("ai generated content. check important info for mistakes")) return true;
+  if (text.includes("if you have any more questions, just tag me in this thread")) return true;
+  if (text.includes("sources:")) return true;
+  return false;
+}
+
+function hasSlackQaiSourcesFooterText(value) {
+  const text = String(value || "").replace(/\r\n?/g, "\n").trim().toLowerCase();
+  if (!text) return false;
+  const idx = text.lastIndexOf("\nsources:");
+  const start = idx >= 0 ? idx + 1 : (text.startsWith("sources:") ? 0 : -1);
+  if (start < 0) return false;
+  const tail = text.slice(start);
+  if (!tail.includes("sources:")) return false;
+  if (!tail.includes("confidence-source")) return false;
+  return true;
+}
+
+function normalizeSlackQaiTextForDedup(value) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .toLowerCase();
+}
+
+function isSlackQaiAckMessageText(value) {
+  const text = normalizeSlackQaiTextForDedup(value);
+  if (!text) return false;
+  if (text.length > 420) return false;
+  const hints = [
+    "processing your request",
+    "working on your request",
+    "just a moment",
+    "please wait",
+    "i'm thinking",
+    "im thinking",
+    "thinking..."
+  ];
+  for (let i = 0; i < hints.length; i += 1) {
+    if (text.includes(hints[i])) return true;
+  }
+  return false;
+}
+
+async function slackSendToSingularityViaApi(input) {
+  const body = input && typeof input === "object" ? input : {};
+  const workspaceOrigin = normalizeSlackWorkspaceOrigin(body.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
+  const apiOrigins = buildSlackQaiApiOrigins(workspaceOrigin);
+  const channelId = normalizeSlackChannelId(body.channelId || body.channel_id || body.channel);
+  const messageText = decodeSlackEntityText(String(body.messageText || body.text || body.question || "")).trim();
+  if (!channelId) {
+    return { ok: false, code: "slack_channel_missing", error: "Slack channel ID is required." };
+  }
+  if (!messageText) {
+    return { ok: false, code: "slack_payload_empty", error: "Question text is empty." };
+  }
+  const mention = normalizeSlackMentionText(body.mention || "");
+  const messageMentionMatch = messageText.match(/^<@([UW][A-Z0-9]{8,})>/i);
+  let singularityUserId = normalizeSlackUserId(
+    body.singularityUserId
+    || body.singularity_user_id
+    || (messageMentionMatch && messageMentionMatch[1])
+    || parseSlackUserIdFromMention(mention)
+  );
+  let bodyText = messageText;
+  if (mention) bodyText = stripSlackMentionPrefix(bodyText, mention);
+  if (singularityUserId) bodyText = stripSlackMentionPrefix(bodyText, "<@" + singularityUserId + ">");
+  bodyText = String(bodyText || "").trim();
+  if (!bodyText) bodyText = messageText;
+  const tokens = await resolveSlackApiTokens(body);
+  const tokenAttempts = buildSlackQaiTokenAttempts(tokens, body.tokenKind || body.token_kind || "");
+  if (!tokenAttempts.length) {
+    return { ok: false, code: "slack_user_token_missing", error: "Slack user/session token is missing for Q&AI delivery." };
+  }
+
+  let lastFailureCode = "slack_qai_send_failed";
+  let lastFailureError = "Unable to post message to Singularity.";
+  let lastFailureStatus = 0;
+  let lastFailureScope = "";
+  let lastFailureTokenKind = "";
+  let lastFailureWorkspaceOrigin = "";
+  let backedOffCount = 0;
+
+  for (let i = 0; i < tokenAttempts.length; i += 1) {
+    const attempt = tokenAttempts[i];
+    const attemptToken = normalizeSlackApiToken(attempt && attempt.token);
+    if (!attemptToken) continue;
+    if (isSlackTokenTemporarilyBackedOff(attemptToken)) {
+      backedOffCount += 1;
+      lastFailureCode = "slack_token_backoff";
+      lastFailureError = "Slack token validation is cooling down after recent failures.";
+      continue;
+    }
+    let tokenInvalidated = false;
+    for (let originIdx = 0; originIdx < apiOrigins.length; originIdx += 1) {
+      const apiOrigin = apiOrigins[originIdx];
+      let effectiveSingularityUserId = singularityUserId;
+      if (!effectiveSingularityUserId && mention.startsWith("@")) {
+        effectiveSingularityUserId = await resolveSlackUserIdByMentionViaApi(
+          apiOrigin,
+          attemptToken,
+          mention
+        ).catch(() => "");
+      }
+      if (!effectiveSingularityUserId && mention.startsWith("@")) {
+        effectiveSingularityUserId = await resolveSlackUserIdFromChannelHistoryViaApi(
+          apiOrigin,
+          attemptToken,
+          channelId,
+          mention
+        ).catch(() => "");
+      }
+      if (effectiveSingularityUserId) {
+        singularityUserId = effectiveSingularityUserId;
+      }
+      const mentionPrefix = effectiveSingularityUserId
+        ? ("<@" + effectiveSingularityUserId + ">")
+        : mention;
+      const outboundText = mentionPrefix ? (mentionPrefix + " " + bodyText).trim() : bodyText;
+      const post = await postSlackApiWithBearerToken(apiOrigin, "/api/chat.postMessage", {
+        channel: channelId,
+        text: outboundText,
+        mrkdwn: "true",
+        parse: effectiveSingularityUserId ? "none" : "full",
+        link_names: "1",
+        unfurl_links: "false",
+        unfurl_media: "false",
+        _x_reason: "zip-qai-send-bg"
+      }, attemptToken);
+      if (post && post.ok) {
+        const payload = post.payload && typeof post.payload === "object" ? post.payload : {};
+        const messageTs = String(payload.ts || (payload.message && payload.message.ts) || "").trim();
+        const postedChannel = String(payload.channel || channelId).trim();
+        return {
+          ok: true,
+          channel: postedChannel,
+          ts: messageTs,
+          parent_ts: messageTs,
+          thread_ts: messageTs,
+          message: payload.message || null,
+          token_kind: attempt.kind || "",
+          workspace_origin: apiOrigin,
+          delivery_mode: "qai_api_" + String(attempt.kind || "user")
+        };
+      }
+      const code = String(post && post.code || "slack_qai_send_failed").trim().toLowerCase();
+      const error = String(post && post.error || "Unable to post message to Singularity.").trim();
+      const status = Number(post && post.status || 0);
+      const payload = post && post.payload && typeof post.payload === "object" ? post.payload : {};
+      lastFailureCode = code || "slack_qai_send_failed";
+      lastFailureError = error || "Unable to post message to Singularity.";
+      lastFailureStatus = Number.isFinite(status) ? status : 0;
+      lastFailureScope = String(payload.needed || payload.provided || "").trim();
+      lastFailureTokenKind = String(attempt.kind || "").trim().toLowerCase();
+      lastFailureWorkspaceOrigin = String(apiOrigin || "").trim();
+      if (isSlackTokenInvalidationCode(code)) {
+        markSlackTokenBackoff(attemptToken);
+        await invalidateStoredSlackToken(attemptToken);
+        tokenInvalidated = true;
+        break;
+      }
+      if (!isRetryableSlackQaiApiCode(code) && apiOrigin === apiOrigins[apiOrigins.length - 1]) {
+        clearSlackTokenBackoff(attemptToken);
+      }
+    }
+    if (tokenInvalidated) {
+      continue;
+    }
+  }
+
+  if (backedOffCount > 0 && backedOffCount >= tokenAttempts.length) {
+    return {
+      ok: false,
+      code: "slack_token_backoff",
+      error: "Slack token validation is cooling down after recent failures.",
+      diagnostics: {
+        phase: "send",
+        classification: "slack_auth_config",
+        issueSource: "slack_api",
+        channelId,
+        errorCode: "slack_token_backoff",
+        httpStatus: 0,
+        scope: "",
+        tokenKind: "",
+        workspaceOrigin: "",
+        recommendedAction: "Wait for backoff to clear, then retry."
+      }
+    };
+  }
+  const classifySlackQaiFailure = (code) => {
+    if (code === "channel_not_found" || code === "not_in_channel") return "slack_channel_access";
+    if (code === "missing_scope" || code === "insufficient_scope" || code === "not_allowed_token_type") return "slack_scope_config";
+    if (code === "invalid_auth" || code === "not_authed" || code === "token_revoked" || code === "account_inactive") return "slack_auth_config";
+    if (code === "workspace_mismatch") return "slack_workspace_config";
+    return "slack_api_error";
+  };
+  const recommendedAction = (() => {
+    if (lastFailureCode === "channel_not_found") return "Verify token workspace/channel access and retry web-session fallback.";
+    if (lastFailureCode === "not_in_channel") return "Invite token identity to channel or use channel-visible token.";
+    if (lastFailureCode === "missing_scope" || lastFailureCode === "insufficient_scope") return "Use a token with required chat/conversations scopes.";
+    return "Retry with a valid workspace-scoped Slack token.";
+  })();
+  return {
+    ok: false,
+    code: lastFailureCode,
+    error: lastFailureError,
+    diagnostics: {
+      phase: "send",
+      classification: classifySlackQaiFailure(lastFailureCode),
+      issueSource: "slack_api",
+      channelId,
+      errorCode: lastFailureCode,
+      httpStatus: lastFailureStatus,
+      scope: lastFailureScope,
+      tokenKind: lastFailureTokenKind,
+      workspaceOrigin: lastFailureWorkspaceOrigin,
+      recommendedAction
+    }
+  };
+}
+
+async function slackPollSingularityThreadViaApi(input) {
+  const body = input && typeof input === "object" ? input : {};
+  const workspaceOrigin = normalizeSlackWorkspaceOrigin(body.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
+  const apiOrigins = buildSlackQaiApiOrigins(workspaceOrigin);
+  const channelId = normalizeSlackChannelId(body.channelId || body.channel_id || body.channel);
+  const parentTs = String(body.parentTs || body.parent_ts || body.threadTs || body.thread_ts || "").trim();
+  if (!channelId || !parentTs) {
+    return { ok: false, code: "slack_thread_meta_missing", error: "Slack channel/thread metadata is required." };
+  }
+  const limitRaw = Number(body.limit);
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.trunc(limitRaw), 200) : 40;
+  const tokens = await resolveSlackApiTokens(body);
+  const tokenAttempts = buildSlackQaiTokenAttempts(tokens, body.tokenKind || body.token_kind || "");
+  if (!tokenAttempts.length) {
+    return { ok: false, code: "slack_user_token_missing", error: "Slack user/session token is missing for Q&AI polling." };
+  }
+
+  let lastFailureCode = "slack_qai_poll_failed";
+  let lastFailureError = "Unable to fetch thread replies.";
+  let backedOffCount = 0;
+
+  for (let i = 0; i < tokenAttempts.length; i += 1) {
+    const attempt = tokenAttempts[i];
+    const attemptToken = normalizeSlackApiToken(attempt && attempt.token);
+    if (!attemptToken) continue;
+    if (isSlackTokenTemporarilyBackedOff(attemptToken)) {
+      backedOffCount += 1;
+      lastFailureCode = "slack_token_backoff";
+      lastFailureError = "Slack token validation is cooling down after recent failures.";
+      continue;
+    }
+    let tokenInvalidated = false;
+    let replies = null;
+    for (let originIdx = 0; originIdx < apiOrigins.length; originIdx += 1) {
+      const apiOrigin = apiOrigins[originIdx];
+      replies = await postSlackApiWithBearerToken(apiOrigin, "/api/conversations.replies", {
+        channel: channelId,
+        ts: parentTs,
+        inclusive: "true",
+        oldest: parentTs,
+        limit,
+        _x_reason: "zip-qai-poll-bg"
+      }, attemptToken);
+      if (replies && replies.ok) break;
+      const code = String(replies && replies.code || "slack_qai_poll_failed").trim().toLowerCase();
+      const error = String(replies && replies.error || "Unable to fetch thread replies.").trim();
+      lastFailureCode = code || "slack_qai_poll_failed";
+      lastFailureError = error || "Unable to fetch thread replies.";
+      if (isSlackTokenInvalidationCode(code)) {
+        markSlackTokenBackoff(attemptToken);
+        await invalidateStoredSlackToken(attemptToken);
+        tokenInvalidated = true;
+        break;
+      }
+    }
+    if (tokenInvalidated) {
+      continue;
+    }
+    if (!replies || !replies.ok) {
+      continue;
+    }
+
+    const payload = replies.payload && typeof replies.payload === "object" ? replies.payload : {};
+    const messages = Array.isArray(payload.messages) ? payload.messages.slice() : [];
+    messages.sort((a, b) => slackQaiTsToEpochMs(a && a.ts) - slackQaiTsToEpochMs(b && b.ts));
+
+    const singularityOptions = {
+      singularityUserId: body.singularityUserId,
+      singularityNamePattern: body.singularityNamePattern
+    };
+    const postingUserId = normalizeSlackUserId(body.postingUserId || body.posting_user_id || "");
+    const explicitSingularityTarget = !!(
+      normalizeSlackUserId(singularityOptions.singularityUserId)
+      || String(singularityOptions.singularityNamePattern || "").trim()
+    );
+
+    const preferredReplies = [];
+    const fallbackReplies = [];
+    const nonSingularityMessages = [];
+    for (let msgIdx = 0; msgIdx < messages.length; msgIdx += 1) {
+      const message = messages[msgIdx];
+      if (!message || typeof message !== "object") continue;
+      const ts = String(message.ts || "").trim();
+      if (!ts || ts === parentTs) continue;
+      const threadTs = String(message.thread_ts || "").trim();
+      if (threadTs && threadTs !== parentTs) continue;
+      const messageUserId = normalizeSlackUserId(
+        message.user
+        || (message.user_profile && message.user_profile.id)
+        || ""
+      );
+      const fromPostingUser = !!(postingUserId && messageUserId && messageUserId === postingUserId);
+      const fromSingularity = isSlackQaiSingularityMessage(message, singularityOptions);
+      if (fromSingularity) {
+        preferredReplies.push(message);
+        continue;
+      }
+      if (fromPostingUser) continue;
+      nonSingularityMessages.push(message);
+      if (!explicitSingularityTarget) fallbackReplies.push(message);
+    }
+    const replyMessages = preferredReplies.length ? preferredReplies : fallbackReplies;
+
+    const latestReply = replyMessages.length ? replyMessages[replyMessages.length - 1] : null;
+    const finalMarkerRegex = String(body.finalMarkerRegex || "FINAL_RESPONSE").trim();
+    let finalReply = null;
+    for (let msgIdx = replyMessages.length - 1; msgIdx >= 0; msgIdx -= 1) {
+      const message = replyMessages[msgIdx];
+      const messageText = extractSlackQaiMessageText(message);
+      if (
+        hasSlackQaiFinalMarker(message, finalMarkerRegex)
+        || hasSlackQaiCompletionFooterText(messageText)
+      ) {
+        finalReply = message;
+        break;
+      }
+    }
+
+    const latestReplyTs = String((latestReply && latestReply.ts) || "").trim();
+    const latestReplyText = extractSlackQaiMessageText(latestReply);
+    const finalReplyTs = String((finalReply && finalReply.ts) || "").trim();
+    const finalReplyText = extractSlackQaiMessageText(finalReply);
+    const allReplies = replyMessages.map((message) => ({
+      ts: String((message && message.ts) || "").trim(),
+      text: extractSlackQaiMessageText(message),
+      hasFinalMarker: hasSlackQaiFinalMarker(message, finalMarkerRegex),
+      hasCompletionFooter: hasSlackQaiCompletionFooterText(extractSlackQaiMessageText(message)),
+      isAck: isSlackQaiAckMessageText(extractSlackQaiMessageText(message))
+    })).filter((row) => row.ts || row.text);
+
+    const dedupedReplyRows = [];
+    const seenReplyNorms = new Set();
+    for (let rowIdx = 0; rowIdx < allReplies.length; rowIdx += 1) {
+      const row = allReplies[rowIdx];
+      const text = String((row && row.text) || "").trim();
+      if (!text) continue;
+      const norm = normalizeSlackQaiTextForDedup(text);
+      if (!norm || seenReplyNorms.has(norm)) continue;
+      if (dedupedReplyRows.length) {
+        const last = dedupedReplyRows[dedupedReplyRows.length - 1];
+        if (
+          last
+          && typeof last.norm === "string"
+          && norm.length > last.norm.length + 40
+          && norm.includes(last.norm)
+        ) {
+          dedupedReplyRows.pop();
+          seenReplyNorms.delete(last.norm);
+        }
+      }
+      dedupedReplyRows.push({ text, norm, isAck: !!(row && row.isAck) });
+      seenReplyNorms.add(norm);
+    }
+
+    let allReplyTexts = dedupedReplyRows.map((row) => row.text);
+    if (allReplyTexts.length > 1) {
+      const nonAckTexts = dedupedReplyRows
+        .filter((row) => !row.isAck)
+        .map((row) => row.text);
+      if (nonAckTexts.length) allReplyTexts = nonAckTexts;
+    }
+
+    const combinedReplyText = allReplyTexts.join("\n\n").trim();
+    const hasCompletionFooter = allReplies.some((row) => row && row.hasCompletionFooter);
+    const hasSourcesFooter = allReplyTexts.some((text) => hasSlackQaiSourcesFooterText(text));
+    const ackOnly = dedupedReplyRows.length === 1 && !!(dedupedReplyRows[0] && dedupedReplyRows[0].isAck);
+    const nonSingularityReplies = nonSingularityMessages.map((message) => ({
+      ts: String((message && message.ts) || "").trim(),
+      text: extractSlackQaiMessageText(message)
+    })).filter((row) => row.ts || row.text);
+    const latestNonSingularityReply = nonSingularityReplies.length
+      ? nonSingularityReplies[nonSingularityReplies.length - 1]
+      : null;
+    const cachedLatestUpdates = Object.create(null);
+    cachedLatestUpdates[parentTs] = parentTs;
+    allReplies.forEach((row) => {
+      const ts = String(row && row.ts || "").trim();
+      if (ts) cachedLatestUpdates[ts] = ts;
+    });
+    nonSingularityReplies.forEach((row) => {
+      const ts = String(row && row.ts || "").trim();
+      if (ts) cachedLatestUpdates[ts] = ts;
+    });
+
+    return {
+      ok: true,
+      status: (finalReply || hasCompletionFooter || hasSourcesFooter) ? "final" : "pending",
+      channel: channelId,
+      parent_ts: parentTs,
+      latestReplyTs,
+      latestReplyText,
+      finalReplyTs,
+      finalReplyText,
+      hasFinalMarker: !!finalReply || hasCompletionFooter || hasSourcesFooter,
+      hasCompletionFooter,
+      hasSourcesFooter,
+      ackOnly,
+      final: !!finalReply || hasCompletionFooter || hasSourcesFooter,
+      allReplies,
+      allReplyTexts,
+      combinedReplyText,
+      repliesCount: replyMessages.length,
+      singularityRepliesCount: replyMessages.length,
+      nonSingularityRepliesCount: nonSingularityReplies.length,
+      latestNonSingularityReplyTs: String((latestNonSingularityReply && latestNonSingularityReply.ts) || "").trim(),
+      latestNonSingularityReplyText: String((latestNonSingularityReply && latestNonSingularityReply.text) || "").trim(),
+      cachedLatestUpdates,
+      messageCount: messages.length,
+      token_kind: attempt.kind || ""
+    };
+  }
+
+  if (backedOffCount > 0 && backedOffCount >= tokenAttempts.length) {
+    return {
+      ok: false,
+      code: "slack_token_backoff",
+      error: "Slack token validation is cooling down after recent failures."
+    };
   }
   return {
     ok: false,
@@ -4740,6 +5597,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch((err) => sendResponse({
         ok: false,
         error: err && err.message ? err.message : "Slack API send failed."
+      }));
+    return true;
+  }
+  if (msg.type === "ZIP_SLACK_API_QAI_SEND") {
+    slackSendToSingularityViaApi(msg)
+      .then((result) => sendResponse(result || { ok: false, error: "Slack Q&AI send did not return a result." }))
+      .catch((err) => sendResponse({
+        ok: false,
+        error: err && err.message ? err.message : "Slack Q&AI send failed."
+      }));
+    return true;
+  }
+  if (msg.type === "ZIP_SLACK_API_QAI_POLL") {
+    slackPollSingularityThreadViaApi(msg)
+      .then((result) => sendResponse(result || { ok: false, error: "Slack Q&AI poll did not return a result." }))
+      .catch((err) => sendResponse({
+        ok: false,
+        error: err && err.message ? err.message : "Slack Q&AI poll failed."
       }));
     return true;
   }
