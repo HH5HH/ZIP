@@ -2247,8 +2247,53 @@ body.zip-busy-cursor * {
   min-width: 0;
 }
 
-.ticket-network-indicator {
+.ticket-section-header-search {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xxs);
+  flex: 1 1 280px;
+  min-width: 220px;
+  max-width: min(58vw, 440px);
+}
+
+.ticket-section-search-input {
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--zip-control-bg);
+  color: var(--fg-default);
+  min-height: var(--zip-density-control-height);
+  padding: 0 var(--zip-density-field-pad-inline);
+  font-size: var(--zip-density-font-body);
+  line-height: var(--zip-density-line-body);
+  min-width: 0;
+  flex: 1 1 auto;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spectrum-body-color) 12%, transparent);
+}
+
+.ticket-section-search-input:hover {
+  background: var(--zip-control-hover-bg);
+  border-color: var(--zip-control-border-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spectrum-body-color) 20%, transparent);
+}
+
+.ticket-section-search-input:focus {
+  outline: none;
+  border-color: var(--spectrum-focus-color);
+  box-shadow:
+    0 0 0 2px var(--spectrum-focus-ring-color),
+    inset 0 0 0 1px color-mix(in srgb, var(--spectrum-focus-color) 40%, transparent);
+}
+
+.ticket-section-search-btn {
+  min-height: var(--zip-density-control-height);
+  border-radius: var(--radius-md);
+  flex: 0 0 auto;
+}
+
+.ticket-network-indicator {
+  margin-left: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2294,6 +2339,16 @@ body.zip-busy-cursor * {
     linear-gradient(180deg, var(--zip-table-head-bg-a) 0%, var(--zip-table-head-bg-b) 100%),
     var(--bg-recessed);
   box-shadow: inset 0 -1px 0 var(--zip-outline-soft);
+}
+
+@media (max-width: 760px) {
+  .ticket-section-header-search {
+    order: 3;
+    margin-left: 0;
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: none;
+  }
 }
 
 .ticket-section-by-org,
