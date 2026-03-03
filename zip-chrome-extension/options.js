@@ -284,8 +284,28 @@
       "oauth_token",
       "userToken"
     ]));
-    if (!userToken) {
-      throw new Error("Parsed ZIP.KEY is missing required SLACKTIVATION value: user_token.");
+    const singularityChannelId = normalizeChannelId(readZipKeyValue(payload, [
+      "services.slacktivation.singularity_channel_id",
+      "services.slacktivation.singularityChannelId",
+      "slacktivation.singularity_channel_id",
+      "slacktivation.singularityChannelId",
+      "singularity.channelId",
+      "channelId"
+    ]));
+    const singularityMention = normalizeMention(readZipKeyValue(payload, [
+      "services.slacktivation.singularity_mention",
+      "services.slacktivation.singularityMention",
+      "slacktivation.singularity_mention",
+      "slacktivation.singularityMention",
+      "singularity.mention",
+      "mention"
+    ]));
+    const missingFields = [];
+    if (!userToken) missingFields.push("user_token");
+    if (!singularityChannelId) missingFields.push("singularity_channel_id");
+    if (!singularityMention) missingFields.push("singularity_mention");
+    if (missingFields.length) {
+      throw new Error("Parsed ZIP.KEY is missing required SLACKTIVATION values: " + missingFields.join("/") + ".");
     }
 
     return {
@@ -301,22 +321,8 @@
         userToken
       },
       singularity: {
-        channelId: normalizeChannelId(readZipKeyValue(payload, [
-          "services.slacktivation.singularity_channel_id",
-          "services.slacktivation.singularityChannelId",
-          "slacktivation.singularity_channel_id",
-          "slacktivation.singularityChannelId",
-          "singularity.channelId",
-          "channelId"
-        ])),
-        mention: normalizeMention(readZipKeyValue(payload, [
-          "services.slacktivation.singularity_mention",
-          "services.slacktivation.singularityMention",
-          "slacktivation.singularity_mention",
-          "slacktivation.singularityMention",
-          "singularity.mention",
-          "mention"
-        ]))
+        channelId: singularityChannelId,
+        mention: singularityMention
       },
       meta: {
         keyVersion: String(readZipKeyValue(payload, ["keyVersion", "version", "meta.version"]) || "").trim(),

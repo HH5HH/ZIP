@@ -34,6 +34,8 @@ Slack ZIP.KEY config keys (`chrome.storage.local`):
 - `zip_slack_redirect_path` (default `slack-user`)
 - `zip_slack_redirect_uri` (optional explicit `https://<extension-id>.chromiumapp.org/...` override)
 - `zip_slack_user_token`
+- `zip_singularity_channel_id`
+- `zip_singularity_mention`
 - `zip_slack_key_loaded` (required gate flag)
 
 OpenID behavior:
@@ -53,13 +55,13 @@ Required fields in payload:
 - `slacktivation.client_id`
 - `slacktivation.client_secret`
 - `slacktivation.user_token`
+- `slacktivation.singularity_channel_id`
+- `slacktivation.singularity_mention`
 
 Optional payload fields (only if you need overrides):
 - `slacktivation.scope`
 - `slacktivation.redirect_path`
 - `slacktivation.redirect_uri`
-- `slacktivation.singularity_channel_id`
-- `slacktivation.singularity_mention`
 
 Example payload JSON:
 ```json
@@ -68,7 +70,9 @@ Example payload JSON:
     "slacktivation": {
       "client_id": "YOUR_CLIENT_ID",
       "client_secret": "YOUR_CLIENT_SECRET",
-      "user_token": "REQUIRED_USER_TOKEN"
+      "user_token": "REQUIRED_USER_TOKEN",
+      "singularity_channel_id": "YOUR_SINGULARITY_CHANNEL_ID",
+      "singularity_mention": "YOUR_SINGULARITY_MENTION"
     }
   }
 }
@@ -84,14 +88,14 @@ Minimal `KEY=VALUE` format (recommended) is also supported:
 slacktivation.client_id=YOUR_SLACK_OIDC_CLIENT_ID
 slacktivation.client_secret=YOUR_SLACK_OIDC_CLIENT_SECRET
 slacktivation.user_token=YOUR_REQUIRED_USER_TOKEN
+slacktivation.singularity_channel_id=YOUR_SINGULARITY_CHANNEL_ID
+slacktivation.singularity_mention=YOUR_SINGULARITY_MENTION
 ```
 
 Optional override keys are still supported if needed:
 - `slacktivation.scope`
 - `slacktivation.redirect_path`
 - `slacktivation.redirect_uri`
-- `slacktivation.singularity_channel_id`
-- `slacktivation.singularity_mention`
 
 Template file:
 - `zip-chrome-extension/ZIP.KEY.template`

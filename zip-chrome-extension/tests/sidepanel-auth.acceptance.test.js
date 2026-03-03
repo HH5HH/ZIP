@@ -500,6 +500,10 @@ test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", 
       },
       api: {
         userToken: "xoxp-menu-test-token"
+      },
+      singularity: {
+        channelId: "C123456789A",
+        mention: "@Singularity"
       }
     }
   });
@@ -610,6 +614,8 @@ test("sidepanel requires ZIP.KEY gate before Zendesk login", () => {
   assert.match(source, /"slacktivation\.client_id"/);
   assert.match(source, /"slacktivation\.client_secret"/);
   assert.match(source, /"slacktivation\.user_token"/);
+  assert.match(source, /"slacktivation\.singularity_channel_id"/);
+  assert.match(source, /"slacktivation\.singularity_mention"/);
   assert.match(source, /function parseZipKeyPayload\(rawText\)/);
   assert.match(source, /function importZipKeyFromFile\(file\)/);
   assert.match(source, /const gateStatus = enforceZipConfigGate\(\{ reportStatus: true \}\);/);

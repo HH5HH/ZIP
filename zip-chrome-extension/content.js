@@ -29,6 +29,9 @@
   let slackTokenBridgeInstalled = false;
   let slackTokenBridgeListenerInstalled = false;
   let slackCapturedToken = "";
+  const slackTokenTeamIdByToken = new Map();
+  const slackTokenUserIdByToken = new Map();
+  const slackMentionUserIdCache = new Map();
   let requestorOrgFeatureFlagCache = {
     loaded: false,
     loadedAt: 0,
@@ -1422,21 +1425,222 @@
     ];
   }
 
+  function normalizeSlackMentionHandle(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    if (/^<@[UW][A-Z0-9]{8,}>$/i.test(raw)) return "";
+    const plain = raw.startsWith("@") ? raw.slice(1) : raw;
+    return String(plain || "").trim().toLowerCase();
+  }
+
+  function normalizeSlackHandleLoose(value) {
+    const normalized = normalizeSlackMentionHandle(value);
+    if (!normalized) return "";
+    return normalized.replace(/[^a-z0-9._-]+/g, "");
+  }
+
+  function doesSlackUserMatchHandle(user, handle) {
+    const target = normalizeSlackMentionHandle(handle);
+    if (!target) return false;
+    const targetLoose = normalizeSlackHandleLoose(target);
+    const profile = user && user.profile && typeof user.profile === "object" ? user.profile : {};
+    const candidates = [
+      user && user.name,
+      user && user.real_name,
+      profile.display_name_normalized,
+      profile.display_name,
+      profile.real_name_normalized,
+      profile.real_name
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    for (let i = 0; i < candidates.length; i += 1) {
+      const candidate = normalizeSlackMentionHandle(candidates[i]);
+      if (!candidate) continue;
+      if (candidate === target) return true;
+      const candidateLoose = normalizeSlackHandleLoose(candidate);
+      if (candidateLoose && targetLoose && candidateLoose === targetLoose) return true;
+    }
+    return false;
+  }
+
+  function doesSlackMessageIdentityMatchHandle(message, handle) {
+    const target = normalizeSlackMentionHandle(handle);
+    if (!target) return false;
+    const targetLoose = normalizeSlackHandleLoose(target);
+    const source = message && typeof message === "object" ? message : {};
+    const profile = source.user_profile && typeof source.user_profile === "object" ? source.user_profile : {};
+    const botProfile = source.bot_profile && typeof source.bot_profile === "object" ? source.bot_profile : {};
+    const candidates = [
+      source.username,
+      source.app_name,
+      source.user_display_name,
+      profile.display_name_normalized,
+      profile.display_name,
+      profile.real_name_normalized,
+      profile.real_name,
+      botProfile.name,
+      botProfile.app_name
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    for (let i = 0; i < candidates.length; i += 1) {
+      const candidate = normalizeSlackMentionHandle(candidates[i]);
+      if (!candidate) continue;
+      if (candidate === target) return true;
+      const candidateLoose = normalizeSlackHandleLoose(candidate);
+      if (candidateLoose && targetLoose && candidateLoose === targetLoose) return true;
+    }
+    return false;
+  }
+
+  async function resolveSlackUserIdByMention(workspaceOrigin, mention) {
+    const handle = normalizeSlackMentionHandle(mention);
+    if (!handle) return "";
+    const origin = normalizeSlackWorkspaceOrigin(workspaceOrigin);
+    const cacheKey = origin + "::" + handle;
+    const cached = normalizeSlackUserId(slackMentionUserIdCache.get(cacheKey) || "");
+    if (cached) return cached;
+
+    let cursor = "";
+    for (let page = 0; page < 3; page += 1) {
+      const fields = {
+        limit: 500,
+        _x_reason: "zip-qai-resolve-mention-user"
+      };
+      if (cursor) fields.cursor = cursor;
+      const usersList = await postSlackApi(origin, "/api/users.list", fields);
+      if (!usersList || !usersList.ok) break;
+      const payload = usersList.payload && typeof usersList.payload === "object" ? usersList.payload : {};
+      const members = Array.isArray(payload.members) ? payload.members : [];
+      for (let i = 0; i < members.length; i += 1) {
+        const member = members[i];
+        if (!member || typeof member !== "object") continue;
+        const memberId = normalizeSlackUserId(member.id || member.user_id || "");
+        if (!memberId) continue;
+        if (!doesSlackUserMatchHandle(member, handle)) continue;
+        slackMentionUserIdCache.set(cacheKey, memberId);
+        return memberId;
+      }
+      cursor = String(payload && payload.response_metadata && payload.response_metadata.next_cursor || "").trim();
+      if (!cursor) break;
+    }
+    return "";
+  }
+
+  async function resolveSlackUserIdFromChannelHistory(workspaceOrigin, channelId, mention) {
+    const handle = normalizeSlackMentionHandle(mention);
+    const targetChannel = String(channelId || "").trim();
+    if (!handle || !targetChannel) return "";
+    const origin = normalizeSlackWorkspaceOrigin(workspaceOrigin);
+    const cacheKey = origin + "::" + handle;
+    const cached = normalizeSlackUserId(slackMentionUserIdCache.get(cacheKey) || "");
+    if (cached) return cached;
+
+    const history = await postSlackApi(origin, "/api/conversations.history", {
+      channel: targetChannel,
+      limit: 120,
+      inclusive: "false",
+      _x_reason: "zip-qai-resolve-mention-history"
+    }).catch(() => null);
+    if (!history || !history.ok) return "";
+    const payload = history.payload && typeof history.payload === "object" ? history.payload : {};
+    const messages = Array.isArray(payload.messages) ? payload.messages : [];
+    for (let i = 0; i < messages.length; i += 1) {
+      const message = messages[i];
+      if (!message || typeof message !== "object") continue;
+      const messageUserId = normalizeSlackUserId(
+        message.user
+        || message.user_id
+        || (message.user_profile && message.user_profile.id)
+        || ""
+      );
+      if (!messageUserId) continue;
+      if (!doesSlackMessageIdentityMatchHandle(message, handle)) continue;
+      slackMentionUserIdCache.set(cacheKey, messageUserId);
+      return messageUserId;
+    }
+    return "";
+  }
+
+  async function resolveSlackUserIdFromConversationMembers(workspaceOrigin, channelId, mention) {
+    const handle = normalizeSlackMentionHandle(mention);
+    const targetChannel = String(channelId || "").trim();
+    if (!handle || !targetChannel) return "";
+    const origin = normalizeSlackWorkspaceOrigin(workspaceOrigin);
+    const cacheKey = origin + "::" + handle;
+    const cached = normalizeSlackUserId(slackMentionUserIdCache.get(cacheKey) || "");
+    if (cached) return cached;
+
+    const membersResponse = await postSlackApi(origin, "/api/conversations.members", {
+      channel: targetChannel,
+      limit: 200,
+      _x_reason: "zip-qai-resolve-mention-members"
+    }).catch(() => null);
+    if (!membersResponse || !membersResponse.ok) return "";
+    const membersPayload = membersResponse.payload && typeof membersResponse.payload === "object"
+      ? membersResponse.payload
+      : {};
+    const members = Array.isArray(membersPayload.members) ? membersPayload.members : [];
+    for (let i = 0; i < members.length && i < 120; i += 1) {
+      const memberId = normalizeSlackUserId(members[i]);
+      if (!memberId) continue;
+      const userInfo = await postSlackApi(origin, "/api/users.info", {
+        user: memberId,
+        include_locale: "false",
+        _x_reason: "zip-qai-resolve-mention-member-info"
+      }).catch(() => null);
+      if (!userInfo || !userInfo.ok) continue;
+      const userPayload = userInfo.payload && typeof userInfo.payload === "object" ? userInfo.payload : {};
+      const user = userPayload.user && typeof userPayload.user === "object" ? userPayload.user : {};
+      if (!doesSlackUserMatchHandle(user, handle)) continue;
+      slackMentionUserIdCache.set(cacheKey, memberId);
+      return memberId;
+    }
+    return "";
+  }
+
+  function decodeSlackEntityText(value) {
+    return String(value == null ? "" : value)
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&#64;/gi, "@")
+      .replace(/&quot;/gi, "\"")
+      .replace(/&#39;/gi, "'");
+  }
+
   function extractXoxcToken(value) {
     const text = String(value == null ? "" : value);
     const match = text.match(/(?:xoxe\.)?xox[a-z]-[A-Za-z0-9-]+/i);
     return match ? match[0] : "";
   }
 
+  function normalizeSlackUserApiToken(value) {
+    const token = extractXoxcToken(value);
+    if (!token) return "";
+    // Keep legacy behavior: accept any Slack xox* user/session token family.
+    return token;
+  }
+
+  function isSlackWebSessionToken(value) {
+    const token = normalizeSlackUserApiToken(value);
+    if (!token) return false;
+    return /^xoxc-/i.test(token)
+      || /^xoxd-/i.test(token)
+      || /^xoxe\.xoxc-/i.test(token)
+      || /^xoxe\.xoxd-/i.test(token);
+  }
+
   function cacheSlackCapturedToken(token) {
-    const normalized = extractXoxcToken(token);
+    const normalized = normalizeSlackUserApiToken(token);
     if (!normalized) return "";
     slackCapturedToken = normalized;
     return normalized;
   }
 
   function readCapturedSlackToken() {
-    const cached = extractXoxcToken(slackCapturedToken);
+    const cached = normalizeSlackUserApiToken(slackCapturedToken);
     if (cached) {
       slackCapturedToken = cached;
       return cached;
@@ -1613,23 +1817,181 @@
     return "";
   }
 
-  function resolveSlackApiToken() {
+  function resolveSlackApiTokenCandidates(preferredToken, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const preferProvidedTokenFirst = opts.preferProvidedTokenFirst === true;
     ensureSlackTokenBridgeInstalled();
+    const candidates = [];
+    const pushToken = (value, cache) => {
+      const normalized = normalizeSlackUserApiToken(value);
+      if (!normalized) return;
+      if (!candidates.includes(normalized)) candidates.push(normalized);
+      if (cache) cacheSlackCapturedToken(normalized);
+    };
 
-    const captured = readCapturedSlackToken();
-    if (captured) return captured;
+    if (preferProvidedTokenFirst) {
+      pushToken(preferredToken, false);
+    }
+    pushToken(readCapturedSlackToken(), false);
 
     const fromGlobals = findSlackTokenInGlobals();
-    if (fromGlobals) return cacheSlackCapturedToken(fromGlobals);
+    pushToken(fromGlobals, true);
     try {
       const fromLocalStorage = findSlackTokenInStorage(window.localStorage);
-      if (fromLocalStorage) return cacheSlackCapturedToken(fromLocalStorage);
+      pushToken(fromLocalStorage, true);
     } catch (_) {}
     try {
       const fromSessionStorage = findSlackTokenInStorage(window.sessionStorage);
-      if (fromSessionStorage) return cacheSlackCapturedToken(fromSessionStorage);
+      pushToken(fromSessionStorage, true);
     } catch (_) {}
-    return "";
+    // Keep caller-provided token as lowest-priority fallback unless explicitly promoted.
+    if (!preferProvidedTokenFirst) pushToken(preferredToken, false);
+    return candidates;
+  }
+
+  function resolveSlackApiToken(preferredToken, options) {
+    const candidates = resolveSlackApiTokenCandidates(preferredToken, options);
+    return candidates.length ? candidates[0] : "";
+  }
+
+  function getSlackApiFailureCode(payload, fallback) {
+    const code = payload && typeof payload === "object"
+      ? String(payload.error || payload.code || "").trim().toLowerCase()
+      : "";
+    if (code) return code;
+    return String(fallback || "").trim().toLowerCase();
+  }
+
+  function isRetryableSlackTokenFailureCode(value) {
+    const code = String(value || "").trim().toLowerCase();
+    if (!code) return false;
+    return code === "invalid_auth"
+      || code === "not_authed"
+      || code === "token_revoked"
+      || code === "account_inactive"
+      || code === "missing_scope"
+      || code === "insufficient_scope"
+      || code === "not_allowed_token_type"
+      || code === "channel_not_found"
+      || code === "not_in_channel"
+      || code === "workspace_mismatch"
+      || code === "user_mismatch";
+  }
+
+  function clearSlackCapturedTokenIfMatches(token) {
+    const normalized = normalizeSlackUserApiToken(token);
+    if (!normalized) return;
+    const cached = readCapturedSlackToken();
+    if (cached && cached === normalized) {
+      slackCapturedToken = "";
+    }
+    slackTokenTeamIdByToken.delete(normalized);
+    slackTokenUserIdByToken.delete(normalized);
+  }
+
+  async function resolveSlackTokenTeamId(candidateOrigins, token) {
+    const identity = await resolveSlackTokenIdentity(candidateOrigins, token);
+    if (identity && identity.ok) {
+      return { ok: true, teamId: identity.teamId || "" };
+    }
+    return {
+      ok: false,
+      code: String(identity && identity.code || "slack_auth_failed").trim().toLowerCase(),
+      error: String(identity && identity.error || "Slack token team check failed.").trim()
+    };
+  }
+
+  async function resolveSlackTokenIdentity(candidateOrigins, token) {
+    const normalizedToken = normalizeSlackUserApiToken(token);
+    if (!normalizedToken) {
+      return { ok: false, code: "invalid_auth", error: "Slack token is missing." };
+    }
+    const cachedTeamId = normalizeSlackTeamId(slackTokenTeamIdByToken.get(normalizedToken) || "");
+    const cachedUserId = normalizeSlackUserId(slackTokenUserIdByToken.get(normalizedToken) || "");
+    if (cachedTeamId || cachedUserId) {
+      return { ok: true, teamId: cachedTeamId, userId: cachedUserId };
+    }
+    const origins = Array.isArray(candidateOrigins) ? candidateOrigins : [];
+    let lastFailure = null;
+    for (let i = 0; i < origins.length; i += 1) {
+      const origin = normalizeSlackWorkspaceOrigin(origins[i]);
+      if (!origin) continue;
+      const attempt = await postSlackApiAttempt(origin, "/api/auth.test", {
+        _x_reason: "zip-token-team-check"
+      }, normalizedToken).catch((err) => ({
+        ok: false,
+        code: "slack_api_network_error",
+        error: err && err.message ? err.message : "Slack token team check failed."
+      }));
+      if (attempt && attempt.ok) {
+        const payload = attempt.payload && typeof attempt.payload === "object" ? attempt.payload : {};
+        const teamId = normalizeSlackTeamId(payload.team_id || payload.team || "");
+        const userId = normalizeSlackUserId(payload.user_id || payload.user || "");
+        if (teamId) slackTokenTeamIdByToken.set(normalizedToken, teamId);
+        if (userId) slackTokenUserIdByToken.set(normalizedToken, userId);
+        return { ok: true, teamId, userId };
+      }
+      if (attempt && typeof attempt === "object") {
+        lastFailure = {
+          code: String(attempt.code || "").trim().toLowerCase(),
+          error: String(attempt.error || "Slack token team check failed.").trim()
+        };
+      }
+    }
+    return {
+      ok: false,
+      code: String(lastFailure && lastFailure.code || "slack_auth_failed").trim().toLowerCase(),
+      error: String(lastFailure && lastFailure.error || "Slack token team check failed.").trim()
+    };
+  }
+
+  async function postSlackApiAttempt(candidateOrigin, path, body, token) {
+    const buildFormData = () => {
+      const formData = new FormData();
+      appendSlackFormField(formData, "token", token);
+      const keys = Object.keys(body);
+      for (let i = 0; i < keys.length; i += 1) {
+        appendSlackFormField(formData, keys[i], body[keys[i]]);
+      }
+      if (!Object.prototype.hasOwnProperty.call(body, "_x_mode")) {
+        appendSlackFormField(formData, "_x_mode", "online");
+      }
+      if (!Object.prototype.hasOwnProperty.call(body, "_x_sonic")) {
+        appendSlackFormField(formData, "_x_sonic", "true");
+      }
+      if (!Object.prototype.hasOwnProperty.call(body, "_x_app_name")) {
+        appendSlackFormField(formData, "_x_app_name", "client");
+      }
+      return formData;
+    };
+    const url = new URL(path, candidateOrigin).toString();
+    const response = await fetch(url, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      body: buildFormData()
+    });
+    const parsed = await parseSlackApiResponse(response);
+    const payload = parsed.payload && typeof parsed.payload === "object" ? parsed.payload : null;
+    const payloadOk = payload ? payload.ok !== false : false;
+    if (response.ok && payloadOk) {
+      return {
+        ok: true,
+        status: response.status,
+        payload,
+        rawText: parsed.text,
+        code: ""
+      };
+    }
+    return {
+      ok: false,
+      status: response.status,
+      error: getSlackApiError(payload, parsed.text, "Slack API request failed."),
+      payload: payload || {},
+      rawText: parsed.text,
+      code: getSlackApiFailureCode(payload, "")
+    };
   }
 
   function appendSlackFormField(formData, key, value) {
@@ -1682,33 +2044,8 @@
       return { ok: false, error: "Invalid Slack workspace origin." };
     }
 
-    const token = resolveSlackApiToken();
-    if (!token) {
-      return { ok: false, error: "No Slack web session token found. Open Slack and complete login first." };
-    }
-    cacheSlackCapturedToken(token);
-
     const path = String(endpointPath || "").startsWith("/") ? String(endpointPath) : ("/" + String(endpointPath || ""));
     const body = fields && typeof fields === "object" ? fields : {};
-    const buildFormData = () => {
-      const formData = new FormData();
-      appendSlackFormField(formData, "token", token);
-      const keys = Object.keys(body);
-      for (let i = 0; i < keys.length; i += 1) {
-        appendSlackFormField(formData, keys[i], body[keys[i]]);
-      }
-      if (!Object.prototype.hasOwnProperty.call(body, "_x_mode")) {
-        appendSlackFormField(formData, "_x_mode", "online");
-      }
-      if (!Object.prototype.hasOwnProperty.call(body, "_x_sonic")) {
-        appendSlackFormField(formData, "_x_sonic", "true");
-      }
-      if (!Object.prototype.hasOwnProperty.call(body, "_x_app_name")) {
-        appendSlackFormField(formData, "_x_app_name", "client");
-      }
-      return formData;
-    };
-
     const candidateOrigins = [];
     const pushOrigin = (value) => {
       const normalized = normalizeSlackWorkspaceOrigin(value);
@@ -1721,44 +2058,90 @@
     }
 
     let lastFailure = null;
-    for (let i = 0; i < candidateOrigins.length; i += 1) {
-      const candidateOrigin = candidateOrigins[i];
-      const url = new URL(path, candidateOrigin).toString();
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          credentials: "include",
-          cache: "no-store",
-          headers: { Accept: "application/json" },
-          body: buildFormData()
+    for (let authRetry = 0; authRetry <= 2; authRetry += 1) {
+      const tokenCandidates = resolveSlackApiTokenCandidates();
+      const orderedTokens = tokenCandidates
+        .slice()
+        .sort((a, b) => {
+          const aPriority = isSlackWebSessionToken(a) ? 0 : 1;
+          const bPriority = isSlackWebSessionToken(b) ? 0 : 1;
+          return aPriority - bPriority;
         });
+      if (!orderedTokens.length) {
+        lastFailure = { ok: false, code: "invalid_auth", error: "No Slack web session token found. Open Slack and complete login first." };
+      } else {
+        lastFailure = null;
+      }
 
-        const parsed = await parseSlackApiResponse(response);
-        const payload = parsed.payload && typeof parsed.payload === "object" ? parsed.payload : null;
-        const payloadOk = payload ? payload.ok !== false : false;
-        if (response.ok && payloadOk) {
-          return {
-            ok: true,
-            status: response.status,
-            payload,
-            rawText: parsed.text
-          };
+      for (let tokenIdx = 0; tokenIdx < orderedTokens.length; tokenIdx += 1) {
+        const token = normalizeSlackUserApiToken(orderedTokens[tokenIdx]);
+        if (!token) continue;
+        cacheSlackCapturedToken(token);
+        let tokenFailure = null;
+
+        for (let originIdx = 0; originIdx < candidateOrigins.length; originIdx += 1) {
+          const candidateOrigin = candidateOrigins[originIdx];
+          try {
+            const attempt = await postSlackApiAttempt(candidateOrigin, path, body, token);
+            if (attempt && attempt.ok) {
+              return {
+                ok: true,
+                status: attempt.status,
+                payload: attempt.payload || {},
+                rawText: String(attempt.rawText || "")
+              };
+            }
+            tokenFailure = {
+              ok: false,
+              status: Number(attempt && attempt.status || 0),
+              error: String((attempt && attempt.error) || "Slack API request failed."),
+              payload: attempt && attempt.payload && typeof attempt.payload === "object" ? attempt.payload : {},
+              rawText: String((attempt && attempt.rawText) || ""),
+              code: getSlackApiFailureCode(
+                attempt && attempt.payload && typeof attempt.payload === "object" ? attempt.payload : null,
+                String((attempt && attempt.code) || "")
+              )
+            };
+          } catch (err) {
+            tokenFailure = {
+              ok: false,
+              error: err && err.message ? err.message : "Slack API request failed.",
+              code: ""
+            };
+          }
         }
 
-        lastFailure = {
-          ok: false,
-          status: response.status,
-          error: getSlackApiError(payload, parsed.text, "Slack API request failed."),
-          payload: payload || {},
-          rawText: parsed.text
-        };
-      } catch (err) {
-        lastFailure = {
-          ok: false,
-          error: err && err.message ? err.message : "Slack API request failed."
-        };
+        if (tokenFailure) {
+          const failureCode = getSlackApiFailureCode(tokenFailure.payload, tokenFailure.code || tokenFailure.error);
+          if (
+            failureCode === "invalid_auth"
+            || failureCode === "not_authed"
+            || failureCode === "token_revoked"
+            || failureCode === "account_inactive"
+          ) {
+            clearSlackCapturedTokenIfMatches(token);
+          }
+          lastFailure = tokenFailure;
+          if (!isRetryableSlackTokenFailureCode(failureCode)) {
+            break;
+          }
+        }
       }
-      if (i < candidateOrigins.length - 1) continue;
+
+      const overallCode = getSlackApiFailureCode(
+        lastFailure && lastFailure.payload && typeof lastFailure.payload === "object" ? lastFailure.payload : null,
+        String(lastFailure && (lastFailure.code || lastFailure.error) || "")
+      );
+      const shouldRetryAuth = authRetry < 2 && (
+        overallCode === "invalid_auth"
+        || overallCode === "not_authed"
+        || overallCode === "token_revoked"
+        || overallCode === "account_inactive"
+      );
+      if (!shouldRetryAuth) {
+        break;
+      }
+      await waitMs(600 + (authRetry * 400));
     }
 
     return lastFailure || { ok: false, error: "Slack API request failed." };
@@ -1855,7 +2238,7 @@
     const messageUserId = String(message.user || "").trim();
     if (singularityUserId && messageUserId && messageUserId === singularityUserId) return true;
 
-    const singularityNamePattern = String(opts.singularityNamePattern || "singularity").trim().toLowerCase();
+    const singularityNamePattern = String(opts.singularityNamePattern || "").trim().toLowerCase();
     const botProfile = message.bot_profile && typeof message.bot_profile === "object" ? message.bot_profile : null;
     const profile = message.user_profile && typeof message.user_profile === "object" ? message.user_profile : null;
     const identityBlob = [
@@ -2612,6 +2995,10 @@
     ensureSlackTokenBridgeInstalled();
     const workspaceOrigin = normalizeSlackWorkspaceOrigin(inner && inner.workspaceOrigin);
     const session = extractSlackSessionIdentity();
+    const expectedTeamId = normalizeSlackTeamId(
+      (inner && (inner.teamId || inner.team_id))
+      || session.teamId
+    );
     const pathname = String(window.location && window.location.pathname || "").toLowerCase();
     const looksSignedIn = pathname.indexOf("/signin") === -1;
     const hasSessionSignals = !!(
@@ -2647,6 +3034,8 @@
     }
     const auth = await postSlackApi(workspaceOrigin, "/api/auth.test", {
       _x_reason: "zip-auth-test"
+    }, {
+      expectedTeamId
     });
     if (!auth.ok) {
       if (looksSignedIn && hasSessionSignals) {
@@ -2850,20 +3239,68 @@
       return { ok: false, error: "Slack channel ID is required." };
     }
 
-    const singularityUserId = String((inner && inner.singularityUserId) || "").trim();
-    const fallbackMention = String((inner && inner.mention) || "").trim();
-    const question = String((inner && (inner.messageText || inner.text || inner.question)) || "").trim();
+    let singularityUserId = String((inner && inner.singularityUserId) || "").trim();
+    const fallbackMentionRaw = decodeSlackEntityText(String((inner && inner.mention) || "").trim());
+    const fallbackMention = (function normalizeMention(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+      if (/^<@[UW][A-Z0-9]{8,}>$/i.test(raw)) return raw;
+      const plain = raw.startsWith("@") ? raw.slice(1).trim() : raw;
+      if (!plain) return "";
+      return "@" + plain;
+    })(fallbackMentionRaw);
+    if (!singularityUserId && /^<@[UW][A-Z0-9]{8,}>$/i.test(fallbackMention)) {
+      const fromMention = fallbackMention.match(/^<@([UW][A-Z0-9]{8,})>$/i);
+      singularityUserId = fromMention ? String(fromMention[1] || "").trim().toUpperCase() : "";
+    }
+    if (!singularityUserId && fallbackMention.startsWith("@")) {
+      const resolvedUserId = await resolveSlackUserIdByMention(workspaceOrigin, fallbackMention).catch(() => "");
+      if (resolvedUserId) singularityUserId = resolvedUserId;
+    }
+    if (!singularityUserId && fallbackMention.startsWith("@")) {
+      const resolvedFromMembers = await resolveSlackUserIdFromConversationMembers(
+        workspaceOrigin,
+        channelId,
+        fallbackMention
+      ).catch(() => "");
+      if (resolvedFromMembers) singularityUserId = resolvedFromMembers;
+    }
+    if (!singularityUserId && fallbackMention.startsWith("@")) {
+      const resolvedFromChannel = await resolveSlackUserIdFromChannelHistory(
+        workspaceOrigin,
+        channelId,
+        fallbackMention
+      ).catch(() => "");
+      if (resolvedFromChannel) singularityUserId = resolvedFromChannel;
+    }
+    if (!singularityUserId && fallbackMention.startsWith("@")) {
+      return {
+        ok: false,
+        code: "singularity_user_unresolved",
+        error: "Unable to resolve configured Singularity mention to a Slack user ID. Set slacktivation.singularity_mention to a real Slack mention like <@U123...>."
+      };
+    }
+    const question = decodeSlackEntityText(String((inner && (inner.messageText || inner.text || inner.question)) || "")).trim();
     if (!question) {
       return { ok: false, error: "Question text is empty." };
     }
 
     let bodyText = question;
     const singularityTag = singularityUserId ? ("<@" + singularityUserId + ">") : "";
-    if (singularityTag && bodyText.startsWith(singularityTag)) {
-      bodyText = bodyText.slice(singularityTag.length).trim();
+    const stripPrefix = (text, prefix) => {
+      const value = String(text || "");
+      const match = String(prefix || "").trim();
+      if (!match) return value;
+      if (value.toLowerCase().startsWith(match.toLowerCase())) {
+        return value.slice(match.length).trim();
+      }
+      return value;
+    };
+    if (singularityTag) {
+      bodyText = stripPrefix(bodyText, singularityTag);
     }
-    if (fallbackMention && bodyText.startsWith(fallbackMention)) {
-      bodyText = bodyText.slice(fallbackMention.length).trim();
+    if (fallbackMention) {
+      bodyText = stripPrefix(bodyText, fallbackMention);
     }
     const mentionPrefix = singularityTag || fallbackMention;
     const text = mentionPrefix ? (mentionPrefix + " " + bodyText).trim() : bodyText;
@@ -2873,30 +3310,62 @@
       || session.teamId
     );
     const urlsForUnfurl = extractUrlsFromText(bodyText);
-    const richTextBlocks = buildSingularityRichTextBlocks(singularityUserId, bodyText);
     const fields = {
       channel: channelId,
+      text,
       ts: generateSlackLikeTs(),
       type: "message",
       xArgs: "",
       include_channel_perm_error: "true",
       client_msg_id: generateSlackClientMessageId(),
+      link_names: "1",
+      mrkdwn: "true",
+      parse: singularityTag ? "none" : "full",
       _x_reason: "webapp_message_send",
       _x_mode: "online",
       _x_sonic: "true",
       _x_app_name: "client"
     };
     if (clientContextTeamId) fields.client_context_team_id = clientContextTeamId;
-    if (richTextBlocks.length) fields.blocks = richTextBlocks;
-    if (!richTextBlocks.length && text) fields.text = text;
     if (urlsForUnfurl.length) fields.unfurl = urlsForUnfurl.map((url) => ({ url }));
 
-    const payload = await postSlackApi(workspaceOrigin, "/api/chat.postMessage", fields);
+    const postToChannel = (targetChannelId, reasonTag) => postSlackApi(workspaceOrigin, "/api/chat.postMessage", {
+      ...fields,
+      channel: targetChannelId,
+      _x_reason: reasonTag || String(fields._x_reason || "webapp_message_send")
+    });
+
+    let effectiveChannelId = channelId;
+    let payload = await postToChannel(effectiveChannelId, "webapp_message_send");
+    const payloadCode = getSlackApiFailureCode(
+      payload && payload.payload && typeof payload.payload === "object" ? payload.payload : null,
+      String((payload && (payload.code || payload.error)) || "")
+    );
+    const shouldRecoverWithDmOpen = (
+      !payload
+      || payload.ok !== true
+    ) && singularityUserId && (payloadCode === "channel_not_found" || payloadCode === "not_in_channel");
+    if (shouldRecoverWithDmOpen) {
+      const dmOpen = await postSlackApi(workspaceOrigin, "/api/conversations.open", {
+        users: singularityUserId,
+        return_im: "true",
+        _x_reason: "zip-open-singularity-dm-recover"
+      });
+      if (dmOpen && dmOpen.ok) {
+        const dmPayload = dmOpen.payload && typeof dmOpen.payload === "object" ? dmOpen.payload : {};
+        const dmChannel = dmPayload.channel && typeof dmPayload.channel === "object" ? dmPayload.channel : {};
+        const recoveredChannelId = String(dmChannel.id || dmPayload.channel_id || dmPayload.channel || "").trim();
+        if (recoveredChannelId) {
+          effectiveChannelId = recoveredChannelId;
+          payload = await postToChannel(effectiveChannelId, "webapp_message_send_dm_recover");
+        }
+      }
+    }
     if (!payload.ok) return payload;
 
     const slack = payload.payload || {};
     const messageTs = String(slack.ts || (slack.message && slack.message.ts) || "").trim();
-    const postedChannel = String(slack.channel || channelId).trim();
+    const postedChannel = String(slack.channel || effectiveChannelId || channelId).trim();
     if (postedChannel && messageTs) {
       await slackConversationsMark(workspaceOrigin, postedChannel, messageTs, "viewed").catch(() => {});
     }
@@ -2922,6 +3391,7 @@
     if (!channelId || !parentTs) {
       return { ok: false, error: "Slack channel/thread metadata is required." };
     }
+    const session = extractSlackSessionIdentity();
 
     const limitRaw = Number(inner && inner.limit);
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.trunc(limitRaw), 200) : 40;
@@ -2952,7 +3422,6 @@
       singularityUserId: inner && inner.singularityUserId,
       singularityNamePattern: inner && inner.singularityNamePattern
     };
-    const session = extractSlackSessionIdentity();
     const postingUserId = normalizeSlackUserId(session.userId);
     const explicitSingularityTarget = !!(
       normalizeSlackUserId(singularityOptions && singularityOptions.singularityUserId)
