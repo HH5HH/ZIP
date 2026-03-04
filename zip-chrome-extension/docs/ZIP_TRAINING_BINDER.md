@@ -82,7 +82,7 @@ Install and begin work in under two minutes:
 ![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
 
 ## Release Snapshot
-- Product: ZIP (Zeek Info Peek)
+- Product: ZIP (ZipTool)
 - Build version: use current value in `zip-chrome-extension/manifest.json`
 - Package: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip`
 - Install path: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
@@ -90,7 +90,7 @@ Install and begin work in under two minutes:
 - App icon pack baseline: `/Users/minnick/Downloads/ZIP_APP_ICON_PACK_round.zip`
 
 ## What Management Asked For (Now Delivered)
-- Unified ZEEK INFO PEEK master-brand iconography and shell presentation.
+- Unified ZipTool master-brand iconography and shell presentation.
 - Cohesive install pages, extension UI, training docs, and PDF exports.
 - Single polished package for pilot install and user validation.
 - Quick-start-first documentation for urgent operational use.
@@ -150,7 +150,7 @@ Congratulations, your PASS Zendesk life is no longer being throttled.
 ![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
 
 ## Mission
-ZIP = Zeek Info Peek. ZIP into INFO from the Zendesk API.
+ZIP = ZipTool. ZIP into INFO from the Zendesk API.
 
 Mission statement: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows.
 
@@ -232,14 +232,14 @@ Congratulations, your PASS Zendesk life is no longer being throttled.
 ![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
 
 ## App Mission
-ZIP = Zeek Info Peek. ZIP into INFO from the Zendesk API.
+ZIP = ZipTool. ZIP into INFO from the Zendesk API.
 
 Mission: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. Don't get stuck wasting cycles on blockers. If ZIP can make your job faster, better, or more enjoyable, please share feedback.
 
 ## What ZIP Is
 ZIP is a Chrome extension side panel companion for `https://adobeprimetime.zendesk.com/*`.
 
-Branding in this release is synced to the approved ZEEK INFO PEEK master media kit and is consistent across:
+Branding in this release is synced to the approved ZipTool master media kit and is consistent across:
 - Extension iconography
 - Side panel shell and login card
 - Install pages
@@ -503,7 +503,7 @@ Use IDs like `ZIP-OPEN-001`, `ZIP-TICKETS-005`, `ZIP-API-009`.
 | ZIP-API-002 | Raw JSON download | Raw.JSON link | JSON file download | `sidepanel.js` |
 | ZIP-UX-001 | Side panel side awareness | getLayout context | Left/right visual adaptation | `background.js`, `sidepanel.js`, `sidepanel.css` |
 | ZIP-UX-002 | Narrow-width menu containment | Resize panel thinner | Dropdowns remain inside shell | `sidepanel.css` |
-| ZIP-BRAND-001 | Master icon system | Extension install/action icon | Unified ZEEK INFO PEEK iconography | `manifest.json`, `icons/`, `assets/brand/icons` |
+| ZIP-BRAND-001 | Master icon system | Extension install/action icon | Unified ZipTool iconography | `manifest.json`, `icons/`, `assets/brand/icons` |
 | ZIP-BRAND-002 | Branded login shell | Logged-out view | Splash + mark + mission-aligned shell | `sidepanel.html`, `sidepanel.css`, `assets/brand/splash`, `assets/brand/source` |
 | ZIP-BRAND-003 | Branded docs exports | Training doc generation | Spectrum 2 PDFs aligned to master kit | `docs/*.md`, `docs/assets/brand`, `docs/html`, `docs/pdf` |
 
@@ -646,7 +646,7 @@ Source: /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/README.md
 
 # ZIP Chrome Extension (No 3P Dependencies)
 
-**ZIP = Zeek Info Peek** — ZIP into INFO from the Zendesk API.
+**ZIP = ZipTool** — ZIP into INFO from the Zendesk API.
 
 ## Quick Start (Urgent Line Paged)
 

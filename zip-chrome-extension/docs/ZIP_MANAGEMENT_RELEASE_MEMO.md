@@ -12,7 +12,7 @@ Install and begin work in under two minutes:
 ![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
 
 ## Release Snapshot
-- Product: ZIP (Zeek Info Peek)
+- Product: ZIP (ZipTool)
 - Build version: use current value in `zip-chrome-extension/manifest.json`
 - Package: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip`
 - Install path: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
@@ -20,7 +20,7 @@ Install and begin work in under two minutes:
 - App icon pack baseline: `/Users/minnick/Downloads/ZIP_APP_ICON_PACK_round.zip`
 
 ## What Management Asked For (Now Delivered)
-- Unified ZEEK INFO PEEK master-brand iconography and shell presentation.
+- Unified ZipTool master-brand iconography and shell presentation.
 - Cohesive install pages, extension UI, training docs, and PDF exports.
 - Single polished package for pilot install and user validation.
 - Quick-start-first documentation for urgent operational use.

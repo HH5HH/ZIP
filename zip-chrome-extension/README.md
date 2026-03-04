@@ -1,6 +1,6 @@
 # ZIP Chrome Extension (No 3P Dependencies)
 
-**ZIP = Zeek Info Peek** — ZIP into INFO from the Zendesk API.
+**ZIP = ZipTool** — ZIP into INFO from the Zendesk API.
 
 ## NO POPUPS OR NEW AUTH FLOWS
 
