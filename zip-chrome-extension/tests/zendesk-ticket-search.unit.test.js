@@ -149,6 +149,16 @@ test("tightenTicketSearchQuery adds type/status/date for broad query", () => {
   assert.equal(tightened.applied, true);
 });
 
+test("tightenTicketSearchQuery can skip default date constraint when disabled", () => {
+  const tightened = tightenTicketSearchQuery("assignee_id:44 status:open", {
+    nowMs: Date.UTC(2026, 2, 4),
+    defaultDateRangeDays: 0
+  });
+
+  assert.equal(tightened.query.includes("updated>="), false);
+  assert.equal(tightened.query.includes("type:ticket"), true);
+});
+
 test("search logs tightening and applies tightened query to outbound request", async () => {
   const logs = [];
   const { service, calls } = createServiceWithQueue([
@@ -233,7 +243,7 @@ test("cache returns hit on repeated query", async () => {
   assert.equal(calls.length, 1);
 });
 
-test("custom sparse fields still include requester/organization enrichment fields", async () => {
+test("custom sparse fields are applied client-side by default and keep enrichment fields", async () => {
   const { service, calls } = createServiceWithQueue([
     {
       status: 200,
@@ -254,13 +264,75 @@ test("custom sparse fields still include requester/organization enrichment field
   assert.equal(result.error, undefined);
   assert.equal(result.tickets.length, 5);
   const requestedUrl = new URL(calls[0]);
+  assert.equal(requestedUrl.searchParams.has("fields"), false);
+  const firstTicket = result.tickets[0] || {};
+  assert.ok(Object.prototype.hasOwnProperty.call(firstTicket, "id"));
+  assert.ok(Object.prototype.hasOwnProperty.call(firstTicket, "subject"));
+  assert.ok(Object.prototype.hasOwnProperty.call(firstTicket, "requester_id"));
+  assert.ok(Object.prototype.hasOwnProperty.call(firstTicket, "organization_id"));
+});
+
+test("server sparse fields can be explicitly enabled", async () => {
+  const { service, calls } = createServiceWithQueue([
+    {
+      status: 200,
+      payload: {
+        results: makeTicketRows(1, 1),
+        meta: { has_more: false },
+        links: { next: "" }
+      }
+    }
+  ]);
+
+  const result = await service.searchTickets("error", {
+    maxResults: 1,
+    cacheTTL: 0,
+    fieldsNeeded: ["id", "subject"],
+    useServerSparseFields: true
+  });
+
+  assert.equal(result.error, undefined);
+  const requestedUrl = new URL(calls[0]);
   const fields = String(requestedUrl.searchParams.get("fields") || "").split(",").filter(Boolean);
   assert.ok(fields.includes("id"));
   assert.ok(fields.includes("subject"));
   assert.ok(fields.includes("requester_id"));
   assert.ok(fields.includes("organization_id"));
-  assert.ok(fields.includes("requester"));
-  assert.ok(fields.includes("organization"));
+});
+
+test("requestor aliases are preserved when present in payload", async () => {
+  const { service } = createServiceWithQueue([
+    {
+      status: 200,
+      payload: {
+        results: [
+          {
+            id: 1,
+            result_type: "ticket",
+            subject: "Alias row",
+            status: "open",
+            requestor_id: 999,
+            requestor_name: "Alias Requestor",
+            requestor_email: "alias@example.com",
+            organization_name: "Alias Org"
+          }
+        ],
+        meta: { has_more: false },
+        links: { next: "" }
+      }
+    }
+  ]);
+
+  const result = await service.searchTickets("error", {
+    maxResults: 1,
+    cacheTTL: 0
+  });
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.tickets.length, 1);
+  assert.equal(result.tickets[0].requestor_name, "Alias Requestor");
+  assert.equal(result.tickets[0].requestor_email, "alias@example.com");
+  assert.equal(result.tickets[0].organization_name, "Alias Org");
 });
 
 test("maxResults above threshold switches to incremental export endpoint", async () => {
