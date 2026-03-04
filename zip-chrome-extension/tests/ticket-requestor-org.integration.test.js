@@ -34,6 +34,13 @@ test("sidepanel renders requestor mailto links and organization text cells", () 
   assert.match(source, /td\.textContent = getTicketOrganizationName\(row\);/);
 });
 
+test("sidepanel requestor helpers support legacy HTML requestor anchors", () => {
+  const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
+  assert.match(source, /requestorScalar = typeof source\.requestor === "string" \? source\.requestor : ""/);
+  assert.match(source, /requestorScalar\.match\(\/mailto:/);
+  assert.match(source, /scratch\.innerHTML = requestorScalar/);
+});
+
 test("content runtime defines enrichTicketsWithRequestorOrg and applies it to search and view ticket loaders", () => {
   const source = fs.readFileSync(CONTENT_JS_PATH, "utf8");
   assert.match(source, /async function enrichTicketsWithRequestorOrg\(tickets, options\)/);
@@ -59,6 +66,16 @@ test("content forces requestor/org hydration when ids exist but fields are blank
   assert.match(source, /const shouldRunEnrichment = enabled \|\| forceHydration;/);
 });
 
+test("scoped ticket loads disable date-tightening and fallback to legacy search when needed", () => {
+  const source = fs.readFileSync(CONTENT_JS_PATH, "utf8");
+  assert.match(source, /function isScopedTicketSearchQuery\(rawQuery\)/);
+  assert.match(source, /defaultDateRangeDays:\s*0,\s*\n\s*source:\s*"loadTicketsByOrg"/);
+  assert.match(source, /defaultDateRangeDays:\s*0,\s*\n\s*source:\s*"loadTicketsByGroupId"/);
+  assert.match(source, /defaultDateRangeDays:\s*0,\s*\n\s*source:\s*"loadTicketsByAssigneeId"/);
+  assert.match(source, /fallbackReason:\s*"search_service_error"/);
+  assert.match(source, /fallbackReason:\s*"scoped_query_empty"/);
+});
+
 test("sidepanel forwards agent locale into all ticket-loading actions", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   assert.match(source, /action:\s*"loadTickets"[\s\S]*locale:\s*getPreferredTicketLocale\(\)/);
@@ -81,4 +98,14 @@ test("manifest loads ticket-enrichment.js before content.js for Zendesk/Slack co
   assert.ok(contentIndex >= 0, "content.js should be present");
   assert.ok(enrichmentIndex < zendeskSearchIndex, "ticket enrichment should load before zendesk search client");
   assert.ok(zendeskSearchIndex < contentIndex, "zendesk search client should load before content.js");
+});
+
+test("sidepanel guarantees requestor/org hydration after every ticket load path", () => {
+  const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
+  assert.match(source, /async function hydrateTicketRowsWithRequestorOrg\(rows\)/);
+  assert.match(source, /\/api\/v2\/users\/show_many\.json/);
+  assert.match(source, /\/api\/v2\/organizations\/show_many\.json/);
+  assert.match(source, /function mergeTicketRequestorOrgHydration\(row, usersById, organizationsById\)/);
+  const hydrationAssignments = source.match(/state\.tickets = await hydrateTicketRowsWithRequestorOrg\(result\.tickets \|\| \[\]\);/g) || [];
+  assert.ok(hydrationAssignments.length >= 6, "all ticket load paths should hydrate requestor/org fields");
 });

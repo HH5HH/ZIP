@@ -24,6 +24,7 @@
   const REQUESTOR_ORG_ENRICHMENT_FLAG_STORAGE_KEY = "zip.feature.requestor_org_enrichment.v1";
   const REQUESTOR_ORG_ENRICHMENT_FLAG_CACHE_TTL_MS = 60 * 1000;
   const REQUESTOR_ORG_TRANSLATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+  const ZENDESK_FETCH_TIMEOUT_MS = 25000;
   const REQUESTOR_ORG_METRICS_HISTORY_LIMIT = 24;
 
   let slackTokenBridgeInstalled = false;
@@ -103,39 +104,62 @@
   }
 
   async function fetchJson(url) {
-    const res = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      credentials: "include",
-      headers: { Accept: "application/json" }
-    });
-    let payload = null;
-    let text = "";
-    let retryAfterMs = 0;
+    let controller = null;
+    let timeoutId = null;
     try {
-      payload = await res.json();
-    } catch (_) {
+      if (typeof AbortController === "function") {
+        controller = new AbortController();
+        timeoutId = setTimeout(() => {
+          try { controller.abort(); } catch (_) {}
+        }, ZENDESK_FETCH_TIMEOUT_MS);
+      }
+      const res = await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+        signal: controller ? controller.signal : undefined
+      });
+      let payload = null;
+      let text = "";
+      let retryAfterMs = 0;
       try {
-        text = await res.text();
-      } catch (_) {}
-    }
-    try {
-      const retryAfterRaw = res.headers && typeof res.headers.get === "function"
-        ? String(res.headers.get("Retry-After") || "").trim()
-        : "";
-      if (retryAfterRaw) {
-        const asNumber = Number(retryAfterRaw);
-        if (Number.isFinite(asNumber) && asNumber >= 0) {
-          retryAfterMs = Math.trunc(asNumber * 1000);
-        } else {
-          const asDate = Date.parse(retryAfterRaw);
-          if (Number.isFinite(asDate)) {
-            retryAfterMs = Math.max(0, asDate - Date.now());
+        payload = await res.json();
+      } catch (_) {
+        try {
+          text = await res.text();
+        } catch (_) {}
+      }
+      try {
+        const retryAfterRaw = res.headers && typeof res.headers.get === "function"
+          ? String(res.headers.get("Retry-After") || "").trim()
+          : "";
+        if (retryAfterRaw) {
+          const asNumber = Number(retryAfterRaw);
+          if (Number.isFinite(asNumber) && asNumber >= 0) {
+            retryAfterMs = Math.trunc(asNumber * 1000);
+          } else {
+            const asDate = Date.parse(retryAfterRaw);
+            if (Number.isFinite(asDate)) {
+              retryAfterMs = Math.max(0, asDate - Date.now());
+            }
           }
         }
-      }
-    } catch (_) {}
-    return { ok: res.ok, status: res.status, payload, text, retryAfterMs };
+      } catch (_) {}
+      return { ok: res.ok, status: res.status, payload, text, retryAfterMs };
+    } catch (err) {
+      const aborted = !!(controller && controller.signal && controller.signal.aborted);
+      return {
+        ok: false,
+        status: 0,
+        payload: null,
+        text: "",
+        retryAfterMs: 0,
+        error: aborted ? "request_timeout" : String(err && err.message ? err.message : "fetch_failed")
+      };
+    } finally {
+      if (timeoutId != null) clearTimeout(timeoutId);
+    }
   }
 
   function extractUser(payload) {
@@ -711,10 +735,16 @@
     "assignee_id",
     "assignee",
     "requester_id",
+    "requestor_id",
     "requester",
+    "requestor",
     "organization_id",
     "organization",
     "organization_name",
+    "requester_name",
+    "requestor_name",
+    "requester_email",
+    "requestor_email",
     "custom_fields",
     "tags",
     "via"
@@ -723,12 +753,16 @@
     "id",
     "result_type",
     "requester_id",
+    "requestor_id",
     "organization_id",
     "requester",
+    "requestor",
     "organization",
     "requester_name",
+    "requestor_name",
     "organization_name",
-    "requester_email"
+    "requester_email",
+    "requestor_email"
   ];
   let zendeskTicketSearchService = null;
   let zendeskTicketSearchServiceConcurrency = 0;
@@ -779,6 +813,13 @@
     if (!query) return "";
     if (/\btype\s*:\s*ticket\b/i.test(query)) return query;
     return "type:ticket " + query;
+  }
+
+  function isScopedTicketSearchQuery(rawQuery) {
+    const query = String(rawQuery == null ? "" : rawQuery).trim();
+    if (!query) return false;
+    return /\b(?:assignee_id|organization_id|group_id|requester_id)\s*:/i.test(query)
+      || /\bid\s*:\s*\d+\b/i.test(query);
   }
 
   function getZendeskTicketSearchModule() {
@@ -1151,6 +1192,7 @@
     const query = "type:ticket organization_id:" + orgId + NON_CLOSED_STATUS_QUERY;
     return searchTickets(query, {
       ...(options && typeof options === "object" ? options : {}),
+      defaultDateRangeDays: 0,
       source: "loadTicketsByOrg"
     });
   }
@@ -1187,6 +1229,14 @@
       MAX_TICKET_SEARCH_PER_PAGE,
       MAX_TICKET_SEARCH_PER_PAGE
     );
+    const useModernSearchService = opts.useModernSearchService === true;
+    if (!useModernSearchService) {
+      return searchTicketsLegacyOffset(query, {
+        ...opts,
+        limit,
+        perPage: pageSize
+      });
+    }
     const searchService = getZendeskTicketSearchService(opts);
     if (!searchService || typeof searchService.searchTickets !== "function") {
       return searchTicketsLegacyOffset(query, {
@@ -1224,14 +1274,38 @@
     });
 
     if (searchResult && searchResult.error) {
+      const fallbackResult = await searchTicketsLegacyOffset(query, {
+        ...opts,
+        limit,
+        perPage: pageSize
+      });
       return {
-        error: searchResult.error,
-        tickets: [],
-        metrics: searchResult.metrics || {}
+        ...(fallbackResult && typeof fallbackResult === "object" ? fallbackResult : { tickets: [] }),
+        metrics: {
+          ...(searchResult.metrics && typeof searchResult.metrics === "object" ? searchResult.metrics : {}),
+          ...(fallbackResult && fallbackResult.metrics && typeof fallbackResult.metrics === "object" ? fallbackResult.metrics : {}),
+          fallbackReason: "search_service_error",
+          fallbackError: searchResult.error
+        }
       };
     }
 
     const sourceRows = Array.isArray(searchResult && searchResult.tickets) ? searchResult.tickets : [];
+    if (!sourceRows.length && isScopedTicketSearchQuery(query)) {
+      const fallbackResult = await searchTicketsLegacyOffset(query, {
+        ...opts,
+        limit,
+        perPage: pageSize
+      });
+      return {
+        ...(fallbackResult && typeof fallbackResult === "object" ? fallbackResult : { tickets: [] }),
+        metrics: {
+          ...(searchResult && searchResult.metrics && typeof searchResult.metrics === "object" ? searchResult.metrics : {}),
+          ...(fallbackResult && fallbackResult.metrics && typeof fallbackResult.metrics === "object" ? fallbackResult.metrics : {}),
+          fallbackReason: "scoped_query_empty"
+        }
+      };
+    }
     const all = [];
     const seenTicketIds = new Set();
     for (let i = 0; i < sourceRows.length; i += 1) {
@@ -1621,6 +1695,7 @@
     const query = "type:ticket group_id:" + String(groupId) + NON_CLOSED_STATUS_QUERY;
     return searchTickets(query, {
       ...(options && typeof options === "object" ? options : {}),
+      defaultDateRangeDays: 0,
       source: "loadTicketsByGroupId"
     });
   }
@@ -1639,6 +1714,7 @@
     const query = "type:ticket assignee_id:" + String(userId) + NON_CLOSED_STATUS_QUERY;
     return searchTickets(query, {
       ...(options && typeof options === "object" ? options : {}),
+      defaultDateRangeDays: 0,
       source: "loadTicketsByAssigneeId"
     });
   }

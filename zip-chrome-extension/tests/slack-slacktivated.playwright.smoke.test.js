@@ -210,11 +210,14 @@ function buildSidepanelHarnessBootstrap(options) {
       Object.assign(storage, {
         zip_slack_client_id: "mock.client.id",
         zip_slack_client_secret: "mock.client.secret",
+        zip_slack_user_token: "SLK_TEST_MOCK_USER_TOKEN",
         zip_slack_oauth_token: "SLK_TEST_MOCK_USER_TOKEN",
         zip_slack_scope: "openid profile email",
         zip_slack_redirect_path: "slack-user",
         zip_slack_redirect_uri: "https://hiecfnklcdpmkadljghekolopidedllo.chromiumapp.org/slack-user",
         zip_slack_key_loaded: true,
+        zip_singularity_channel_id: "C123TEST9",
+        zip_singularity_mention: "@zip-bot",
         zip_slack_key_meta: seededMeta
       });
 
@@ -425,14 +428,24 @@ async function bootSidepanelForScenario(page, scenario) {
     const debugSnapshot = await page.evaluate(() => {
       const loginScreen = document.getElementById("zipLoginScreen");
       const appScreen = document.getElementById("zipAppScreen");
+      const status = document.getElementById("zipStatus");
+      const gateMessage = document.getElementById("zipConfigGateMessage");
+      const gateMeta = document.getElementById("zipConfigGateMeta");
       const harness = window.__zipSidepanelHarness || null;
+      const calls = harness && typeof harness.getCalls === "function" ? harness.getCalls() : null;
       return {
         hasChrome: !!window.chrome,
         hasRuntime: !!(window.chrome && window.chrome.runtime),
         hasHarness: !!harness,
         hasRuntimeListener: !!(harness && harness.hasRuntimeListener && harness.hasRuntimeListener()),
         loginHidden: !!(loginScreen && loginScreen.classList.contains("hidden")),
-        appHidden: !!(appScreen && appScreen.classList.contains("hidden"))
+        appHidden: !!(appScreen && appScreen.classList.contains("hidden")),
+        statusText: status ? String(status.textContent || "").trim() : "",
+        gateMessage: gateMessage ? String(gateMessage.textContent || "").trim() : "",
+        gateMeta: gateMeta ? String(gateMeta.textContent || "").trim() : "",
+        runtimeMessageTypes: calls && Array.isArray(calls.runtimeSendMessage)
+          ? calls.runtimeSendMessage.map((row) => String(row && row.type || ""))
+          : []
       };
     }).catch(() => null);
     const detail = {

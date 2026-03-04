@@ -66,6 +66,8 @@
   const TICKET_SEARCH_MODE_CLOUD_HELP = "\"ZENDESK\" - live Zendesk ticket search to load into the above table. Limited to TOP 100 results for speed.  Use Zendesk search for more.";
   const TICKET_API_SEARCH_MAX_RESULTS = 100;
   const TICKET_API_SEARCH_LABEL_MAX_LENGTH = 42;
+  const TICKET_ENTITY_LOOKUP_CHUNK_SIZE = 100;
+  const TICKET_ENTITY_SINGLE_FETCH_CONCURRENCY = 4;
 
   const TICKET_COLUMNS = [
     { key: "id", label: "Ticket", type: "number" },
@@ -171,6 +173,8 @@
     ticketEmailUserEmailCacheById: Object.create(null),
     ticketEmailRequesterByTicketId: Object.create(null),
     ticketEmailCopyCacheByTicketId: Object.create(null),
+    ticketRequestorProfileCacheById: Object.create(null),
+    ticketOrganizationProfileCacheById: Object.create(null),
     ticketEnrichmentMetrics: null,
     themeId: "s2-dark-azure-blue",
     themeOptions: [],
@@ -3566,6 +3570,19 @@
       els.ticketTableWrap.classList.toggle("ticket-table-loading", isLoading);
       els.ticketTableWrap.setAttribute("aria-busy", isLoading ? "true" : "false");
     }
+    syncTicketTableHorizontalScrollState();
+  }
+
+  function syncTicketTableHorizontalScrollState() {
+    if (!els.ticketTableWrap) return;
+    const wrap = els.ticketTableWrap;
+    const table = wrap.querySelector("table");
+    if (!table) {
+      wrap.classList.remove("table-wrap-hscroll");
+      return;
+    }
+    const hasHorizontalScroll = (table.scrollWidth - wrap.clientWidth) > 1;
+    wrap.classList.toggle("table-wrap-hscroll", hasHorizontalScroll);
   }
 
   function setTicketTableLoading(on) {
@@ -4294,6 +4311,17 @@
     const source = row && typeof row === "object" ? row : {};
     const nestedRequester = source.requester && typeof source.requester === "object" ? source.requester : null;
     const nestedRequestor = source.requestor && typeof source.requestor === "object" ? source.requestor : null;
+    const requestorScalar = typeof source.requestor === "string" ? source.requestor : "";
+    let requestorScalarText = "";
+    if (requestorScalar) {
+      try {
+        const scratch = document.createElement("div");
+        scratch.innerHTML = requestorScalar;
+        requestorScalarText = String(scratch.textContent || scratch.innerText || "").replace(/\s+/g, " ").trim();
+      } catch (_) {
+        requestorScalarText = requestorScalar.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      }
+    }
     const candidates = [
       source.requestor_name_translated,
       source.requestor_name,
@@ -4303,7 +4331,8 @@
       nestedRequester && nestedRequester.name,
       nestedRequester && nestedRequester.display_name,
       nestedRequestor && nestedRequestor.name,
-      nestedRequestor && nestedRequestor.display_name
+      nestedRequestor && nestedRequestor.display_name,
+      requestorScalarText
     ];
     for (let i = 0; i < candidates.length; i += 1) {
       const value = String(candidates[i] == null ? "" : candidates[i]).replace(/\s+/g, " ").trim();
@@ -4316,13 +4345,27 @@
     const source = row && typeof row === "object" ? row : {};
     const nestedRequester = source.requester && typeof source.requester === "object" ? source.requester : null;
     const nestedRequestor = source.requestor && typeof source.requestor === "object" ? source.requestor : null;
+    const requestorScalar = typeof source.requestor === "string" ? source.requestor : "";
+    let requestorScalarMailto = "";
+    if (requestorScalar) {
+      const mailtoMatch = requestorScalar.match(/mailto:\s*([^"'<>\s]+)/i);
+      if (mailtoMatch && mailtoMatch[1]) {
+        try {
+          requestorScalarMailto = decodeURIComponent(String(mailtoMatch[1]));
+        } catch (_) {
+          requestorScalarMailto = String(mailtoMatch[1]);
+        }
+      }
+    }
     const candidates = [
       source.requestor_email,
       source.requester_email,
       source.requestorEmail,
       source.requesterEmail,
       nestedRequester && nestedRequester.email,
-      nestedRequestor && nestedRequestor.email
+      nestedRequestor && nestedRequestor.email,
+      requestorScalarMailto,
+      requestorScalar
     ];
     for (let i = 0; i < candidates.length; i += 1) {
       const email = normalizeEmailAddress(candidates[i]);
@@ -4346,6 +4389,334 @@
       if (value) return value;
     }
     return "";
+  }
+
+  function normalizeZendeskEntityLookupId(value) {
+    const raw = String(value == null ? "" : value).trim();
+    if (!raw) return "";
+    return /^\d+$/.test(raw) ? raw : "";
+  }
+
+  function extractTicketRequesterIdForHydration(row) {
+    const source = row && typeof row === "object" ? row : {};
+    const nestedRequester = source.requester && typeof source.requester === "object" ? source.requester : null;
+    const nestedRequestor = source.requestor && typeof source.requestor === "object" ? source.requestor : null;
+    const candidates = [
+      source.requester_id,
+      source.requesterId,
+      source.requestor_id,
+      source.requestorId,
+      nestedRequester && nestedRequester.id,
+      nestedRequestor && nestedRequestor.id
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      const normalized = normalizeZendeskEntityLookupId(candidates[i]);
+      if (normalized) return normalized;
+    }
+    return "";
+  }
+
+  function extractTicketOrganizationIdForHydration(row) {
+    const source = row && typeof row === "object" ? row : {};
+    const nestedOrganization = source.organization && typeof source.organization === "object" ? source.organization : null;
+    const candidates = [
+      source.organization_id,
+      source.organizationId,
+      nestedOrganization && nestedOrganization.id
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      const normalized = normalizeZendeskEntityLookupId(candidates[i]);
+      if (normalized) return normalized;
+    }
+    return "";
+  }
+
+  function shouldHydrateTicketRequestorOrg(row) {
+    const requesterId = extractTicketRequesterIdForHydration(row);
+    const organizationId = extractTicketOrganizationIdForHydration(row);
+    if (!requesterId && !organizationId) return false;
+    if (requesterId && (!getTicketRequestorName(row) || !getTicketRequestorEmail(row))) return true;
+    if (organizationId && !getTicketOrganizationName(row)) return true;
+    return false;
+  }
+
+  function chunkIdsForLookup(ids, chunkSize) {
+    const normalizedSize = Math.max(1, Math.trunc(Number(chunkSize) || TICKET_ENTITY_LOOKUP_CHUNK_SIZE));
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += normalizedSize) {
+      chunks.push(ids.slice(i, i + normalizedSize));
+    }
+    return chunks;
+  }
+
+  function extractUserProfileFromPayload(payload) {
+    const root = payload && typeof payload === "object" ? payload : {};
+    const rows = Array.isArray(root.users)
+      ? root.users
+      : (root.user && typeof root.user === "object")
+        ? [root.user]
+        : [];
+    const out = Object.create(null);
+    rows.forEach((user) => {
+      if (!user || typeof user !== "object") return;
+      const id = normalizeZendeskEntityLookupId(user.id);
+      if (!id) return;
+      out[id] = user;
+    });
+    return out;
+  }
+
+  async function fetchZendeskUserProfilesByIds(userIds) {
+    const ids = Array.from(new Set(
+      (Array.isArray(userIds) ? userIds : [])
+        .map((value) => normalizeZendeskEntityLookupId(value))
+        .filter(Boolean)
+    ));
+    const usersById = Object.create(null);
+    if (!ids.length) return usersById;
+
+    const cache = state.ticketRequestorProfileCacheById && typeof state.ticketRequestorProfileCacheById === "object"
+      ? state.ticketRequestorProfileCacheById
+      : (state.ticketRequestorProfileCacheById = Object.create(null));
+    const unresolved = [];
+    ids.forEach((id) => {
+      const cached = cache[id];
+      if (cached && typeof cached === "object") {
+        usersById[id] = cached;
+      } else {
+        unresolved.push(id);
+      }
+    });
+
+    const unresolvedChunks = chunkIdsForLookup(unresolved, TICKET_ENTITY_LOOKUP_CHUNK_SIZE);
+    for (let i = 0; i < unresolvedChunks.length; i += 1) {
+      const chunk = unresolvedChunks[i];
+      try {
+        const payload = await fetchZendeskJson(
+          BASE + "/api/v2/users/show_many.json?ids=" + encodeURIComponent(chunk.join(",")),
+          "Ticket requestor lookup"
+        );
+        const found = extractUserProfileFromPayload(payload);
+        Object.keys(found).forEach((id) => {
+          usersById[id] = found[id];
+          cache[id] = found[id];
+        });
+      } catch (_) {}
+    }
+
+    const stillUnresolved = ids.filter((id) => !usersById[id]);
+    if (!stillUnresolved.length) return usersById;
+
+    let cursor = 0;
+    const workerCount = Math.min(TICKET_ENTITY_SINGLE_FETCH_CONCURRENCY, stillUnresolved.length);
+    const worker = async () => {
+      while (cursor < stillUnresolved.length) {
+        const index = cursor;
+        cursor += 1;
+        const id = stillUnresolved[index];
+        try {
+          const payload = await fetchZendeskJson(
+            BASE + "/api/v2/users/" + encodeURIComponent(id) + ".json",
+            "Ticket requestor lookup"
+          );
+          const found = extractUserProfileFromPayload(payload);
+          const resolved = found[id];
+          if (!resolved) return;
+          usersById[id] = resolved;
+          cache[id] = resolved;
+        } catch (_) {}
+      }
+    };
+    const workers = [];
+    for (let i = 0; i < workerCount; i += 1) workers.push(worker());
+    await Promise.all(workers);
+    return usersById;
+  }
+
+  function extractOrganizationProfileFromPayload(payload) {
+    const root = payload && typeof payload === "object" ? payload : {};
+    const rows = Array.isArray(root.organizations)
+      ? root.organizations
+      : (root.organization && typeof root.organization === "object")
+        ? [root.organization]
+        : [];
+    const out = Object.create(null);
+    rows.forEach((organization) => {
+      if (!organization || typeof organization !== "object") return;
+      const id = normalizeZendeskEntityLookupId(organization.id);
+      if (!id) return;
+      out[id] = organization;
+    });
+    return out;
+  }
+
+  async function fetchZendeskOrganizationProfilesByIds(organizationIds) {
+    const ids = Array.from(new Set(
+      (Array.isArray(organizationIds) ? organizationIds : [])
+        .map((value) => normalizeZendeskEntityLookupId(value))
+        .filter(Boolean)
+    ));
+    const organizationsById = Object.create(null);
+    if (!ids.length) return organizationsById;
+
+    const cache = state.ticketOrganizationProfileCacheById && typeof state.ticketOrganizationProfileCacheById === "object"
+      ? state.ticketOrganizationProfileCacheById
+      : (state.ticketOrganizationProfileCacheById = Object.create(null));
+    const unresolved = [];
+    ids.forEach((id) => {
+      const cached = cache[id];
+      if (cached && typeof cached === "object") {
+        organizationsById[id] = cached;
+      } else {
+        unresolved.push(id);
+      }
+    });
+
+    const unresolvedChunks = chunkIdsForLookup(unresolved, TICKET_ENTITY_LOOKUP_CHUNK_SIZE);
+    for (let i = 0; i < unresolvedChunks.length; i += 1) {
+      const chunk = unresolvedChunks[i];
+      try {
+        const payload = await fetchZendeskJson(
+          BASE + "/api/v2/organizations/show_many.json?ids=" + encodeURIComponent(chunk.join(",")),
+          "Ticket organization lookup"
+        );
+        const found = extractOrganizationProfileFromPayload(payload);
+        Object.keys(found).forEach((id) => {
+          organizationsById[id] = found[id];
+          cache[id] = found[id];
+        });
+      } catch (_) {}
+    }
+
+    const stillUnresolved = ids.filter((id) => !organizationsById[id]);
+    if (!stillUnresolved.length) return organizationsById;
+
+    let cursor = 0;
+    const workerCount = Math.min(TICKET_ENTITY_SINGLE_FETCH_CONCURRENCY, stillUnresolved.length);
+    const worker = async () => {
+      while (cursor < stillUnresolved.length) {
+        const index = cursor;
+        cursor += 1;
+        const id = stillUnresolved[index];
+        try {
+          const payload = await fetchZendeskJson(
+            BASE + "/api/v2/organizations/" + encodeURIComponent(id) + ".json",
+            "Ticket organization lookup"
+          );
+          const found = extractOrganizationProfileFromPayload(payload);
+          const resolved = found[id];
+          if (!resolved) return;
+          organizationsById[id] = resolved;
+          cache[id] = resolved;
+        } catch (_) {}
+      }
+    };
+    const workers = [];
+    for (let i = 0; i < workerCount; i += 1) workers.push(worker());
+    await Promise.all(workers);
+    return organizationsById;
+  }
+
+  function mergeTicketRequestorOrgHydration(row, usersById, organizationsById) {
+    const ticket = row && typeof row === "object" ? row : {};
+    const requesterId = extractTicketRequesterIdForHydration(ticket);
+    const organizationId = extractTicketOrganizationIdForHydration(ticket);
+    const requestorUser = requesterId
+      ? (usersById[requesterId] || state.ticketRequestorProfileCacheById[requesterId] || null)
+      : null;
+    const organization = organizationId
+      ? (organizationsById[organizationId] || state.ticketOrganizationProfileCacheById[organizationId] || null)
+      : null;
+
+    const existingName = getTicketRequestorName(ticket);
+    const existingEmail = getTicketRequestorEmail(ticket);
+    const existingOrganization = getTicketOrganizationName(ticket);
+
+    const resolvedName = String(
+      (requestorUser && (
+        requestorUser.name
+        || requestorUser.display_name
+        || requestorUser.alias
+      )) || ""
+    ).replace(/\s+/g, " ").trim();
+    const resolvedEmail = normalizeEmailAddress(
+      requestorUser && (
+        requestorUser.email
+        || requestorUser.primary_email
+        || requestorUser.default_email
+        || requestorUser.user_email
+      )
+    );
+    const resolvedOrganization = String(
+      (organization && (organization.name || organization.display_name)) || ""
+    ).replace(/\s+/g, " ").trim();
+
+    const finalRequestorName = resolvedName || existingName;
+    const finalRequestorEmail = resolvedEmail || existingEmail;
+    const finalOrganizationName = resolvedOrganization || existingOrganization;
+    if (!finalRequestorName && !finalRequestorEmail && !finalOrganizationName) return ticket;
+
+    const merged = { ...ticket };
+    if (requesterId) {
+      if (!merged.requester_id) merged.requester_id = requesterId;
+      if (!merged.requestor_id) merged.requestor_id = requesterId;
+    }
+    if (organizationId && !merged.organization_id) {
+      merged.organization_id = organizationId;
+    }
+    if (finalRequestorName) {
+      merged.requestor_name = finalRequestorName;
+      merged.requestor_name_translated = finalRequestorName;
+      merged.requester_name = finalRequestorName;
+    }
+    if (finalRequestorEmail) {
+      merged.requestor_email = finalRequestorEmail;
+      merged.requester_email = finalRequestorEmail;
+    }
+    if (finalRequestorName || finalRequestorEmail) {
+      const label = escapeHtml(finalRequestorName || finalRequestorEmail);
+      merged.requestor = finalRequestorEmail
+        ? ("<a href=\"mailto:" + escapeHtml(finalRequestorEmail) + "\">" + label + "</a>")
+        : label;
+    }
+    if (finalOrganizationName) {
+      merged.organization = finalOrganizationName;
+      merged.organization_name = finalOrganizationName;
+      merged.organization_name_translated = finalOrganizationName;
+    }
+    return merged;
+  }
+
+  async function hydrateTicketRowsWithRequestorOrg(rows) {
+    const input = Array.isArray(rows) ? rows : [];
+    if (!input.length) return input;
+
+    const requesterIds = [];
+    const organizationIds = [];
+    const requesterSeen = new Set();
+    const organizationSeen = new Set();
+    let needsHydration = false;
+    input.forEach((row) => {
+      if (!shouldHydrateTicketRequestorOrg(row)) return;
+      needsHydration = true;
+      const requesterId = extractTicketRequesterIdForHydration(row);
+      if (requesterId && !requesterSeen.has(requesterId)) {
+        requesterSeen.add(requesterId);
+        requesterIds.push(requesterId);
+      }
+      const organizationId = extractTicketOrganizationIdForHydration(row);
+      if (organizationId && !organizationSeen.has(organizationId)) {
+        organizationSeen.add(organizationId);
+        organizationIds.push(organizationId);
+      }
+    });
+    if (!needsHydration) return input;
+
+    const [usersById, organizationsById] = await Promise.all([
+      fetchZendeskUserProfilesByIds(requesterIds),
+      fetchZendeskOrganizationProfilesByIds(organizationIds)
+    ]);
+    return input.map((row) => mergeTicketRequestorOrgHydration(row, usersById, organizationsById));
   }
 
   function buildTicketRequestorHtml(row) {
@@ -5416,6 +5787,8 @@
     state.ticketEmailUserEmailCacheById = Object.create(null);
     state.ticketEmailRequesterByTicketId = Object.create(null);
     state.ticketEmailCopyCacheByTicketId = Object.create(null);
+    state.ticketRequestorProfileCacheById = Object.create(null);
+    state.ticketOrganizationProfileCacheById = Object.create(null);
     clearPassAiResultsDisplay();
     renderApiResultTable(null);
     if (els.rawTitle) els.rawTitle.textContent = "GET /api/v2/users/me";
@@ -9444,6 +9817,7 @@
       }
       tr.appendChild(td);
       els.ticketBody.appendChild(tr);
+      syncTicketTableHorizontalScrollState();
       updateTicketActionButtons();
       return;
     }
@@ -9562,6 +9936,7 @@
       });
       els.ticketBody.appendChild(tr);
     });
+    syncTicketTableHorizontalScrollState();
     updateTicketActionButtons();
   }
 
@@ -9692,9 +10067,9 @@
         userId: String(userId || ""),
         locale: getPreferredTicketLocale()
       });
-      state.tickets = result.tickets || [];
-      recordTicketEnrichmentMetrics("loadTickets", result.metrics);
       if (result.error) throw new Error(result.error);
+      state.tickets = await hydrateTicketRowsWithRequestorOrg(result.tickets || []);
+      recordTicketEnrichmentMetrics("loadTickets", result.metrics);
       applyFiltersAndRender();
     } catch (err) {
       state.tickets = [];
@@ -9723,9 +10098,9 @@
         orgId: String(orgId || ""),
         locale: getPreferredTicketLocale()
       });
-      state.tickets = result.tickets || [];
-      recordTicketEnrichmentMetrics("loadTicketsByOrg", result.metrics);
       if (result.error) throw new Error(result.error);
+      state.tickets = await hydrateTicketRowsWithRequestorOrg(result.tickets || []);
+      recordTicketEnrichmentMetrics("loadTicketsByOrg", result.metrics);
       applyFiltersAndRender();
     } catch (err) {
       state.tickets = [];
@@ -9745,9 +10120,9 @@
         viewId: String(viewId || ""),
         locale: getPreferredTicketLocale()
       });
-      state.tickets = result.tickets || [];
-      recordTicketEnrichmentMetrics("loadTicketsByView", result.metrics);
       if (result.error) throw new Error(result.error);
+      state.tickets = await hydrateTicketRowsWithRequestorOrg(result.tickets || []);
+      recordTicketEnrichmentMetrics("loadTicketsByView", result.metrics);
       applyFiltersAndRender();
     } catch (err) {
       state.tickets = [];
@@ -9767,9 +10142,9 @@
         userId: String(userId || ""),
         locale: getPreferredTicketLocale()
       });
-      state.tickets = result.tickets || [];
-      recordTicketEnrichmentMetrics("loadTicketsByAssigneeId", result.metrics);
       if (result.error) throw new Error(result.error);
+      state.tickets = await hydrateTicketRowsWithRequestorOrg(result.tickets || []);
+      recordTicketEnrichmentMetrics("loadTicketsByAssigneeId", result.metrics);
       applyFiltersAndRender();
     } catch (err) {
       state.tickets = [];
@@ -9797,9 +10172,9 @@
     setTicketTableLoading(true);
     try {
       const result = await sendToZendeskTab(payload);
-      state.tickets = result.tickets || [];
-      recordTicketEnrichmentMetrics("loadTicketsBySearchQuery", result.metrics);
       if (result.error) throw new Error(result.error);
+      state.tickets = await hydrateTicketRowsWithRequestorOrg(result.tickets || []);
+      recordTicketEnrichmentMetrics("loadTicketsBySearchQuery", result.metrics);
       applyFiltersAndRender();
     } catch (err) {
       state.tickets = [];
@@ -10341,9 +10716,9 @@
         groupId: String(groupId || ""),
         locale: getPreferredTicketLocale()
       });
-      state.tickets = result.tickets || [];
-      recordTicketEnrichmentMetrics("loadTicketsByGroupId", result.metrics);
       if (result.error) throw new Error(result.error);
+      state.tickets = await hydrateTicketRowsWithRequestorOrg(result.tickets || []);
+      recordTicketEnrichmentMetrics("loadTicketsByGroupId", result.metrics);
       applyFiltersAndRender();
     } catch (err) {
       state.tickets = [];
@@ -10881,6 +11256,7 @@
       });
       window.addEventListener("resize", () => {
         refreshThemeFlyoutPosition();
+        syncTicketTableHorizontalScrollState();
       });
       window.addEventListener("blur", () => { hideContextMenu(); });
       window.addEventListener("beforeunload", () => {

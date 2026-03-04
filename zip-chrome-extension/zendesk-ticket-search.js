@@ -18,6 +18,7 @@
   const DEFAULT_MAX_RETRIES = 3;
   const DEFAULT_BASE_BACKOFF_MS = 150;
   const DEFAULT_MAX_BACKOFF_MS = 4000;
+  const DEFAULT_REQUEST_TIMEOUT_MS = 25000;
   const DEFAULT_QUERY_DATE_RANGE_DAYS = 90;
   const DEFAULT_INCREMENTAL_SYNC_THRESHOLD = 10000;
   const DEFAULT_SLOW_PAGE_THRESHOLD_MS = 1500;
@@ -43,15 +44,31 @@
   ];
   const REQUIRED_ENRICHMENT_FIELDS = [
     "requester_id",
+    "requestor_id",
     "organization_id",
     "requester",
+    "requestor",
     "organization",
     "requester_name",
+    "requestor_name",
     "organization_name",
-    "requester_email"
+    "requester_email",
+    "requestor_email"
   ];
   const HEAVY_FIELDS = new Set(["comments", "comment_count", "audit", "audits", "events"]);
   const CACHE_NAMESPACE = "zip:zendesk:tickets:";
+  const FIELD_ALIASES = {
+    requester_id: ["requesterId", "requestor_id", "requestorId"],
+    requestor_id: ["requestorId", "requester_id", "requesterId"],
+    requester: ["requestor"],
+    requestor: ["requester"],
+    requester_name: ["requesterName", "requestor_name", "requestorName"],
+    requestor_name: ["requestorName", "requester_name", "requesterName"],
+    requester_email: ["requesterEmail", "requestor_email", "requestorEmail"],
+    requestor_email: ["requestorEmail", "requester_email", "requesterEmail"],
+    organization_id: ["organizationId"],
+    organization_name: ["organizationName"]
+  };
 
   function clampInt(value, fallback, min, max) {
     const numeric = Number(value);
@@ -163,7 +180,7 @@
     const reasons = [];
     const requireWildcardOptIn = !!opts.requireWildcardOptIn;
     const allowBroadWildcard = !!opts.allowBroadWildcard;
-    const defaultDateRangeDays = clampInt(opts.defaultDateRangeDays, DEFAULT_QUERY_DATE_RANGE_DAYS, 1, 3650);
+    const defaultDateRangeDays = clampInt(opts.defaultDateRangeDays, DEFAULT_QUERY_DATE_RANGE_DAYS, 0, 3650);
     const statusFilters = normalizeStatusFilters(opts.statusFilters);
     const requiredTags = Array.isArray(opts.requiredTags)
       ? opts.requiredTags.map((tag) => String(tag || "").trim()).filter(Boolean)
@@ -200,7 +217,7 @@
       reasons.push("status_constraints_added");
     }
 
-    if (!hasDateConstraint(query)) {
+    if (defaultDateRangeDays > 0 && !hasDateConstraint(query)) {
       const dateValue = toIsoDateDaysAgo(defaultDateRangeDays, opts.nowMs);
       query = normalizeWhitespace(query + " updated>=" + dateValue);
       reasons.push("date_constraint_added");
@@ -415,6 +432,7 @@
       this.maxRetries = clampInt(cfg.maxRetries, DEFAULT_MAX_RETRIES, 0, 10);
       this.baseBackoffMs = clampInt(cfg.baseBackoffMs, DEFAULT_BASE_BACKOFF_MS, 25, 5000);
       this.maxBackoffMs = clampInt(cfg.maxBackoffMs, DEFAULT_MAX_BACKOFF_MS, this.baseBackoffMs, 60000);
+      this.requestTimeoutMs = clampInt(cfg.requestTimeoutMs, DEFAULT_REQUEST_TIMEOUT_MS, 1000, 180000);
       this.randomFn = typeof cfg.randomFn === "function" ? cfg.randomFn : Math.random;
       this.logger = typeof cfg.logger === "function" ? cfg.logger : null;
       this.limiter = new RequestLimiter(cfg.concurrency);
@@ -431,6 +449,12 @@
         ? !!opts.idempotent
         : isIdempotentMethod(method);
       const maxRetries = clampInt(opts.maxRetries, this.maxRetries, 0, 10);
+      const requestTimeoutMs = clampInt(
+        opts.requestTimeoutMs,
+        this.requestTimeoutMs,
+        1000,
+        180000
+      );
       const headers = {
         Accept: "application/json",
         ...(opts.headers && typeof opts.headers === "object" ? opts.headers : {})
@@ -441,14 +465,24 @@
       while (attempt <= maxRetries) {
         attempt += 1;
         const startedAt = nowMs();
+        let timeoutId = null;
         try {
+          let timeoutController = null;
+          const signal = opts.signal;
+          if (!signal && typeof AbortController === "function" && requestTimeoutMs > 0) {
+            timeoutController = new AbortController();
+            timeoutId = setTimeout(() => {
+              try { timeoutController.abort(); } catch (_) {}
+            }, requestTimeoutMs);
+          }
           const response = await this.fetchImpl(url, {
             method,
             cache: "no-store",
             credentials: "include",
             headers,
-            signal: opts.signal
+            signal: signal || (timeoutController ? timeoutController.signal : undefined)
           });
+          if (timeoutId != null) clearTimeout(timeoutId);
           const endedAt = nowMs();
           const durationMs = Math.max(0, endedAt - startedAt);
           const status = Number(response && response.status) || 0;
@@ -505,6 +539,7 @@
             retries: retryCount
           };
         } catch (error) {
+          if (timeoutId != null) clearTimeout(timeoutId);
           const endedAt = nowMs();
           const durationMs = Math.max(0, endedAt - startedAt);
           if (!idempotent || attempt > maxRetries) {
@@ -631,9 +666,20 @@
     if (!ticket || typeof ticket !== "object") return null;
     if (!fieldsNeededSet || !fieldsNeededSet.size) return ticket;
     const out = {};
+    const addFieldIfPresent = (fieldName) => {
+      const key = String(fieldName || "").trim();
+      if (!key) return;
+      if (Object.prototype.hasOwnProperty.call(ticket, key)) {
+        out[key] = ticket[key];
+      }
+    };
     fieldsNeededSet.forEach((fieldName) => {
-      if (Object.prototype.hasOwnProperty.call(ticket, fieldName)) {
-        out[fieldName] = ticket[fieldName];
+      addFieldIfPresent(fieldName);
+      const aliases = FIELD_ALIASES[fieldName];
+      if (Array.isArray(aliases) && aliases.length) {
+        for (let i = 0; i < aliases.length; i += 1) {
+          addFieldIfPresent(aliases[i]);
+        }
       }
     });
     if (!Object.prototype.hasOwnProperty.call(out, "id") && Object.prototype.hasOwnProperty.call(ticket, "id")) {
@@ -670,7 +716,7 @@
     url.searchParams.set("query", query);
     url.searchParams.set("filter[type]", "ticket");
     url.searchParams.set("page[size]", String(pageSize));
-    if (Array.isArray(opts.fieldsNeeded) && opts.fieldsNeeded.length) {
+    if (opts.useServerSparseFields === true && Array.isArray(opts.fieldsNeeded) && opts.fieldsNeeded.length) {
       url.searchParams.set("fields", opts.fieldsNeeded.join(","));
     }
     if (opts.sortBy) {
@@ -708,7 +754,7 @@
       url.searchParams.set("start_time", String(startTime));
     }
     url.searchParams.set("page[size]", String(pageSize));
-    if (Array.isArray(opts.fieldsNeeded) && opts.fieldsNeeded.length) {
+    if (opts.useServerSparseFields === true && Array.isArray(opts.fieldsNeeded) && opts.fieldsNeeded.length) {
       url.searchParams.set("fields", opts.fieldsNeeded.join(","));
     }
     return url.toString();
@@ -831,7 +877,7 @@
         logger: this.logger
       });
       this.incrementalSyncThreshold = clampInt(cfg.incrementalSyncThreshold, DEFAULT_INCREMENTAL_SYNC_THRESHOLD, 1000, 500000);
-      this.defaultDateRangeDays = clampInt(cfg.defaultDateRangeDays, DEFAULT_QUERY_DATE_RANGE_DAYS, 1, 3650);
+      this.defaultDateRangeDays = clampInt(cfg.defaultDateRangeDays, DEFAULT_QUERY_DATE_RANGE_DAYS, 0, 3650);
     }
 
     tightenQuery(rawQuery, options) {
@@ -989,7 +1035,8 @@
           incrementalStartTime: opts.incrementalStartTime,
           defaultDateRangeDays: opts.defaultDateRangeDays,
           pageSize,
-          fieldsNeeded
+          fieldsNeeded,
+          useServerSparseFields: opts.useServerSparseFields === true
         });
 
         while (nextUrl && tickets.length < maxResults) {
@@ -1101,6 +1148,7 @@
         let nextUrl = buildSearchExportUrl(this.baseUrl, tightened.query, {
           pageSize,
           fieldsNeeded,
+          useServerSparseFields: opts.useServerSparseFields === true,
           sortBy: opts.sortBy,
           sortOrder: opts.sortOrder
         });

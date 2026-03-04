@@ -125,6 +125,9 @@ body {
   --zip-density-field-pad-inline-lg: var(--spectrum-component-edge-to-text-100);
   --zip-density-table-cell-pad-y: var(--spectrum-component-padding-vertical-75);
   --zip-density-table-cell-pad-x: var(--spectrum-component-edge-to-text-75);
+  --zip-ticket-table-row-min-block-size: calc((var(--zip-density-table-cell-pad-y) * 2) + (var(--zip-density-line-detail) * 1.35));
+  --zip-ticket-table-scrollbar-space: 14px;
+  --zip-ticket-table-max-visible-rows: 20;
   --zip-control-bg: var(--spectrum-background-color-over-background);
   --zip-control-hover-bg: var(--spectrum-gray-100);
   --zip-control-border-hover: var(--spectrum-gray-400);
@@ -3341,16 +3344,23 @@ input::placeholder {
 }
 
 .table-wrap {
-  max-height: clamp(280px, 50vh, 520px);
-  min-height: clamp(136px, 24vh, 240px);
+  min-height: calc(var(--zip-ticket-table-row-min-block-size) * 2);
+  max-height: calc(((var(--zip-ticket-table-max-visible-rows) + 1) * var(--zip-ticket-table-row-min-block-size)) + var(--zip-ticket-table-scrollbar-space));
   overflow: auto;
   scrollbar-gutter: stable both-edges;
-  scroll-padding-bottom: 14px;
-  padding-bottom: 14px;
+  scroll-padding-bottom: 0;
+  padding-bottom: 0;
   border: 1px solid var(--zip-surface-border-accent);
   border-bottom: 0;
   border-radius: 0;
-  background: var(--zip-surface-soft);
+  background:
+    linear-gradient(180deg, var(--zip-table-head-bg-a) 0%, var(--zip-table-head-bg-b) 100%),
+    var(--bg-recessed);
+}
+
+.table-wrap.table-wrap-hscroll {
+  scroll-padding-bottom: var(--zip-ticket-table-scrollbar-space);
+  padding-bottom: var(--zip-ticket-table-scrollbar-space);
 }
 
 .table-wrap.ticket-table-loading {
@@ -3413,7 +3423,7 @@ th, td {
 .table-wrap > table > tbody > tr > td {
   font-size: var(--zip-density-font-detail);
   line-height: var(--zip-density-line-detail);
-  min-block-size: calc((var(--zip-density-table-cell-pad-y) * 2) + (var(--zip-density-line-detail) * 1.35));
+  min-block-size: var(--zip-ticket-table-row-min-block-size);
 }
 
 .table-wrap > table > tbody > tr.ticket-row > td,
@@ -3424,7 +3434,7 @@ th, td {
 
 .ticket-empty-state {
   color: var(--fg-subtle);
-  min-block-size: calc((var(--zip-density-table-cell-pad-y) * 2) + (var(--zip-density-line-detail) * 1.35));
+  min-block-size: var(--zip-ticket-table-row-min-block-size);
 }
 
 .ticket-empty-state-loading {

@@ -19,15 +19,26 @@ function parseIds(url) {
 function buildZendeskFetchMock(data) {
   const usersById = data && data.usersById ? data.usersById : {};
   const organizationsById = data && data.organizationsById ? data.organizationsById : {};
+  const failUserShowMany = !!(data && data.failUserShowMany);
+  const failOrganizationShowMany = !!(data && data.failOrganizationShowMany);
   const calls = {
     users: 0,
-    organizations: 0
+    organizations: 0,
+    userSingles: 0,
+    organizationSingles: 0
   };
   return {
     calls,
     fetchJson: async (url) => {
       if (url.includes("/api/v2/users/show_many.json")) {
         calls.users += 1;
+        if (failUserShowMany) {
+          return {
+            ok: false,
+            status: 403,
+            payload: {}
+          };
+        }
         const ids = parseIds(url);
         return {
           ok: true,
@@ -42,6 +53,13 @@ function buildZendeskFetchMock(data) {
       }
       if (url.includes("/api/v2/organizations/show_many.json")) {
         calls.organizations += 1;
+        if (failOrganizationShowMany) {
+          return {
+            ok: false,
+            status: 403,
+            payload: {}
+          };
+        }
         const ids = parseIds(url);
         return {
           ok: true,
@@ -53,6 +71,24 @@ function buildZendeskFetchMock(data) {
               .map((row) => ({ ...row }))
           }
         };
+      }
+      const userMatch = String(url).match(/\/api\/v2\/users\/([^/?]+)\.json(?:\?|$)/i);
+      if (userMatch && userMatch[1]) {
+        calls.userSingles += 1;
+        const id = decodeURIComponent(String(userMatch[1]));
+        const user = usersById[id];
+        return user
+          ? { ok: true, status: 200, payload: { user: { ...user } } }
+          : { ok: false, status: 404, payload: {} };
+      }
+      const organizationMatch = String(url).match(/\/api\/v2\/organizations\/([^/?]+)\.json(?:\?|$)/i);
+      if (organizationMatch && organizationMatch[1]) {
+        calls.organizationSingles += 1;
+        const id = decodeURIComponent(String(organizationMatch[1]));
+        const organization = organizationsById[id];
+        return organization
+          ? { ok: true, status: 200, payload: { organization: { ...organization } } }
+          : { ok: false, status: 404, payload: {} };
       }
       return {
         ok: false,
@@ -214,4 +250,35 @@ test("translation provider failures fall back to original strings", async () => 
   assert.equal(result.tickets[0].requestor_name_translated, "Morgan Lee");
   assert.equal(result.tickets[0].organization_name_translated, "Fabrikam");
   assert.equal(result.metrics.translationFailures, 1);
+});
+
+test("falls back to single-entity lookups when show_many is unavailable", async () => {
+  const tickets = [
+    { id: "401", requester_id: "42", organization_id: "420" }
+  ];
+  const mock = buildZendeskFetchMock({
+    failUserShowMany: true,
+    failOrganizationShowMany: true,
+    usersById: {
+      "42": { id: "42", name: "Taylor Quinn", email: "taylor@example.com" }
+    },
+    organizationsById: {
+      "420": { id: "420", name: "ZipTool Test Org" }
+    }
+  });
+
+  const result = await enrichTicketsWithRequestorOrg(tickets, {
+    baseUrl: "https://example.zendesk.com",
+    fetchJson: mock.fetchJson,
+    targetLocale: "en-US",
+    translationCache: createTranslationCache({ ttlMs: 60_000 })
+  });
+
+  assert.equal(mock.calls.users, 1);
+  assert.equal(mock.calls.organizations, 1);
+  assert.equal(mock.calls.userSingles, 1);
+  assert.equal(mock.calls.organizationSingles, 1);
+  assert.equal(result.tickets[0].requestor_name_translated, "Taylor Quinn");
+  assert.equal(result.tickets[0].organization_name_translated, "ZipTool Test Org");
+  assert.equal(result.tickets[0].requestor, "<a href=\"mailto:taylor@example.com\">Taylor Quinn</a>");
 });

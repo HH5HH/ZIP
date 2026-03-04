@@ -11,6 +11,8 @@
   const DEFAULT_MAX_RETRIES = 3;
   const DEFAULT_INITIAL_BACKOFF_MS = 250;
   const DEFAULT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+  const DEFAULT_SINGLE_ENTITY_FETCH_CONCURRENCY = 4;
+  const DEFAULT_ENTITY_FETCH_TIMEOUT_MS = 0;
 
   function toSafeString(value) {
     return String(value == null ? "" : value).trim();
@@ -67,6 +69,43 @@
     return new Promise((resolve) => {
       setTimeout(resolve, timeoutMs);
     });
+  }
+
+  async function requestJsonWithTimeout(fetchJson, url, timeoutMs) {
+    const timeout = Math.max(0, Math.trunc(Number(timeoutMs) || 0));
+    if (!timeout) return fetchJson(url);
+    let timeoutId = null;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(() => fetchJson(url)),
+        new Promise((resolve) => {
+          timeoutId = setTimeout(() => {
+            resolve({
+              ok: false,
+              status: 0,
+              payload: null,
+              text: "",
+              retryAfterMs: 0,
+              error: new Error("request_timeout")
+            });
+          }, timeout);
+        })
+      ]);
+    } finally {
+      if (timeoutId != null) clearTimeout(timeoutId);
+    }
+  }
+
+  function isRetryableZendeskStatus(status) {
+    return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+  }
+
+  function computeRetryBackoffMs(result, attempt, initialBackoffMs) {
+    const retryAfterMs = Number(result && result.retryAfterMs);
+    if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) return retryAfterMs;
+    const baseBackoffMs = initialBackoffMs * Math.pow(2, attempt);
+    const jitterFactor = 1 + (Math.random() * 0.2);
+    return Math.max(0, Math.trunc(baseBackoffMs * jitterFactor));
   }
 
   function escapeHtml(value) {
@@ -205,6 +244,7 @@
     const chunkSize = Math.max(1, Math.trunc(Number(opts.chunkSize) || DEFAULT_SHOW_MANY_CHUNK_SIZE));
     const maxRetries = Math.max(0, Math.trunc(Number(opts.maxRetries) || DEFAULT_MAX_RETRIES));
     const initialBackoffMs = Math.max(0, Math.trunc(Number(opts.initialBackoffMs) || DEFAULT_INITIAL_BACKOFF_MS));
+    const requestTimeoutMs = Math.max(0, Math.trunc(Number(opts.requestTimeoutMs) || DEFAULT_ENTITY_FETCH_TIMEOUT_MS));
     const chunks = chunkArray(Array.from(new Set(ids)), chunkSize);
     const out = new Map();
 
@@ -217,22 +257,19 @@
       let lastResponse = null;
 
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-        const result = await fetchJson(url);
+        const result = await requestJsonWithTimeout(fetchJson, url, requestTimeoutMs);
         lastResponse = result || null;
         if (result && result.ok) {
           success = true;
           break;
         }
         const status = Number(result && result.status) || 0;
-        const isRetryable = status === 429 || status === 503 || status === 502 || status === 500 || status === 504;
+        const isRetryable = isRetryableZendeskStatus(status);
         if (!isRetryable || attempt >= maxRetries) break;
         if (metrics) {
           metrics.zendeskRateLimitRetries = Number(metrics.zendeskRateLimitRetries || 0) + 1;
         }
-        const retryAfterMs = Number(result && result.retryAfterMs);
-        const backoffMs = Number.isFinite(retryAfterMs) && retryAfterMs > 0
-          ? retryAfterMs
-          : initialBackoffMs * Math.pow(2, attempt);
+        const backoffMs = computeRetryBackoffMs(result, attempt, initialBackoffMs);
         await delay(backoffMs);
       }
 
@@ -254,6 +291,90 @@
       }
     }
 
+    return out;
+  }
+
+  async function fetchSingleEntities(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const ids = Array.from(new Set(
+      (Array.isArray(opts.ids) ? opts.ids : [])
+        .map((value) => normalizeEntityId(value))
+        .filter(Boolean)
+    ));
+    const fetchJson = typeof opts.fetchJson === "function" ? opts.fetchJson : null;
+    const baseUrl = toSafeString(opts.baseUrl);
+    const endpointPath = toSafeString(opts.endpointPath);
+    const responseKey = toSafeString(opts.responseKey);
+    const metrics = opts.metrics && typeof opts.metrics === "object" ? opts.metrics : {};
+
+    if (!ids.length || !fetchJson || !baseUrl || !endpointPath || !responseKey) {
+      return new Map();
+    }
+
+    const maxRetries = Math.max(0, Math.trunc(Number(opts.maxRetries) || DEFAULT_MAX_RETRIES));
+    const initialBackoffMs = Math.max(0, Math.trunc(Number(opts.initialBackoffMs) || DEFAULT_INITIAL_BACKOFF_MS));
+    const requestTimeoutMs = Math.max(0, Math.trunc(Number(opts.requestTimeoutMs) || DEFAULT_ENTITY_FETCH_TIMEOUT_MS));
+    const concurrency = Math.max(
+      1,
+      Math.min(
+        DEFAULT_SINGLE_ENTITY_FETCH_CONCURRENCY,
+        Math.trunc(Number(opts.concurrency) || DEFAULT_SINGLE_ENTITY_FETCH_CONCURRENCY)
+      )
+    );
+    const metricName = toSafeString(opts.metricName);
+    const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+    const normalizedEndpointPath = endpointPath.endsWith("/") ? endpointPath : endpointPath + "/";
+    const out = new Map();
+    let cursor = 0;
+
+    async function worker() {
+      while (cursor < ids.length) {
+        const index = cursor;
+        cursor += 1;
+        const id = ids[index];
+        const url = normalizedBaseUrl + normalizedEndpointPath + encodeURIComponent(id) + ".json";
+        let success = false;
+        let lastResponse = null;
+        for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+          if (metricName && metrics) {
+            metrics[metricName] = Number(metrics[metricName] || 0) + 1;
+          }
+          const result = await requestJsonWithTimeout(fetchJson, url, requestTimeoutMs);
+          lastResponse = result || null;
+          if (result && result.ok) {
+            success = true;
+            break;
+          }
+          const status = Number(result && result.status) || 0;
+          const isRetryable = isRetryableZendeskStatus(status);
+          if (!isRetryable || attempt >= maxRetries) break;
+          if (metrics) {
+            metrics.zendeskRateLimitRetries = Number(metrics.zendeskRateLimitRetries || 0) + 1;
+          }
+          const backoffMs = computeRetryBackoffMs(result, attempt, initialBackoffMs);
+          await delay(backoffMs);
+        }
+        if (!success) {
+          if (metrics) {
+            metrics.zendeskCallFailures = Number(metrics.zendeskCallFailures || 0) + 1;
+          }
+          continue;
+        }
+        const payload = lastResponse && typeof lastResponse.payload === "object" ? lastResponse.payload : {};
+        const entity = payload && typeof payload[responseKey] === "object" ? payload[responseKey] : null;
+        if (!entity) continue;
+        const entityId = normalizeEntityId(entity.id) || id;
+        if (!entityId) continue;
+        out.set(entityId, entity);
+      }
+    }
+
+    const workers = [];
+    const workerCount = Math.min(concurrency, ids.length);
+    for (let i = 0; i < workerCount; i += 1) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
     return out;
   }
 
@@ -412,6 +533,8 @@
       uniqueOrganizationIds: 0,
       zendeskUserShowManyCalls: 0,
       zendeskOrganizationShowManyCalls: 0,
+      zendeskUserSingleFetchCalls: 0,
+      zendeskOrganizationSingleFetchCalls: 0,
       zendeskRateLimitRetries: 0,
       zendeskCallFailures: 0,
       translationCacheHits: 0,
@@ -476,6 +599,21 @@
         fetchJson,
         metrics
       });
+      const unresolvedRequesterIds = requesterIds.filter((id) => !usersById.has(id));
+      if (unresolvedRequesterIds.length) {
+        const fallbackUsersById = await fetchSingleEntities({
+          ids: unresolvedRequesterIds,
+          baseUrl,
+          endpointPath: "/api/v2/users/",
+          responseKey: "user",
+          maxRetries,
+          initialBackoffMs,
+          fetchJson,
+          metrics,
+          metricName: "zendeskUserSingleFetchCalls"
+        });
+        fallbackUsersById.forEach((value, id) => usersById.set(id, value));
+      }
     }
     if (baseUrl && fetchJson && organizationIds.length) {
       metrics.zendeskOrganizationShowManyCalls = chunkArray(organizationIds, chunkSize).length;
@@ -490,6 +628,21 @@
         fetchJson,
         metrics
       });
+      const unresolvedOrganizationIds = organizationIds.filter((id) => !organizationsById.has(id));
+      if (unresolvedOrganizationIds.length) {
+        const fallbackOrganizationsById = await fetchSingleEntities({
+          ids: unresolvedOrganizationIds,
+          baseUrl,
+          endpointPath: "/api/v2/organizations/",
+          responseKey: "organization",
+          maxRetries,
+          initialBackoffMs,
+          fetchJson,
+          metrics,
+          metricName: "zendeskOrganizationSingleFetchCalls"
+        });
+        fallbackOrganizationsById.forEach((value, id) => organizationsById.set(id, value));
+      }
     }
 
     const prepared = tickets.map((ticket) => {
