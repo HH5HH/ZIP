@@ -13,7 +13,7 @@ Congratulations, your PASS Zendesk life is no longer being throttled.
 ![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
 
 ## Mission
-ZIP = Zeek Info Peek. ZIP into INFO from the Zendesk API.
+ZIP = ZipTool. ZIP into INFO from the Zendesk API.
 
 Mission statement: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows.
 

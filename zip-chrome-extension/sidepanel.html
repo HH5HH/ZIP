@@ -57,11 +57,15 @@
         <div class="login-card-right">
           <div class="login-hero-build" role="img" aria-label="ZIP build version">
             <svg class="zip-logo-svg login-hero-build-icon" viewBox="0 0 128 128" role="img" aria-label="ZIP logo">
-              <circle class="zip-logo-aura" cx="64" cy="64" r="62"></circle>
-              <circle class="zip-logo-circle" cx="64" cy="64" r="56"></circle>
-              <circle class="zip-logo-gloss" cx="64" cy="64" r="56"></circle>
-              <circle class="zip-logo-ring" cx="64" cy="64" r="56"></circle>
-              <path class="zip-logo-z" d="M39 36H90L40 92H91"></path>
+              <rect class="zip-logo-shell-top" x="10" y="18" width="108" height="64" rx="14"></rect>
+              <ellipse class="zip-logo-shell-gloss" cx="40" cy="31" rx="26" ry="14"></ellipse>
+              <rect class="zip-logo-shell-front" x="10" y="58" width="108" height="40" rx="11"></rect>
+              <path class="zip-logo-shell-seam" d="M10 58H118"></path>
+              <ellipse class="zip-logo-badge" cx="64" cy="46" rx="34" ry="21"></ellipse>
+              <ellipse class="zip-logo-badge-ring" cx="64" cy="46" rx="34" ry="21"></ellipse>
+              <path class="zip-logo-z" d="M42 33H80L84 36H42V33ZM74 36H84L51 53H41L74 36ZM42 53H84V59H42V53Z"></path>
+              <circle class="zip-logo-led" cx="84" cy="81" r="3"></circle>
+              <circle class="zip-logo-led" cx="95" cy="81" r="3"></circle>
             </svg>
             <div class="login-hero-build-pill">
               <span class="login-hero-build-label">ZIP</span>
@@ -110,27 +114,6 @@
       <section class="section">
         <div class="ticket-section-header">
           <h3 class="ticket-section-title"><a href="#" id="zipAssignedTicketsLink" class="ticket-section-link">Assigned Tickets</a></h3>
-          <div class="ticket-section-header-search" role="search" aria-label="Search Zendesk tickets">
-            <label class="zip-visually-hidden" for="zipTicketApiSearch">Search Zendesk tickets</label>
-            <input
-              id="zipTicketApiSearch"
-              class="zip-text-input spectrum-Textfield-input ticket-section-search-input"
-              type="search"
-              placeholder="Search tickets"
-              aria-label="Search Zendesk tickets"
-              spellcheck="false"
-              autocomplete="off"
-            />
-            <button
-              id="zipTicketApiSearchBtn"
-              class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS ticket-section-search-btn"
-              type="button"
-              title="Search tickets"
-              aria-label="Search tickets"
-            >
-              <span class="spectrum-Button-label">Search</span>
-            </button>
-          </div>
           <div id="zipTicketNetworkIndicator" class="ticket-network-indicator hidden" aria-live="polite">
             <span class="inline-spinner" aria-hidden="true"></span>
             <span id="zipTicketNetworkLabel">Building filters…</span>
@@ -163,8 +146,34 @@
           <button id="zipTogglePassAiBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS hidden" title="Open Q and AI panel" aria-label="Open Q and AI panel" disabled>
             <img id="zipTogglePassAiIcon" class="zip-pass-ai-toggle-icon" src="https://avatars.slack-edge.com/2023-11-15/6196448729237_750b72455b05b8c81a1c_512.jpg" alt="PASS AI @Singularity" />
           </button>
-          <label class="zip-visually-hidden" for="zipTicketSearch">Search assigned tickets</label>
-          <input id="zipTicketSearch" class="zip-text-input spectrum-Textfield-input" type="text" placeholder="search" aria-label="Search assigned tickets" />
+          <div class="ticket-search-omnibox" role="search" aria-label="Ticket search">
+            <label class="zip-visually-hidden" for="zipTicketSearch">Search tickets</label>
+            <button
+              id="zipTicketSearchModeToggleBtn"
+              class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS ticket-search-mode-toggle is-local"
+              title="&quot;TICKETS&quot; - search through the tickets already loaded to quick filter the above table."
+              aria-label="&quot;TICKETS&quot; - search through the tickets already loaded to quick filter the above table."
+              type="button"
+            >
+              <svg id="zipTicketSearchModeLocalIcon" class="ticket-search-mode-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect class="ticket-search-mode-icon-frame" x="3.5" y="3.5" width="17" height="17" rx="2.25"></rect>
+                <path class="ticket-search-mode-icon-detail" d="M9.17 3.9v16.2M14.83 3.9v16.2M3.9 9.17h16.2M3.9 14.83h16.2"></path>
+              </svg>
+              <svg id="zipTicketSearchModeCloudIcon" class="ticket-search-mode-icon hidden" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path class="ticket-search-mode-icon-frame" d="M6.35 17.25h11.2a3.35 3.35 0 0 0 .25-6.69 5.25 5.25 0 0 0-10.03-1.54 3.7 3.7 0 0 0-1.42 6.63"></path>
+                <path class="ticket-search-mode-icon-detail" d="M8.55 16.05h7.25"></path>
+              </svg>
+            </button>
+            <input
+              id="zipTicketSearch"
+              class="zip-text-input spectrum-Textfield-input"
+              type="search"
+              placeholder="search tickets"
+              aria-label="Search tickets"
+              spellcheck="false"
+              autocomplete="off"
+            />
+          </div>
           <label class="zip-visually-hidden" for="zipStatusFilter">Filter tickets by status</label>
           <select id="zipStatusFilter" class="zip-select-control" aria-label="Filter tickets by status">
             <option value="all">all</option>
@@ -176,11 +185,15 @@
           </button>
           <button id="zipSlackItToMeBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="SLACK TO ZIPTOOL PANEL" aria-label="SLACK TO ZIPTOOL PANEL" disabled>
             <svg id="zipSlackPanelIcon" class="zip-logo-svg zip-slack-panel-icon" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
-              <circle class="zip-logo-aura" cx="64" cy="64" r="62"></circle>
-              <circle class="zip-logo-circle" cx="64" cy="64" r="56"></circle>
-              <circle class="zip-logo-gloss" cx="64" cy="64" r="56"></circle>
-              <circle class="zip-logo-ring" cx="64" cy="64" r="56"></circle>
-              <path class="zip-logo-z" d="M39 36H90L40 92H91"></path>
+              <rect class="zip-logo-shell-top" x="10" y="18" width="108" height="64" rx="14"></rect>
+              <ellipse class="zip-logo-shell-gloss" cx="40" cy="31" rx="26" ry="14"></ellipse>
+              <rect class="zip-logo-shell-front" x="10" y="58" width="108" height="40" rx="11"></rect>
+              <path class="zip-logo-shell-seam" d="M10 58H118"></path>
+              <ellipse class="zip-logo-badge" cx="64" cy="46" rx="34" ry="21"></ellipse>
+              <ellipse class="zip-logo-badge-ring" cx="64" cy="46" rx="34" ry="21"></ellipse>
+              <path class="zip-logo-z" d="M42 33H80L84 36H42V33ZM74 36H84L51 53H41L74 36ZM42 53H84V59H42V53Z"></path>
+              <circle class="zip-logo-led" cx="84" cy="81" r="3"></circle>
+              <circle class="zip-logo-led" cx="95" cy="81" r="3"></circle>
             </svg>
           </button>
           <button id="zipExportCsvBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Export current table as csv" aria-label="Export current ticket table as csv" disabled>
@@ -249,14 +262,18 @@
     <span id="zipStatus" class="zip-footer-status">Initializing...</span>
     <a href="#" id="zipAppVersionLink" class="zip-footer-version zip-footer-brand-refresh" title="Refresh ZIP">
       <svg class="zip-logo-svg zip-footer-brand-mark" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
-        <circle class="zip-logo-aura" cx="64" cy="64" r="62"></circle>
-        <circle class="zip-logo-circle" cx="64" cy="64" r="56"></circle>
-        <circle class="zip-logo-gloss" cx="64" cy="64" r="56"></circle>
-        <circle class="zip-logo-ring" cx="64" cy="64" r="56"></circle>
-        <path class="zip-logo-z" d="M39 36H90L40 92H91"></path>
+        <rect class="zip-logo-shell-top" x="10" y="18" width="108" height="64" rx="14"></rect>
+        <ellipse class="zip-logo-shell-gloss" cx="40" cy="31" rx="26" ry="14"></ellipse>
+        <rect class="zip-logo-shell-front" x="10" y="58" width="108" height="40" rx="11"></rect>
+        <path class="zip-logo-shell-seam" d="M10 58H118"></path>
+        <ellipse class="zip-logo-badge" cx="64" cy="46" rx="34" ry="21"></ellipse>
+        <ellipse class="zip-logo-badge-ring" cx="64" cy="46" rx="34" ry="21"></ellipse>
+        <path class="zip-logo-z" d="M42 33H80L84 36H42V33ZM74 36H84L51 53H41L74 36ZM42 53H84V59H42V53Z"></path>
+        <circle class="zip-logo-led" cx="84" cy="81" r="3"></circle>
+        <circle class="zip-logo-led" cx="95" cy="81" r="3"></circle>
       </svg>
       <span class="zip-footer-brand-sep" aria-hidden="true">|</span>
-      <span class="zip-footer-brand-subtitle">ZEEK INFO PEEK</span>
+      <span class="zip-footer-brand-subtitle">ZipTool</span>
       <span class="zip-footer-brand-sep" aria-hidden="true">|</span>
       <span class="zip-footer-brand-build">v<span id="zipAppVersion" class="app-version-num">—</span></span>
     </a>
@@ -266,11 +283,15 @@
   <div id="zipContextMenu" class="zip-context-menu hidden" role="menu" aria-label="ZIP context menu">
     <div class="zip-context-menu-root" role="presentation">
       <svg class="zip-logo-svg zip-context-menu-logo" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
-        <circle class="zip-logo-aura" cx="64" cy="64" r="62"></circle>
-        <circle class="zip-logo-circle" cx="64" cy="64" r="56"></circle>
-        <circle class="zip-logo-gloss" cx="64" cy="64" r="56"></circle>
-        <circle class="zip-logo-ring" cx="64" cy="64" r="56"></circle>
-        <path class="zip-logo-z" d="M39 36H90L40 92H91"></path>
+        <rect class="zip-logo-shell-top" x="10" y="18" width="108" height="64" rx="14"></rect>
+        <ellipse class="zip-logo-shell-gloss" cx="40" cy="31" rx="26" ry="14"></ellipse>
+        <rect class="zip-logo-shell-front" x="10" y="58" width="108" height="40" rx="11"></rect>
+        <path class="zip-logo-shell-seam" d="M10 58H118"></path>
+        <ellipse class="zip-logo-badge" cx="64" cy="46" rx="34" ry="21"></ellipse>
+        <ellipse class="zip-logo-badge-ring" cx="64" cy="46" rx="34" ry="21"></ellipse>
+        <path class="zip-logo-z" d="M42 33H80L84 36H42V33ZM74 36H84L51 53H41L74 36ZM42 53H84V59H42V53Z"></path>
+        <circle class="zip-logo-led" cx="84" cy="81" r="3"></circle>
+        <circle class="zip-logo-led" cx="95" cy="81" r="3"></circle>
       </svg>
       <span id="zipContextMenuBuild" class="zip-context-menu-build">ZIP</span>
     </div>

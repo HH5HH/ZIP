@@ -13,14 +13,14 @@ Congratulations, your PASS Zendesk life is no longer being throttled.
 ![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
 
 ## App Mission
-ZIP = Zeek Info Peek. ZIP into INFO from the Zendesk API.
+ZIP = ZipTool. ZIP into INFO from the Zendesk API.
 
 Mission: Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. Don't get stuck wasting cycles on blockers. If ZIP can make your job faster, better, or more enjoyable, please share feedback.
 
 ## What ZIP Is
 ZIP is a Chrome extension side panel companion for `https://adobeprimetime.zendesk.com/*`.
 
-Branding in this release is synced to the approved ZEEK INFO PEEK master media kit and is consistent across:
+Branding in this release is synced to the approved ZipTool master media kit and is consistent across:
 - Extension iconography
 - Side panel shell and login card
 - Install pages

@@ -348,7 +348,7 @@ for md in "${DOCS[@]}"; do
       <div class="hero-content">
         <div class="hero-brand">
           <img src="file://$ROOT/assets/brand/source/zeek-info-peek-master-icon.svg" alt="ZIP app icon" />
-          <span>ZEEK INFO PEEK</span>
+          <span>ZipTool</span>
         </div>
         <h1>$title</h1>
         <div class="hero-meta">ZIP Documentation Suite • Spectrum 2 branded export • Generated $(date '+%Y-%m-%d %H:%M:%S')</div>
@@ -362,7 +362,7 @@ HTML
   cat >> "$html" <<'HTML'
     </main>
     <footer class="footer">
-      <span>PASS • ZIP (Zeek Info Peek)</span>
+      <span>PASS • ZIP (ZipTool)</span>
       <span>Master brand kit aligned</span>
     </footer>
   </div>

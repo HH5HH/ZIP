@@ -60,7 +60,11 @@
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
   const DEFAULT_FOOTER_HINT = "Tip: Click your avatar for ZIP menu actions";
   const FOOTER_HINT_TOOLTIP = "Click your avatar to open the ZIP context menu.";
-  const TICKET_API_SEARCH_MAX_RESULTS = 20;
+  const TICKET_SEARCH_MODE_LOCAL = "local";
+  const TICKET_SEARCH_MODE_CLOUD = "cloud";
+  const TICKET_SEARCH_MODE_LOCAL_HELP = "\"TICKETS\" - search through the tickets already loaded to quick filter the above table.";
+  const TICKET_SEARCH_MODE_CLOUD_HELP = "\"ZENDESK\" - live Zendesk ticket search to load into the above table. Limited to TOP 50 results for speed.  Use Zendesk search for more.";
+  const TICKET_API_SEARCH_MAX_RESULTS = 50;
   const TICKET_API_SEARCH_LABEL_MAX_LENGTH = 42;
 
   const TICKET_COLUMNS = [
@@ -105,6 +109,8 @@
     selectedOrgId: "",
     selectedViewId: "",
     selectedByGroupValue: "",
+    ticketSearchMode: TICKET_SEARCH_MODE_LOCAL,
+    ticketLocalSearchQuery: "",
     ticketApiSearchQuery: "",
     selectedTicketId: null,
     groupsWithMembers: [],
@@ -793,9 +799,11 @@
     passAiAnswerBlock: $("zipPassAiAnswerBlock"),
     passAiAnswerPlaceholder: $("zipPassAiAnswerPlaceholder"),
     passAiDynamicReplyHost: $("zipPassAiDynamicReplyHost"),
-    ticketApiSearchInput: $("zipTicketApiSearch"),
-    ticketApiSearchBtn: $("zipTicketApiSearchBtn"),
+    ticketSearchOmnibox: document.querySelector(".ticket-search-omnibox"),
     ticketSearch: $("zipTicketSearch"),
+    ticketSearchModeToggleBtn: $("zipTicketSearchModeToggleBtn"),
+    ticketSearchModeLocalIcon: $("zipTicketSearchModeLocalIcon"),
+    ticketSearchModeCloudIcon: $("zipTicketSearchModeCloudIcon"),
     statusFilter: $("zipStatusFilter"),
     reloadTicketsBtn: $("zipReloadTicketsBtn"),
     slackItToMeBtn: $("zipSlackItToMeBtn"),
@@ -3517,8 +3525,10 @@
     const isLoading = isUiActionLoading();
     const zendeskLoading = isZendeskActivityLoading();
     const slackLoading = isSlackActivityLoading();
+    const cloudSearchBusy = zendeskLoading && isCloudTicketSearchMode();
     if (document && document.body && document.body.classList) {
       document.body.classList.toggle("zip-busy-cursor", isLoading);
+      document.body.classList.toggle("zip-ticket-cloud-search-busy", cloudSearchBusy);
     }
     if (els.topAvatarWrap) {
       els.topAvatarWrap.classList.toggle("loading", zendeskLoading);
@@ -3526,12 +3536,17 @@
         ? "Zendesk activity in progress…"
         : (els.topAvatarWrap.dataset.idleTitle || "Not logged in");
     }
-    if (els.ticketApiSearchInput) {
-      els.ticketApiSearchInput.disabled = !state.user || zendeskLoading;
-      els.ticketApiSearchInput.setAttribute("aria-busy", zendeskLoading ? "true" : "false");
+    if (els.ticketSearchOmnibox) {
+      els.ticketSearchOmnibox.setAttribute("aria-busy", cloudSearchBusy ? "true" : "false");
+      els.ticketSearchOmnibox.classList.toggle("is-busy", cloudSearchBusy);
     }
-    if (els.ticketApiSearchBtn) {
-      els.ticketApiSearchBtn.disabled = !state.user || zendeskLoading;
+    if (els.ticketSearch) {
+      const shouldDisableSearchInput = !state.user || cloudSearchBusy;
+      els.ticketSearch.setAttribute("aria-busy", cloudSearchBusy ? "true" : "false");
+      els.ticketSearch.disabled = shouldDisableSearchInput;
+    }
+    if (els.ticketSearchModeToggleBtn) {
+      els.ticketSearchModeToggleBtn.disabled = !state.user || zendeskLoading;
     }
     if (els.slacktivatedBtn) {
       const showSlackBusy = !!(state.user && slackLoading);
@@ -4049,6 +4064,72 @@
     return String(value == null ? "" : value).replace(/\s+/g, " ").trim();
   }
 
+  function normalizeTicketSearchMode(value) {
+    return String(value || "").trim().toLowerCase() === TICKET_SEARCH_MODE_CLOUD
+      ? TICKET_SEARCH_MODE_CLOUD
+      : TICKET_SEARCH_MODE_LOCAL;
+  }
+
+  function isCloudTicketSearchMode() {
+    return normalizeTicketSearchMode(state.ticketSearchMode) === TICKET_SEARCH_MODE_CLOUD;
+  }
+
+  function syncTicketSearchModeUi() {
+    const mode = normalizeTicketSearchMode(state.ticketSearchMode);
+    const isCloud = mode === TICKET_SEARCH_MODE_CLOUD;
+    state.ticketSearchMode = mode;
+    if (els.ticketSearchModeToggleBtn) {
+      const title = isCloud ? TICKET_SEARCH_MODE_CLOUD_HELP : TICKET_SEARCH_MODE_LOCAL_HELP;
+      els.ticketSearchModeToggleBtn.classList.toggle("is-cloud", isCloud);
+      els.ticketSearchModeToggleBtn.classList.toggle("is-local", !isCloud);
+      els.ticketSearchModeToggleBtn.title = title;
+      els.ticketSearchModeToggleBtn.setAttribute("aria-label", title);
+      els.ticketSearchModeToggleBtn.setAttribute("aria-pressed", isCloud ? "true" : "false");
+    }
+    if (els.ticketSearchModeLocalIcon) {
+      els.ticketSearchModeLocalIcon.classList.toggle("hidden", isCloud);
+    }
+    if (els.ticketSearchModeCloudIcon) {
+      els.ticketSearchModeCloudIcon.classList.toggle("hidden", !isCloud);
+    }
+    if (els.ticketSearch) {
+      const placeholder = isCloud ? "search zendesk" : "search tickets";
+      const ariaLabel = isCloud ? "search zendesk" : "search tickets";
+      els.ticketSearch.placeholder = placeholder;
+      els.ticketSearch.setAttribute("aria-label", ariaLabel);
+    }
+  }
+
+  function setTicketSearchMode(mode, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const prevMode = normalizeTicketSearchMode(state.ticketSearchMode);
+    const nextMode = normalizeTicketSearchMode(mode);
+    const searchInput = els.ticketSearch;
+    if (searchInput) {
+      const currentInput = String(searchInput.value || "");
+      if (prevMode === TICKET_SEARCH_MODE_LOCAL) {
+        state.ticketLocalSearchQuery = currentInput;
+      } else {
+        state.ticketApiSearchQuery = normalizeTicketApiSearchQuery(currentInput);
+      }
+      if (prevMode !== nextMode) {
+        if (nextMode === TICKET_SEARCH_MODE_CLOUD) {
+          const cloudValue = normalizeTicketApiSearchQuery(state.ticketApiSearchQuery || currentInput);
+          state.ticketApiSearchQuery = cloudValue;
+          searchInput.value = cloudValue;
+          state.textFilter = "";
+          applyFiltersAndRender();
+        } else {
+          const localValue = opts.preserveInput ? currentInput : String(state.ticketLocalSearchQuery || "");
+          searchInput.value = localValue;
+          state.ticketLocalSearchQuery = localValue;
+        }
+      }
+    }
+    state.ticketSearchMode = nextMode;
+    syncTicketSearchModeUi();
+  }
+
   function getTicketApiSearchSourceLabel() {
     const query = normalizeTicketApiSearchQuery(state.ticketApiSearchQuery);
     if (!query) return "Ticket Search";
@@ -4060,10 +4141,19 @@
     return "Ticket Search: " + truncated;
   }
 
-  function clearTicketApiSearchContext(options) {
-    const clearInput = !(options && options.clearInput === false);
+  function clearTicketSearchOmnibox(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const clearInput = opts.clearInput !== false;
+    const resetModeToLocal = opts.resetModeToLocal !== false;
+    state.ticketLocalSearchQuery = "";
     state.ticketApiSearchQuery = "";
-    if (clearInput && els.ticketApiSearchInput) els.ticketApiSearchInput.value = "";
+    state.textFilter = "";
+    if (clearInput && els.ticketSearch) {
+      els.ticketSearch.value = "";
+    }
+    if (resetModeToLocal) {
+      setTicketSearchMode(TICKET_SEARCH_MODE_LOCAL);
+    }
   }
 
   function normalizeTicketSourceLabel(label, fallback) {
@@ -4124,7 +4214,6 @@
     if (currentSource === "view" && selectedViewId) return buildViewContext();
     if (currentSource === "org" && selectedOrgId) return buildOrgContext();
     if (currentSource === "groupMember" && selectedByGroupValue) return buildGroupContext();
-    if (selectedSearchQuery) return buildSearchContext();
     if (selectedViewId) return buildViewContext();
     if (selectedOrgId) return buildOrgContext();
     if (selectedByGroupValue) return buildGroupContext();
@@ -4134,6 +4223,23 @@
       label: "Assigned Tickets",
       filenamePrefix: "assigned"
     };
+  }
+
+  function getTicketTableSearchModeLabel() {
+    return isCloudTicketSearchMode() ? "ZENDESK" : "TICKETS";
+  }
+
+  function getTicketTableContextStatusMessage() {
+    const rows = Array.isArray(state.filteredTickets) ? state.filteredTickets.length : 0;
+    return getTicketTableSearchModeLabel() + " showing " + rows + " rows.";
+  }
+
+  function setTicketTableContextStatus(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const allowWhileLoading = opts.allowWhileLoading === true;
+    if (!state.user) return;
+    if (!allowWhileLoading && state.ticketTableLoading) return;
+    setStatus(getTicketTableContextStatusMessage(), false);
   }
 
   function getTicketSourceFilenamePart() {
@@ -9090,7 +9196,9 @@
     }
   }
 
-  function applyFiltersAndRender() {
+  function applyFiltersAndRender(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const syncStatus = opts.syncStatus !== false;
     syncStatusFilterOptions();
     const text = String(state.textFilter || "").trim().toLowerCase();
     const status = normalizeStatusValue(state.statusFilter) || STATUS_FILTER_ALL_VALUE;
@@ -9122,6 +9230,9 @@
     const sid = normalizeZendeskTicketId(state.selectedTicketId);
     if (sid != null && !rows.some((r) => normalizeZendeskTicketId(r && r.id) === sid)) state.selectedTicketId = null;
     renderTicketRows();
+    if (syncStatus) {
+      setTicketTableContextStatus();
+    }
   }
 
   function renderTicketHeaders() {
@@ -9672,19 +9783,19 @@
   async function loadTicketsBySearchQuery(rawQuery, options) {
     const query = normalizeTicketApiSearchQuery(rawQuery);
     const opts = options && typeof options === "object" ? options : {};
-    const defaultLimit = Number(TICKET_API_SEARCH_MAX_RESULTS);
     const requestedLimit = Number(opts.limit);
     const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
-      ? Math.min(100, Math.trunc(requestedLimit))
-      : defaultLimit;
+      ? Math.min(1000, Math.trunc(requestedLimit))
+      : TICKET_API_SEARCH_MAX_RESULTS;
+    const payload = {
+      action: "loadTicketsBySearchQuery",
+      query,
+      limit,
+      locale: getPreferredTicketLocale()
+    };
     setTicketTableLoading(true);
     try {
-      const result = await sendToZendeskTab({
-        action: "loadTicketsBySearchQuery",
-        query,
-        limit,
-        locale: getPreferredTicketLocale()
-      });
+      const result = await sendToZendeskTab(payload);
       state.tickets = result.tickets || [];
       recordTicketEnrichmentMetrics("loadTicketsBySearchQuery", result.metrics);
       if (result.error) throw new Error(result.error);
@@ -10321,7 +10432,7 @@
   function runAssignedTicketsQuery() {
     if (!state.user || state.user.id == null) return;
     state.ticketSource = "assigned";
-    clearTicketApiSearchContext({ clearInput: true });
+    clearTicketSearchOmnibox({ clearInput: true });
     state.selectedOrgId = "";
     state.selectedViewId = "";
     state.selectedByGroupValue = "";
@@ -10331,12 +10442,16 @@
     return loadAssignedTickets();
   }
 
-  function runTicketApiSearchFromHeaderControls() {
+  function runTicketApiSearchFromOmnibox(options) {
+    const opts = options && typeof options === "object" ? options : {};
     if (!state.user) return;
+    if (!isCloudTicketSearchMode()) return;
     if (state.busy || state.ticketTableLoading) return;
-    const query = normalizeTicketApiSearchQuery(els.ticketApiSearchInput && els.ticketApiSearchInput.value);
+    const query = normalizeTicketApiSearchQuery(els.ticketSearch && els.ticketSearch.value);
     if (!query) {
-      setStatus("Enter a ticket search query first.", true);
+      if (!opts.allowEmpty) {
+        setStatus("Enter a ticket search query first.", true);
+      }
       return;
     }
 
@@ -10347,23 +10462,17 @@
     state.selectedByGroupValue = "";
     state.textFilter = "";
     resetStatusFilterSelection();
-    if (els.ticketSearch) els.ticketSearch.value = "";
     if (els.orgSelect) els.orgSelect.value = "";
     if (els.viewSelect) els.viewSelect.value = "";
     if (els.groupMemberSelect) els.groupMemberSelect.value = "";
 
+    setStatus("Searching Zendesk…", false);
     clearTicketTable({ loading: true });
     setBusy(true);
     loadTicketsBySearchQuery(query, { limit: TICKET_API_SEARCH_MAX_RESULTS })
-      .then(() => {
-        const shown = state.filteredTickets.length;
-        setStatus(
-          "Ticket search loaded. " + shown + " rows shown (top " + TICKET_API_SEARCH_MAX_RESULTS + ").",
-          false
-        );
-      })
+      .then(() => setTicketTableContextStatus())
       .catch((err) => {
-        setStatus("Ticket search failed: " + formatErrorMessage(err, "Unknown error"), true);
+        setStatus("Cloud ticket search failed: " + formatErrorMessage(err, "Unknown error"), true);
       })
       .finally(() => setBusy(false));
   }
@@ -10402,12 +10511,12 @@
   function setAssignedTicketsLoadStatus(navError) {
     if (navError) {
       setStatus(
-        "Assigned tickets loaded. " + state.filteredTickets.length + " rows shown. Could not open main filter tab: " + formatErrorMessage(navError, "Unknown error"),
+        getTicketTableContextStatusMessage() + " Could not open main filter tab: " + formatErrorMessage(navError, "Unknown error"),
         true
       );
       return;
     }
-    setStatus("Assigned tickets loaded. " + state.filteredTickets.length + " rows shown.", false);
+    setTicketTableContextStatus();
   }
 
   function retryCatalogLoadOnSelectFocus() {
@@ -10541,6 +10650,14 @@
     setRawFromPayload(me.payload);
     setRawTitle("/api/v2/users/me");
     renderApiParams();
+    state.ticketSource = "assigned";
+    state.selectedOrgId = "";
+    state.selectedViewId = "";
+    state.selectedByGroupValue = "";
+    clearTicketSearchOmnibox({ clearInput: true });
+    if (els.orgSelect) els.orgSelect.value = "";
+    if (els.viewSelect) els.viewSelect.value = "";
+    if (els.groupMemberSelect) els.groupMemberSelect.value = "";
     setStatus("Hello " + (me.user.name || me.user.email || "agent") + ". Loading assigned tickets...", false);
     await loadTickets(me.user && me.user.id != null ? String(me.user.id) : "");
     refreshSlacktivatedState({
@@ -10550,10 +10667,7 @@
       allowSlackTabBootstrap: true,
       allowSlackTabBootstrapCreate: false
     }).catch(() => {});
-    setStatus(
-      "Assigned tickets loaded. " + state.filteredTickets.length + " rows shown. Loading filter menus…",
-      false
-    );
+    setStatus(getTicketTableContextStatusMessage() + " Loading filter menus…", false);
     if (isFirstLogin) {
       try {
         assignedFilterNavResult = await ensureAssignedFilterTabOpen();
@@ -10577,19 +10691,19 @@
       .map((result) => String(result && result.label ? result.label : "Filter"));
     if (assignedFilterNavError) {
       setStatus(
-        "Ready. " + state.filteredTickets.length + " tickets shown. Could not open main filter tab: " + formatErrorMessage(assignedFilterNavError, "Unknown error"),
+        getTicketTableContextStatusMessage() + " Could not open main filter tab: " + formatErrorMessage(assignedFilterNavError, "Unknown error"),
         true
       );
       return;
     }
     if (failedCatalogs.length) {
       setStatus(
-        "Ready. " + state.filteredTickets.length + " tickets shown. Some filters failed to load: " + failedCatalogs.join(", "),
+        getTicketTableContextStatusMessage() + " Some filters failed to load: " + failedCatalogs.join(", "),
         true
       );
       return;
     }
-    setStatus("Ready. " + state.filteredTickets.length + " tickets shown.", false);
+    setTicketTableContextStatus();
   }
 
   async function refreshAll() {
@@ -11088,7 +11202,7 @@
         } else {
           await loadAssignedTickets();
         }
-        setStatus("Tickets refreshed. " + state.filteredTickets.length + " rows shown.", false);
+        setTicketTableContextStatus();
       } catch (err) {
         setStatus("Ticket refresh failed: " + (err && err.message ? err.message : "Unknown error"), true);
       } finally {
@@ -11113,25 +11227,26 @@
           .finally(() => setBusy(false));
       });
     }
-    if (els.ticketApiSearchBtn) {
-      els.ticketApiSearchBtn.addEventListener("click", (event) => {
+    if (els.ticketSearchModeToggleBtn) {
+      els.ticketSearchModeToggleBtn.addEventListener("click", (event) => {
         event.preventDefault();
-        runTicketApiSearchFromHeaderControls();
-      });
-    }
-    if (els.ticketApiSearchInput) {
-      els.ticketApiSearchInput.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter") return;
-        if (event.isComposing) return;
-        event.preventDefault();
-        runTicketApiSearchFromHeaderControls();
+        if (!state.user || state.busy || state.ticketTableLoading) return;
+        const nextMode = isCloudTicketSearchMode()
+          ? TICKET_SEARCH_MODE_LOCAL
+          : TICKET_SEARCH_MODE_CLOUD;
+        setTicketSearchMode(nextMode);
+        setTicketTableContextStatus();
+        if (els.ticketSearch) {
+          els.ticketSearch.focus();
+          els.ticketSearch.select();
+        }
       });
     }
     if (els.orgSelect) {
       els.orgSelect.addEventListener("change", () => {
         const val = (els.orgSelect.value || "").trim();
         if (!state.user) return;
-        clearTicketApiSearchContext({ clearInput: true });
+        clearTicketSearchOmnibox({ clearInput: true });
         state.selectedViewId = "";
         state.selectedByGroupValue = "";
         if (els.viewSelect) els.viewSelect.value = "";
@@ -11150,7 +11265,7 @@
         state.ticketSource = "org";
         state.selectedOrgId = val;
         loadTicketsByOrg(val)
-          .then(() => setStatus("Org tickets loaded. " + state.filteredTickets.length + " rows shown.", false))
+          .then(() => setTicketTableContextStatus())
           .catch((err) => setStatus("Tickets failed: " + (err && err.message ? err.message : "Unknown error"), true))
           .finally(() => setBusy(false));
       });
@@ -11159,7 +11274,7 @@
       els.viewSelect.addEventListener("change", () => {
         const val = (els.viewSelect.value || "").trim();
         if (!state.user) return;
-        clearTicketApiSearchContext({ clearInput: true });
+        clearTicketSearchOmnibox({ clearInput: true });
         state.selectedOrgId = "";
         state.selectedByGroupValue = "";
         if (els.orgSelect) els.orgSelect.value = "";
@@ -11178,7 +11293,7 @@
         state.ticketSource = "view";
         state.selectedViewId = val;
         loadTicketsByView(val)
-          .then(() => setStatus("View tickets loaded. " + state.filteredTickets.length + " rows shown.", false))
+          .then(() => setTicketTableContextStatus())
           .catch((err) => setStatus("Tickets failed: " + (err && err.message ? err.message : "Unknown error"), true))
           .finally(() => setBusy(false));
       });
@@ -11187,7 +11302,7 @@
       els.groupMemberSelect.addEventListener("change", () => {
         const val = (els.groupMemberSelect.value || "").trim();
         if (!state.user) return;
-        clearTicketApiSearchContext({ clearInput: true });
+        clearTicketSearchOmnibox({ clearInput: true });
         state.selectedOrgId = "";
         state.selectedViewId = "";
         if (els.orgSelect) els.orgSelect.value = "";
@@ -11210,12 +11325,27 @@
         setBusy(true);
         const loadPromise = loadTicketsByGroupSelectionValue(val);
         loadPromise
-          .then(() => setStatus("Tickets loaded. " + state.filteredTickets.length + " rows shown.", false))
+          .then(() => setTicketTableContextStatus())
           .catch((err) => setStatus("Tickets failed: " + (err && err.message ? err.message : "Unknown error"), true))
           .finally(() => setBusy(false));
       });
     }
     els.ticketSearch.addEventListener("input", () => {
+      const rawValue = String(els.ticketSearch.value || "");
+      if (isCloudTicketSearchMode()) {
+        state.ticketApiSearchQuery = normalizeTicketApiSearchQuery(rawValue);
+        return;
+      }
+      state.ticketLocalSearchQuery = rawValue;
+    });
+    els.ticketSearch.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      if (event.isComposing) return;
+      event.preventDefault();
+      if (isCloudTicketSearchMode()) {
+        runTicketApiSearchFromOmnibox();
+        return;
+      }
       state.textFilter = els.ticketSearch.value || "";
       applyFiltersAndRender();
     });
@@ -11234,9 +11364,9 @@
     try {
       const manifest = typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getManifest ? chrome.runtime.getManifest() : null;
       const desc = (manifest && manifest.description) ? String(manifest.description) : "";
-      els.appDescription.textContent = desc || "ZIP — Zeek Info Peek.";
+      els.appDescription.textContent = desc || "ZIP — ZipTool.";
     } catch (_) {
-      els.appDescription.textContent = "ZIP — Zeek Info Peek.";
+      els.appDescription.textContent = "ZIP — ZipTool.";
     }
   }
 
@@ -11254,6 +11384,7 @@
     populateApiPathSelect();
     renderApiParams();
     renderTicketHeaders();
+    setTicketSearchMode(state.ticketSearchMode, { preserveInput: true });
     updateTicketActionButtons();
     resetTopIdentity();
     setStatus("", false);

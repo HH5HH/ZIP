@@ -56,7 +56,7 @@ Use IDs like `ZIP-OPEN-001`, `ZIP-TICKETS-005`, `ZIP-API-009`.
 | ZIP-API-002 | Raw JSON download | Raw.JSON link | JSON file download | `sidepanel.js` |
 | ZIP-UX-001 | Side panel side awareness | getLayout context | Left/right visual adaptation | `background.js`, `sidepanel.js`, `sidepanel.css` |
 | ZIP-UX-002 | Narrow-width menu containment | Resize panel thinner | Dropdowns remain inside shell | `sidepanel.css` |
-| ZIP-BRAND-001 | Master icon system | Extension install/action icon | Unified ZEEK INFO PEEK iconography | `manifest.json`, `icons/`, `assets/brand/icons` |
+| ZIP-BRAND-001 | Master icon system | Extension install/action icon | Unified ZipTool iconography | `manifest.json`, `icons/`, `assets/brand/icons` |
 | ZIP-BRAND-002 | Branded login shell | Logged-out view | Splash + mark + mission-aligned shell | `sidepanel.html`, `sidepanel.css`, `assets/brand/splash`, `assets/brand/source` |
 | ZIP-BRAND-003 | Branded docs exports | Training doc generation | Spectrum 2 PDFs aligned to master kit | `docs/*.md`, `docs/assets/brand`, `docs/html`, `docs/pdf` |
 

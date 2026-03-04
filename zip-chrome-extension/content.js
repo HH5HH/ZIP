@@ -674,8 +674,9 @@
 
   /** Keep active + solved tickets, but never include closed tickets anywhere in ZIP. */
   const NON_CLOSED_STATUS_QUERY = " status:new status:open status:pending status:hold status:solved";
-  const DEFAULT_TICKET_SEARCH_LIMIT = 20;
-  const MAX_TICKET_SEARCH_LIMIT = 100;
+  const DEFAULT_TICKET_SEARCH_LIMIT = 50;
+  const MAX_TICKET_SEARCH_RESULTS = 1000;
+  const MAX_TICKET_SEARCH_PER_PAGE = 100;
   const MAX_SEARCH_TICKET_PAGES = 10;
   const MAX_VIEW_TICKET_PAGES = 10;
 
@@ -693,14 +694,18 @@
     return String(value).trim();
   }
 
-  function normalizeSearchLimit(value, fallback) {
+  function normalizeSearchLimit(value, fallback, maxValue) {
+    const maxNum = Number(maxValue);
+    const hardMax = Number.isFinite(maxNum) && maxNum > 0
+      ? Math.trunc(maxNum)
+      : MAX_TICKET_SEARCH_RESULTS;
     const fallbackNum = Number(fallback);
     const fallbackLimit = Number.isFinite(fallbackNum)
-      ? (fallbackNum > 0 ? Math.min(MAX_TICKET_SEARCH_LIMIT, Math.trunc(fallbackNum)) : 0)
+      ? (fallbackNum > 0 ? Math.min(hardMax, Math.trunc(fallbackNum)) : 0)
       : DEFAULT_TICKET_SEARCH_LIMIT;
     const num = Number(value);
     if (!Number.isFinite(num) || num <= 0) return fallbackLimit;
-    return Math.min(MAX_TICKET_SEARCH_LIMIT, Math.trunc(num));
+    return Math.min(hardMax, Math.trunc(num));
   }
 
   function buildTicketOnlySearchQuery(rawQuery) {
@@ -983,26 +988,35 @@
     const query = buildTicketOnlySearchQuery(rawQuery);
     if (!query) return { tickets: [] };
     const opts = options && typeof options === "object" ? options : {};
-    const limit = normalizeSearchLimit(opts.limit, DEFAULT_TICKET_SEARCH_LIMIT);
+    const limit = normalizeSearchLimit(opts.limit, DEFAULT_TICKET_SEARCH_LIMIT, MAX_TICKET_SEARCH_RESULTS);
+    const perPage = normalizeSearchLimit(
+      opts.perPage,
+      limit > 0 ? Math.min(limit, MAX_TICKET_SEARCH_PER_PAGE) : MAX_TICKET_SEARCH_PER_PAGE,
+      MAX_TICKET_SEARCH_PER_PAGE
+    );
     return searchTickets(query, {
       ...opts,
       limit,
-      perPage: limit,
+      perPage,
       source: "loadTicketsBySearchQuery"
     });
   }
 
   async function searchTickets(query, options) {
     const opts = options && typeof options === "object" ? options : {};
-    const limit = normalizeSearchLimit(opts.limit, 0);
-    const perPage = normalizeSearchLimit(opts.perPage, limit || MAX_TICKET_SEARCH_LIMIT);
+    const limit = normalizeSearchLimit(opts.limit, 0, MAX_TICKET_SEARCH_RESULTS);
+    const perPage = normalizeSearchLimit(
+      opts.perPage,
+      limit > 0 ? Math.min(limit, MAX_TICKET_SEARCH_PER_PAGE) : MAX_TICKET_SEARCH_PER_PAGE,
+      MAX_TICKET_SEARCH_PER_PAGE
+    );
     const sortBy = String(opts.sortBy || "").trim();
     const sortOrder = String(opts.sortOrder || "").trim();
     const params = new URLSearchParams();
     params.set("query", query);
     if (sortBy) params.set("sort_by", sortBy);
     if (sortOrder) params.set("sort_order", sortOrder);
-    if ((Object.prototype.hasOwnProperty.call(opts, "perPage") || limit > 0) && perPage > 0) {
+    if (perPage > 0) {
       params.set("per_page", String(perPage));
     }
 
