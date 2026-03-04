@@ -195,12 +195,12 @@ body {
   --zip-logo-gloss-fill: color-mix(in srgb, var(--zip-logo-gloss-color) 18%, transparent);
   --zip-logo-ring-stroke: color-mix(in srgb, var(--zip-logo-ring-color) 22%, transparent);
   --zip-logo-z-stroke: rgb(var(--zip-accent-on-primary));
-  --zip-logo-shell-top-fill: color-mix(in srgb, var(--spectrum-black) 74%, var(--spectrum-gray-700) 26%);
-  --zip-logo-shell-front-fill: color-mix(in srgb, var(--spectrum-black) 84%, var(--spectrum-gray-600) 16%);
-  --zip-logo-shell-gloss-fill: color-mix(in srgb, var(--spectrum-white) 70%, transparent);
-  --zip-logo-shell-seam-stroke: color-mix(in srgb, var(--spectrum-white) 56%, transparent);
-  --zip-logo-badge-fill: color-mix(in srgb, rgb(var(--zip-accent-900)) 18%, rgb(229, 9, 20) 82%);
-  --zip-logo-badge-ring-stroke: color-mix(in srgb, var(--spectrum-black) 86%, rgb(88, 13, 18) 14%);
+  --zip-logo-shell-top-fill: color-mix(in srgb, var(--spectrum-black) 80%, rgb(var(--zip-accent-1000)) 20%);
+  --zip-logo-shell-front-fill: color-mix(in srgb, var(--spectrum-black) 88%, rgb(var(--zip-accent-900)) 12%);
+  --zip-logo-shell-gloss-fill: color-mix(in srgb, var(--spectrum-white) 74%, rgb(var(--zip-accent-1100)) 26%);
+  --zip-logo-shell-seam-stroke: color-mix(in srgb, var(--spectrum-white) 48%, rgb(var(--zip-accent-1100)) 52%);
+  --zip-logo-badge-fill: color-mix(in srgb, rgb(226, 8, 20) 86%, rgb(var(--zip-accent-900)) 14%);
+  --zip-logo-badge-ring-stroke: color-mix(in srgb, var(--spectrum-black) 80%, rgb(var(--zip-accent-1000)) 20%);
   --zip-logo-led-fill: color-mix(in srgb, var(--spectrum-white) 90%, var(--spectrum-gray-300) 10%);
   --zip-login-hero-radial: color-mix(in srgb, rgb(var(--zip-accent-900)) 20%, transparent);
   --zip-login-hero-start: color-mix(in srgb, rgb(var(--zip-accent-800)) 20%, transparent);
@@ -363,6 +363,11 @@ body[data-zip-theme-colorstop="light"]:not(.spectrum--dark) {
   --zip-theme-swatch-ring-muted: color-mix(in srgb, var(--spectrum-body-color) 16%, transparent);
   --zip-logo-gloss-color: var(--spectrum-gray-25);
   --zip-logo-ring-color: var(--spectrum-gray-900);
+  --zip-logo-shell-top-fill: color-mix(in srgb, rgb(19, 19, 19) 84%, rgb(var(--zip-accent-1000)) 16%);
+  --zip-logo-shell-front-fill: color-mix(in srgb, rgb(9, 9, 9) 90%, rgb(var(--zip-accent-900)) 10%);
+  --zip-logo-shell-gloss-fill: color-mix(in srgb, var(--spectrum-white) 88%, rgb(var(--zip-accent-1100)) 12%);
+  --zip-logo-shell-seam-stroke: color-mix(in srgb, var(--spectrum-white) 66%, rgb(var(--zip-accent-1000)) 34%);
+  --zip-logo-led-fill: color-mix(in srgb, var(--spectrum-white) 94%, rgb(var(--zip-accent-1000)) 6%);
 }
 
 /* Spectrum accent families (all color stops). */
@@ -959,6 +964,11 @@ body.zip-ticket-cloud-search-busy * {
 .zip-logo-svg {
   display: block;
   overflow: visible;
+  shape-rendering: geometricPrecision;
+}
+
+.zip-logo-svg * {
+  vector-effect: non-scaling-stroke;
 }
 
 .zip-logo-svg .zip-logo-shell-top {
@@ -997,6 +1007,24 @@ body.zip-ticket-cloud-search-busy * {
 
 .zip-logo-svg .zip-logo-led {
   fill: var(--zip-logo-led-fill);
+}
+
+.zip-slack-panel-icon .zip-logo-led,
+.zip-footer-brand-mark .zip-logo-led,
+.zip-context-menu-logo .zip-logo-led {
+  display: none;
+}
+
+.zip-slack-panel-icon .zip-logo-shell-seam,
+.zip-footer-brand-mark .zip-logo-shell-seam,
+.zip-context-menu-logo .zip-logo-shell-seam {
+  stroke-width: 2;
+}
+
+.zip-slack-panel-icon .zip-logo-badge-ring,
+.zip-footer-brand-mark .zip-logo-badge-ring,
+.zip-context-menu-logo .zip-logo-badge-ring {
+  stroke-width: 1.9;
 }
 
 .zip-footer-brand-sep {
