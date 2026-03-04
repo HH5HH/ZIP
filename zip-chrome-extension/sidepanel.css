@@ -3342,8 +3342,11 @@ input::placeholder {
 
 .table-wrap {
   max-height: clamp(280px, 50vh, 520px);
+  min-height: clamp(136px, 24vh, 240px);
   overflow: auto;
   scrollbar-gutter: stable both-edges;
+  scroll-padding-bottom: 14px;
+  padding-bottom: 14px;
   border: 1px solid var(--zip-surface-border-accent);
   border-bottom: 0;
   border-radius: 0;
@@ -3371,6 +3374,7 @@ table { width: 100%; border-collapse: collapse; min-width: 400px; }
 
 .table-wrap > table {
   --mod-table-border-radius: 0px;
+  margin-bottom: 0;
 }
 
 th, td {
@@ -3409,6 +3413,7 @@ th, td {
 .table-wrap > table > tbody > tr > td {
   font-size: var(--zip-density-font-detail);
   line-height: var(--zip-density-line-detail);
+  min-block-size: calc((var(--zip-density-table-cell-pad-y) * 2) + (var(--zip-density-line-detail) * 1.35));
 }
 
 .table-wrap > table > tbody > tr.ticket-row > td,
@@ -3419,6 +3424,7 @@ th, td {
 
 .ticket-empty-state {
   color: var(--fg-subtle);
+  min-block-size: calc((var(--zip-density-table-cell-pad-y) * 2) + (var(--zip-density-line-detail) * 1.35));
 }
 
 .ticket-empty-state-loading {

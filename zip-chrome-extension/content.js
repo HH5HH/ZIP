@@ -1035,6 +1035,17 @@
     };
   }
 
+  function ticketNeedsRequestorOrgHydration(row) {
+    const ticket = row && typeof row === "object" ? row : {};
+    const requestorName = extractTicketRequesterName(ticket);
+    const organizationName = extractTicketOrganizationName(ticket);
+    const requesterId = extractTicketRequesterId(ticket);
+    const organizationId = extractTicketOrganizationId(ticket);
+    if (!requestorName && requesterId) return true;
+    if (!organizationName && organizationId) return true;
+    return false;
+  }
+
   function recordRequestorOrgMetrics(source, metrics) {
     const entry = {
       at: new Date().toISOString(),
@@ -1067,11 +1078,14 @@
     const opts = options && typeof options === "object" ? options : {};
     const source = String(opts.source || "tickets").trim() || "tickets";
     const enabled = await isRequestorOrgEnrichmentEnabled(opts);
-    if (!enabled) {
+    const forceHydration = !enabled && rows.some((row) => ticketNeedsRequestorOrgHydration(row));
+    const shouldRunEnrichment = enabled || forceHydration;
+    if (!shouldRunEnrichment) {
       const fallbackRows = rows.map((row) => buildFallbackRequestorOrgTicket(row));
       const disabledMetrics = {
         ticketCount: fallbackRows.length,
-        featureFlagEnabled: false
+        featureFlagEnabled: false,
+        forceHydration: false
       };
       recordRequestorOrgMetrics(source, disabledMetrics);
       return { tickets: fallbackRows, metrics: disabledMetrics };
@@ -1082,7 +1096,8 @@
       const fallbackRows = rows.map((row) => buildFallbackRequestorOrgTicket(row));
       const missingModuleMetrics = {
         ticketCount: fallbackRows.length,
-        featureFlagEnabled: true,
+        featureFlagEnabled: enabled,
+        forceHydration,
         moduleMissing: true
       };
       recordRequestorOrgMetrics(source, missingModuleMetrics);
@@ -1103,7 +1118,8 @@
       const metrics = {
         ...(enriched && enriched.metrics && typeof enriched.metrics === "object" ? enriched.metrics : {}),
         ticketCount: outputRows.length,
-        featureFlagEnabled: true,
+        featureFlagEnabled: enabled,
+        forceHydration,
         targetLocale: resolveTicketLocale(opts)
       };
       recordRequestorOrgMetrics(source, metrics);
@@ -1112,7 +1128,8 @@
       const fallbackRows = rows.map((row) => buildFallbackRequestorOrgTicket(row));
       const failedMetrics = {
         ticketCount: fallbackRows.length,
-        featureFlagEnabled: true,
+        featureFlagEnabled: enabled,
+        forceHydration,
         error: error && error.message ? error.message : "enrichment_failed"
       };
       recordRequestorOrgMetrics(source, failedMetrics);
