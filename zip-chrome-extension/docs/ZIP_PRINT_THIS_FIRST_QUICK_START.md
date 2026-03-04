@@ -10,7 +10,7 @@
 7. Click `Login with Zendesk` if prompted.
 8. Click `Assigned Tickets` and start triage.
 
-![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
+![ZIP Master Brand Preview](../assets/zipToolBox.png)
 
 ## 30-Second Operating Pattern
 - Start in `Assigned Tickets`.

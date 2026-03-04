@@ -9,7 +9,7 @@ Install and begin work in under two minutes:
 5. Open ZIP from the extension icon, then click `Login with Zendesk` if needed.
 6. Use `Assigned Tickets` immediately and begin triage.
 
-![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
+![ZIP Master Brand Preview](../assets/zipToolBox.png)
 
 ## Release Snapshot
 - Product: ZIP (ZipTool)

@@ -534,6 +534,8 @@
     const source = row && typeof row === "object" ? row : {};
     const nestedRequester = source.requester && typeof source.requester === "object" ? source.requester : null;
     const nestedRequestor = source.requestor && typeof source.requestor === "object" ? source.requestor : null;
+    const requesterScalar = normalizeZendeskEntityDisplayText(source.requester);
+    const requestorScalar = normalizeZendeskEntityDisplayText(source.requestor);
     const candidates = [
       source.requester_name,
       source.requesterName,
@@ -542,7 +544,9 @@
       nestedRequester && nestedRequester.name,
       nestedRequester && nestedRequester.display_name,
       nestedRequestor && nestedRequestor.name,
-      nestedRequestor && nestedRequestor.display_name
+      nestedRequestor && nestedRequestor.display_name,
+      requesterScalar,
+      requestorScalar
     ];
     for (let i = 0; i < candidates.length; i += 1) {
       const value = String(candidates[i] == null ? "" : candidates[i]).replace(/\s+/g, " ").trim();
@@ -555,17 +559,20 @@
     const source = row && typeof row === "object" ? row : {};
     const nestedRequester = source.requester && typeof source.requester === "object" ? source.requester : null;
     const nestedRequestor = source.requestor && typeof source.requestor === "object" ? source.requestor : null;
+    const requesterScalar = source.requester != null && typeof source.requester !== "object" ? source.requester : "";
+    const requestorScalar = source.requestor != null && typeof source.requestor !== "object" ? source.requestor : "";
     const candidates = [
       source.requester_id,
       source.requesterId,
       source.requestor_id,
       source.requestorId,
       nestedRequester && nestedRequester.id,
-      nestedRequestor && nestedRequestor.id
+      nestedRequestor && nestedRequestor.id,
+      requesterScalar,
+      requestorScalar
     ];
     for (let i = 0; i < candidates.length; i += 1) {
-      if (candidates[i] == null) continue;
-      const id = String(candidates[i]).trim();
+      const id = normalizeZendeskEntityId(candidates[i]);
       if (id) return id;
     }
     return "";
@@ -574,14 +581,17 @@
   function extractTicketOrganizationId(row) {
     const source = row && typeof row === "object" ? row : {};
     const organization = source.organization && typeof source.organization === "object" ? source.organization : null;
+    const organizationScalar = source.organization != null && typeof source.organization !== "object"
+      ? source.organization
+      : "";
     const candidates = [
       source.organization_id,
       source.organizationId,
-      organization && organization.id
+      organization && organization.id,
+      organizationScalar
     ];
     for (let i = 0; i < candidates.length; i += 1) {
-      if (candidates[i] == null) continue;
-      const id = String(candidates[i]).trim();
+      const id = normalizeZendeskEntityId(candidates[i]);
       if (id) return id;
     }
     return "";
@@ -590,10 +600,12 @@
   function extractTicketOrganizationName(row) {
     const source = row && typeof row === "object" ? row : {};
     const organization = source.organization && typeof source.organization === "object" ? source.organization : null;
+    const organizationScalarName = normalizeZendeskEntityDisplayText(source.organization);
     const candidates = [
       source.organization_name,
       source.organizationName,
-      organization && organization.name
+      organization && organization.name,
+      organizationScalarName
     ];
     for (let i = 0; i < candidates.length; i += 1) {
       const name = String(candidates[i] == null ? "" : candidates[i]).replace(/\s+/g, " ").trim();
@@ -614,9 +626,12 @@
   function extractTicketRequesterEmail(row) {
     const source = row && typeof row === "object" ? row : {};
     const nestedRequester = source.requester && typeof source.requester === "object" ? source.requester : null;
+    const nestedRequestor = source.requestor && typeof source.requestor === "object" ? source.requestor : null;
     const nestedVia = source.via && typeof source.via === "object" ? source.via : null;
     const viaSource = nestedVia && nestedVia.source && typeof nestedVia.source === "object" ? nestedVia.source : null;
     const viaFrom = viaSource && viaSource.from && typeof viaSource.from === "object" ? viaSource.from : null;
+    const requesterScalar = normalizeZendeskEntityDisplayText(source.requester);
+    const requestorScalar = normalizeZendeskEntityDisplayText(source.requestor);
     const candidates = [
       source.requester_email,
       source.requesterEmail,
@@ -627,6 +642,10 @@
       source.via_email,
       nestedRequester && nestedRequester.email,
       nestedRequester && nestedRequester.primary_email,
+      nestedRequestor && nestedRequestor.email,
+      nestedRequestor && nestedRequestor.primary_email,
+      requesterScalar,
+      requestorScalar,
       viaFrom && viaFrom.address,
       viaFrom && viaFrom.email
     ];
@@ -674,11 +693,45 @@
 
   /** Keep active + solved tickets, but never include closed tickets anywhere in ZIP. */
   const NON_CLOSED_STATUS_QUERY = " status:new status:open status:pending status:hold status:solved";
-  const DEFAULT_TICKET_SEARCH_LIMIT = 50;
-  const MAX_TICKET_SEARCH_RESULTS = 1000;
+  const DEFAULT_TICKET_SEARCH_LIMIT = 100;
+  const MAX_TICKET_SEARCH_RESULTS = 50000;
   const MAX_TICKET_SEARCH_PER_PAGE = 100;
   const MAX_SEARCH_TICKET_PAGES = 10;
   const MAX_VIEW_TICKET_PAGES = 10;
+  const DEFAULT_ZENDESK_SEARCH_CACHE_TTL_SECONDS = 30;
+  const DEFAULT_ZENDESK_SEARCH_FALLBACK_THRESHOLD_MS = 1500;
+  const DEFAULT_ZENDESK_SEARCH_FIELDS_NEEDED = [
+    "id",
+    "result_type",
+    "subject",
+    "status",
+    "priority",
+    "created_at",
+    "updated_at",
+    "assignee_id",
+    "assignee",
+    "requester_id",
+    "requester",
+    "organization_id",
+    "organization",
+    "organization_name",
+    "custom_fields",
+    "tags",
+    "via"
+  ];
+  const REQUIRED_TICKET_ENRICHMENT_FIELDS = [
+    "id",
+    "result_type",
+    "requester_id",
+    "organization_id",
+    "requester",
+    "organization",
+    "requester_name",
+    "organization_name",
+    "requester_email"
+  ];
+  let zendeskTicketSearchService = null;
+  let zendeskTicketSearchServiceConcurrency = 0;
 
   function isClosedStatus(status) {
     return String(status || "").trim().toLowerCase() === "closed";
@@ -692,6 +745,19 @@
   function normalizeTicketId(value) {
     if (value == null) return "";
     return String(value).trim();
+  }
+
+  function normalizeZendeskEntityId(value) {
+    const raw = String(value == null ? "" : value).trim();
+    if (!raw) return "";
+    return /^\d+$/.test(raw) ? raw : "";
+  }
+
+  function normalizeZendeskEntityDisplayText(value) {
+    if (value == null || typeof value === "object") return "";
+    const raw = String(value).replace(/\s+/g, " ").trim();
+    if (!raw) return "";
+    return normalizeZendeskEntityId(raw) ? "" : raw;
   }
 
   function normalizeSearchLimit(value, fallback, maxValue) {
@@ -713,6 +779,94 @@
     if (!query) return "";
     if (/\btype\s*:\s*ticket\b/i.test(query)) return query;
     return "type:ticket " + query;
+  }
+
+  function getZendeskTicketSearchModule() {
+    try {
+      if (typeof globalThis !== "undefined" && globalThis && globalThis.ZIP_ZENDESK_TICKET_SEARCH) {
+        return globalThis.ZIP_ZENDESK_TICKET_SEARCH;
+      }
+    } catch (_) {}
+    try {
+      if (typeof window !== "undefined" && window && window.ZIP_ZENDESK_TICKET_SEARCH) {
+        return window.ZIP_ZENDESK_TICKET_SEARCH;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  function logZendeskSearchEvent(payload) {
+    const event = payload && typeof payload === "object" ? payload : {};
+    try {
+      sendRuntimeMessage({
+        type: "ZIP_ZENDESK_SEARCH_METRICS",
+        payload: {
+          ...event,
+          ts: Date.now()
+        }
+      });
+    } catch (_) {}
+    try {
+      if (event && event.type) {
+        console.debug("[ZIP] Zendesk search:", event.type, event);
+      }
+    } catch (_) {}
+  }
+
+  function createZendeskSearchFetchImpl() {
+    return function zendeskSearchFetch(url, init) {
+      return fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          ...(init && init.headers && typeof init.headers === "object" ? init.headers : {})
+        },
+        ...(init && typeof init === "object" ? init : {})
+      });
+    };
+  }
+
+  function getZendeskTicketSearchService(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const requestedConcurrency = normalizeSearchLimit(opts.concurrency, 4, 16);
+    if (zendeskTicketSearchService && zendeskTicketSearchServiceConcurrency === requestedConcurrency) {
+      return zendeskTicketSearchService;
+    }
+    const mod = getZendeskTicketSearchModule();
+    if (!mod || typeof mod.createZendeskTicketSearchService !== "function") return null;
+    zendeskTicketSearchService = mod.createZendeskTicketSearchService({
+      baseUrl: BASE,
+      authScope: BASE,
+      fetchImpl: createZendeskSearchFetchImpl(),
+      concurrency: requestedConcurrency,
+      defaultDateRangeDays: 90,
+      logger: logZendeskSearchEvent
+    });
+    zendeskTicketSearchServiceConcurrency = requestedConcurrency;
+    return zendeskTicketSearchService;
+  }
+
+  function resolveZendeskSearchFields(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const fields = Array.isArray(opts.fieldsNeeded) && opts.fieldsNeeded.length
+      ? opts.fieldsNeeded
+      : DEFAULT_ZENDESK_SEARCH_FIELDS_NEEDED;
+    const normalized = fields
+      .map((field) => String(field || "").trim())
+      .filter(Boolean);
+    const out = [];
+    const seen = new Set();
+    const addField = (fieldName) => {
+      const key = String(fieldName || "").trim();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(key);
+    };
+    normalized.forEach(addField);
+    REQUIRED_TICKET_ENRICHMENT_FIELDS.forEach(addField);
+    return out;
   }
 
   function isInactiveOrHiddenEntity(entity) {
@@ -985,24 +1139,115 @@
   }
 
   async function loadTicketsBySearchQuery(rawQuery, options) {
-    const query = buildTicketOnlySearchQuery(rawQuery);
+    const query = String(rawQuery == null ? "" : rawQuery).replace(/\s+/g, " ").trim();
     if (!query) return { tickets: [] };
     const opts = options && typeof options === "object" ? options : {};
-    const limit = normalizeSearchLimit(opts.limit, DEFAULT_TICKET_SEARCH_LIMIT, MAX_TICKET_SEARCH_RESULTS);
-    const perPage = normalizeSearchLimit(
-      opts.perPage,
-      limit > 0 ? Math.min(limit, MAX_TICKET_SEARCH_PER_PAGE) : MAX_TICKET_SEARCH_PER_PAGE,
-      MAX_TICKET_SEARCH_PER_PAGE
-    );
     return searchTickets(query, {
       ...opts,
-      limit,
-      perPage,
+      maxResults: normalizeSearchLimit(
+        Object.prototype.hasOwnProperty.call(opts, "maxResults") ? opts.maxResults : opts.limit,
+        DEFAULT_TICKET_SEARCH_LIMIT,
+        MAX_TICKET_SEARCH_RESULTS
+      ),
+      pageSize: normalizeSearchLimit(
+        Object.prototype.hasOwnProperty.call(opts, "pageSize") ? opts.pageSize : opts.perPage,
+        MAX_TICKET_SEARCH_PER_PAGE,
+        MAX_TICKET_SEARCH_PER_PAGE
+      ),
       source: "loadTicketsBySearchQuery"
     });
   }
 
   async function searchTickets(query, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const limit = normalizeSearchLimit(
+      Object.prototype.hasOwnProperty.call(opts, "maxResults") ? opts.maxResults : opts.limit,
+      DEFAULT_TICKET_SEARCH_LIMIT,
+      MAX_TICKET_SEARCH_RESULTS
+    );
+    const pageSize = normalizeSearchLimit(
+      Object.prototype.hasOwnProperty.call(opts, "pageSize") ? opts.pageSize : opts.perPage,
+      MAX_TICKET_SEARCH_PER_PAGE,
+      MAX_TICKET_SEARCH_PER_PAGE
+    );
+    const searchService = getZendeskTicketSearchService(opts);
+    if (!searchService || typeof searchService.searchTickets !== "function") {
+      return searchTicketsLegacyOffset(query, {
+        ...opts,
+        limit,
+        perPage: pageSize
+      });
+    }
+
+    const searchResult = await searchService.searchTickets(query, {
+      maxResults: limit,
+      pageSize,
+      fieldsNeeded: resolveZendeskSearchFields(opts),
+      useIncremental: !!opts.useIncremental,
+      sync: !!opts.sync,
+      cacheTTL: Object.prototype.hasOwnProperty.call(opts, "cacheTTL")
+        ? opts.cacheTTL
+        : DEFAULT_ZENDESK_SEARCH_CACHE_TTL_SECONDS,
+      fallbackThreshold: Object.prototype.hasOwnProperty.call(opts, "fallbackThreshold")
+        ? opts.fallbackThreshold
+        : DEFAULT_ZENDESK_SEARCH_FALLBACK_THRESHOLD_MS,
+      debug: !!opts.debug,
+      requireWildcardOptIn: !!opts.requireWildcardOptIn,
+      allowBroadWildcard: !!opts.allowBroadWildcard,
+      defaultDateRangeDays: Object.prototype.hasOwnProperty.call(opts, "defaultDateRangeDays")
+        ? opts.defaultDateRangeDays
+        : 90,
+      statusFilters: Array.isArray(opts.statusFilters) && opts.statusFilters.length
+        ? opts.statusFilters
+        : ["new", "open", "pending", "hold", "solved"],
+      requiredTags: Array.isArray(opts.requiredTags) ? opts.requiredTags : [],
+      syncThreshold: Object.prototype.hasOwnProperty.call(opts, "syncThreshold") ? opts.syncThreshold : 10000,
+      sortBy: opts.sortBy,
+      sortOrder: opts.sortOrder
+    });
+
+    if (searchResult && searchResult.error) {
+      return {
+        error: searchResult.error,
+        tickets: [],
+        metrics: searchResult.metrics || {}
+      };
+    }
+
+    const sourceRows = Array.isArray(searchResult && searchResult.tickets) ? searchResult.tickets : [];
+    const all = [];
+    const seenTicketIds = new Set();
+    for (let i = 0; i < sourceRows.length; i += 1) {
+      const raw = sourceRows[i];
+      const type = String((raw && raw.result_type) || "").toLowerCase();
+      if (type && type !== "ticket") continue;
+      if (!includeTicketByStatus(raw)) continue;
+      const normalized = normalizeTicket(raw || {});
+      const ticketId = normalizeTicketId(normalized.id);
+      if (!ticketId || seenTicketIds.has(ticketId)) continue;
+      seenTicketIds.add(ticketId);
+      all.push(normalized);
+      if (limit > 0 && all.length >= limit) break;
+    }
+    const rowsToEnrich = limit > 0 ? all.slice(0, limit) : all;
+    const enriched = await enrichTicketsWithRequestorOrg(rowsToEnrich, {
+      ...opts,
+      source: "searchTickets"
+    });
+    return {
+      tickets: enriched.tickets,
+      metrics: {
+        ...(searchResult && searchResult.metrics && typeof searchResult.metrics === "object"
+          ? searchResult.metrics
+          : {}),
+        ...(enriched && enriched.metrics && typeof enriched.metrics === "object"
+          ? enriched.metrics
+          : {})
+      }
+    };
+  }
+
+  async function searchTicketsLegacyOffset(query, options) {
     const opts = options && typeof options === "object" ? options : {};
     const limit = normalizeSearchLimit(opts.limit, 0, MAX_TICKET_SEARCH_RESULTS);
     const perPage = normalizeSearchLimit(
@@ -1013,12 +1258,10 @@
     const sortBy = String(opts.sortBy || "").trim();
     const sortOrder = String(opts.sortOrder || "").trim();
     const params = new URLSearchParams();
-    params.set("query", query);
+    params.set("query", buildTicketOnlySearchQuery(query));
     if (sortBy) params.set("sort_by", sortBy);
     if (sortOrder) params.set("sort_order", sortOrder);
-    if (perPage > 0) {
-      params.set("per_page", String(perPage));
-    }
+    if (perPage > 0) params.set("per_page", String(perPage));
 
     let nextUrl = BASE + "/api/v2/search.json?" + params.toString();
     const all = [];
@@ -1047,10 +1290,7 @@
         all.push(normalized);
         if (limit > 0 && all.length >= limit) break;
       }
-      if (limit > 0 && all.length >= limit) {
-        nextUrl = null;
-        break;
-      }
+      if (limit > 0 && all.length >= limit) break;
       nextUrl = res.payload.next_page || null;
     }
     const rowsToEnrich = limit > 0 ? all.slice(0, limit) : all;

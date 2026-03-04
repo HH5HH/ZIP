@@ -344,10 +344,10 @@ for md in "${DOCS[@]}"; do
 <body>
   <div class="page">
     <header class="hero">
-      <img class="hero-bg" src="file://$ROOT/assets/brand/splash/zeek-info-peek-master-splash-1920x1080.png" alt="ZIP splash" />
+      <img class="hero-bg" src="file://$ROOT/assets/zipToolBox.png" alt="ZIP splash" />
       <div class="hero-content">
         <div class="hero-brand">
-          <img src="file://$ROOT/assets/brand/source/zeek-info-peek-master-icon.svg" alt="ZIP app icon" />
+          <img src="file://$ROOT/assets/zipToolBox.png" alt="ZIP app icon" />
           <span>ZipTool</span>
         </div>
         <h1>$title</h1>

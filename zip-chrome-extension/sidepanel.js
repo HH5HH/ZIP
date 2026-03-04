@@ -43,7 +43,7 @@
   const ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY = "zip_singularity_channel_id";
   const ZIP_SINGULARITY_MENTION_STORAGE_KEY = "zip_singularity_mention";
   const SLACKTIVATED_SESSION_CACHE_VERSION = 1;
-  const SLACKTIVATED_PENDING_ICON_URL = "icons/icon128.png";
+  const SLACKTIVATED_PENDING_ICON_URL = "assets/brand/icons/icon128.png";
   const SLACKTIVATED_LOGIN_TOOLTIP = "ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/";
   const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP.KEY and reset ZIP now? This signs you out, clears SLACKTIVATION, and requires re-importing ZIP.KEY.";
   const PASS_AI_POLL_INTERVAL_MS = 1500;
@@ -63,8 +63,8 @@
   const TICKET_SEARCH_MODE_LOCAL = "local";
   const TICKET_SEARCH_MODE_CLOUD = "cloud";
   const TICKET_SEARCH_MODE_LOCAL_HELP = "\"TICKETS\" - search through the tickets already loaded to quick filter the above table.";
-  const TICKET_SEARCH_MODE_CLOUD_HELP = "\"ZENDESK\" - live Zendesk ticket search to load into the above table. Limited to TOP 50 results for speed.  Use Zendesk search for more.";
-  const TICKET_API_SEARCH_MAX_RESULTS = 50;
+  const TICKET_SEARCH_MODE_CLOUD_HELP = "\"ZENDESK\" - live Zendesk ticket search to load into the above table. Limited to TOP 100 results for speed.  Use Zendesk search for more.";
+  const TICKET_API_SEARCH_MAX_RESULTS = 100;
   const TICKET_API_SEARCH_LABEL_MAX_LENGTH = 42;
 
   const TICKET_COLUMNS = [
@@ -742,6 +742,7 @@
     configDropZone: $("zipConfigDropZone"),
     configDropAction: $("zipConfigDropAction"),
     configFileInput: $("zipConfigFileInput"),
+    loginHeroToolBox: $("zipLoginHeroToolBox"),
     loginBtn: $("zipLoginBtn"),
     loginCtaText: $("zipLoginCtaText"),
     docsMenu: $("zipDocsMenu"),
@@ -9874,14 +9875,23 @@
     }
   }
 
-  function renderSelectLoadingPlaceholder(selectEl) {
+  function getContextualLoadingLabel(baseLabel) {
+    const raw = String(baseLabel || "").trim();
+    const withoutBy = raw.replace(/^by\s+/i, "").trim();
+    return withoutBy ? ("loading... " + withoutBy) : "loading...";
+  }
+
+  function renderSelectLoadingPlaceholder(selectEl, baseLabel) {
     if (!selectEl) return;
     selectEl.innerHTML = "";
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "";
+    opt.disabled = true;
+    opt.selected = true;
+    opt.textContent = getContextualLoadingLabel(baseLabel);
     selectEl.appendChild(opt);
     selectEl.value = "";
+    selectEl.disabled = true;
   }
 
   function getOrgBaseLabel(org) {
@@ -9889,7 +9899,7 @@
   }
 
   function renderOrgSelectLoadingPlaceholder() {
-    renderSelectLoadingPlaceholder(els.orgSelect);
+    renderSelectLoadingPlaceholder(els.orgSelect, "By Organization");
   }
 
   function getOrgLabel(org, countOverride) {
@@ -10101,7 +10111,7 @@
   }
 
   function renderGroupSelectLoadingPlaceholder() {
-    renderSelectLoadingPlaceholder(els.groupMemberSelect);
+    renderSelectLoadingPlaceholder(els.groupMemberSelect, "By Group / Agent");
   }
 
   function getGroupLabel(option, countOverride, countPadLengthOverride) {
@@ -10357,7 +10367,7 @@
   }
 
   function renderViewSelectLoadingPlaceholder() {
-    renderSelectLoadingPlaceholder(els.viewSelect);
+    renderSelectLoadingPlaceholder(els.viewSelect, "By View");
   }
 
   function getViewLabel(view, countOverride) {
@@ -10703,6 +10713,7 @@
       );
       return;
     }
+    setStatus("Ready. " + getTicketTableContextStatusMessage(), false);
     setTicketTableContextStatus();
   }
 
@@ -11370,10 +11381,38 @@
     }
   }
 
+  async function hydrateLoginHeroToolBox() {
+    if (!els.loginHeroToolBox) return;
+    if (els.loginHeroToolBox.dataset.hydrated === "true") return;
+    try {
+      const response = await fetch("assets/zipToolBox.svg", { cache: "force-cache" });
+      if (!response || !response.ok) throw new Error("zipToolBox.svg unavailable");
+      const markup = String(await response.text() || "")
+        .replace(/^\s*<\?xml[\s\S]*?\?>\s*/i, "")
+        .trim();
+      if (!markup) throw new Error("zipToolBox.svg empty");
+      els.loginHeroToolBox.innerHTML = markup;
+      const svg = els.loginHeroToolBox.querySelector("svg");
+      if (!svg) throw new Error("zipToolBox.svg parse failed");
+      svg.classList.add("zip-toolbox-svg");
+      svg.setAttribute("aria-hidden", "true");
+      svg.setAttribute("focusable", "false");
+      els.loginHeroToolBox.dataset.hydrated = "true";
+    } catch (_) {
+      const fallback = document.createElement("img");
+      fallback.src = "assets/zipToolBox.png";
+      fallback.alt = "";
+      fallback.className = "zip-toolbox-fallback-img";
+      els.loginHeroToolBox.replaceChildren(fallback);
+      els.loginHeroToolBox.dataset.hydrated = "fallback";
+    }
+  }
+
   async function init() {
     if (IS_WORKSPACE_MODE) document.body.classList.add("zip-workspace");
     document.body.classList.add("zip-logged-out");
     if (els.status) els.status.title = FOOTER_HINT_TOOLTIP;
+    await hydrateLoginHeroToolBox().catch(() => {});
     wireEvents();
     syncLoginCtaDirectionalCopy(state.sidePanelLayout);
     await refreshZipSecretConfigFromStorage().catch(() => {});

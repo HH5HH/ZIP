@@ -9,7 +9,8 @@ html {
   width: 100%;
   height: 100%;
   min-width: var(--zip-panel-min-width, 220px);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 /* Compatibility aliases mapping legacy ZIP vars to official Spectrum 2 tokens. */
@@ -55,6 +56,32 @@ html {
   --spectrum-spacing-token-100: var(--spectrum-spacing-100);
   --spectrum-component-padding-vertical-75: var(--spectrum-component-top-to-text-75);
   --spectrum-component-padding-vertical-100: var(--spectrum-component-top-to-text-100);
+
+  /* Header width contract: keep Links visible while allowing safe responsive compaction. */
+  --zip-topbar-edge-pad: 9px;
+  --zip-topbar-main-gap: 8px;
+  --zip-topbar-brand-gap: 4px;
+  --zip-topbar-control-inline-size: 24px;
+  --zip-topbar-links-inline-size: 136px;
+  --zip-topbar-status-preferred-inline-size: 220px;
+  --zip-topbar-status-min-inline-size: 220px;
+  --zip-topbar-min-inline-size: calc(
+    (var(--zip-topbar-edge-pad) * 2)
+    + var(--zip-topbar-main-gap)
+    + (var(--zip-topbar-control-inline-size) * 2)
+    + var(--zip-topbar-brand-gap)
+    + var(--zip-topbar-status-min-inline-size)
+    + var(--zip-topbar-links-inline-size)
+  );
+  --zip-ticket-header-title-min-inline-size: 132px;
+  --zip-ticket-network-min-inline-size: 188px;
+  --zip-ticket-header-inline-gap: 8px;
+  --zip-ticket-header-min-inline-size: calc(
+    var(--zip-ticket-header-title-min-inline-size)
+    + var(--zip-ticket-network-min-inline-size)
+    + var(--zip-ticket-header-inline-gap)
+  );
+  --zip-panel-min-width: max(420px, var(--zip-ticket-header-min-inline-size), var(--zip-topbar-min-inline-size));
 }
 
 /* ZIP semantic aliases backed by Spectrum 2 tokens. */
@@ -202,6 +229,12 @@ body {
   --zip-logo-badge-fill: color-mix(in srgb, rgb(226, 8, 20) 86%, rgb(var(--zip-accent-900)) 14%);
   --zip-logo-badge-ring-stroke: color-mix(in srgb, var(--spectrum-black) 80%, rgb(var(--zip-accent-1000)) 20%);
   --zip-logo-led-fill: color-mix(in srgb, var(--spectrum-white) 90%, var(--spectrum-gray-300) 10%);
+  --zip-toolbox-shell-01: color-mix(in srgb, var(--spectrum-white) 66%, rgb(var(--zip-accent-1000)) 34%);
+  --zip-toolbox-shell-02: color-mix(in srgb, var(--spectrum-black) 84%, rgb(var(--zip-accent-1100)) 16%);
+  --zip-toolbox-shell-03: color-mix(in srgb, var(--spectrum-black) 92%, rgb(var(--zip-accent-1000)) 8%);
+  --zip-toolbox-shell-04: color-mix(in srgb, var(--spectrum-gray-700) 72%, rgb(var(--zip-accent-900)) 28%);
+  --zip-toolbox-badge-fill: rgb(226, 8, 20);
+  --zip-toolbox-badge-ink: var(--spectrum-white);
   --zip-login-hero-radial: color-mix(in srgb, rgb(var(--zip-accent-900)) 20%, transparent);
   --zip-login-hero-start: color-mix(in srgb, rgb(var(--zip-accent-800)) 20%, transparent);
   --zip-login-hero-mid: color-mix(in srgb, rgb(var(--zip-accent-700)) 9%, transparent);
@@ -368,6 +401,10 @@ body[data-zip-theme-colorstop="light"]:not(.spectrum--dark) {
   --zip-logo-shell-gloss-fill: color-mix(in srgb, var(--spectrum-white) 88%, rgb(var(--zip-accent-1100)) 12%);
   --zip-logo-shell-seam-stroke: color-mix(in srgb, var(--spectrum-white) 66%, rgb(var(--zip-accent-1000)) 34%);
   --zip-logo-led-fill: color-mix(in srgb, var(--spectrum-white) 94%, rgb(var(--zip-accent-1000)) 6%);
+  --zip-toolbox-shell-01: color-mix(in srgb, var(--spectrum-white) 72%, rgb(var(--zip-accent-1100)) 28%);
+  --zip-toolbox-shell-02: color-mix(in srgb, rgb(12, 12, 12) 86%, rgb(var(--zip-accent-1000)) 14%);
+  --zip-toolbox-shell-03: color-mix(in srgb, rgb(4, 4, 4) 91%, rgb(var(--zip-accent-1100)) 9%);
+  --zip-toolbox-shell-04: color-mix(in srgb, rgb(69, 69, 69) 74%, rgb(var(--zip-accent-900)) 26%);
 }
 
 /* Spectrum accent families (all color stops). */
@@ -503,7 +540,8 @@ body {
   color-scheme: var(--zip-color-scheme);
   display: grid;
   grid-template-rows: var(--zip-header-height) minmax(0, 1fr) var(--zip-footer-height);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 body[data-sidepanel-side="right"] .topbar {
@@ -544,13 +582,11 @@ body.zip-ticket-cloud-search-busy * {
 }
 
 .topbar {
-  /* Tuned to align with the ticket section frame without over-insetting header controls. */
-  --zip-topbar-edge-pad: calc(var(--space-sm) + 1px);
   display: flex;
   align-items: center;
   justify-content: flex-start;
   flex-wrap: nowrap;
-  gap: var(--space-xs);
+  gap: var(--zip-topbar-main-gap);
   padding:
     var(--space-xxs)
     var(--zip-topbar-edge-pad)
@@ -571,16 +607,20 @@ body.zip-ticket-cloud-search-busy * {
     0 2px 10px var(--zip-shadow-soft);
   position: relative;
   isolation: isolate;
-  min-width: 0;
-  overflow: hidden;
+  max-inline-size: 100%;
+  min-width: var(--zip-topbar-min-inline-size);
+  min-inline-size: var(--zip-topbar-min-inline-size);
+  overflow: visible;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: var(--space-xxs);
-  min-width: 0;
+  gap: var(--zip-topbar-brand-gap);
+  min-width: auto;
+  min-inline-size: max-content;
   flex: 0 0 auto;
+  max-inline-size: 100%;
 }
 
 .top-avatar-wrap {
@@ -638,6 +678,7 @@ body.zip-ticket-cloud-search-busy * {
   align-items: center;
   justify-content: flex-start;
   margin-top: calc((var(--space-xxs) * -0.5) - 1px);
+  flex: 0 0 auto;
 }
 
 .slacktivated-avatar-wrap {
@@ -662,8 +703,8 @@ body.zip-ticket-cloud-search-busy * {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-inline-size: 0;
-  max-inline-size: min(28ch, 40vw);
+  min-inline-size: var(--zip-topbar-status-min-inline-size);
+  max-inline-size: none;
   margin-inline: 2px var(--space-xxs);
   padding-inline: 2px;
 }
@@ -695,13 +736,14 @@ body.zip-ticket-cloud-search-busy * {
   line-height: 1.1;
   color: var(--fg-default);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .slacktivated-indicator.has-status {
   inline-size: auto;
   min-inline-size: var(--zip-density-control-height);
+  max-inline-size: none;
   border-radius: var(--spectrum-corner-radius-200);
 }
 
@@ -783,15 +825,17 @@ body.zip-ticket-cloud-search-busy * {
   margin: 0;
   margin-left: auto;
   margin-inline-end: 0;
-  min-width: 0;
+  min-width: var(--zip-topbar-links-inline-size);
+  min-inline-size: var(--zip-topbar-links-inline-size);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: var(--zip-control-bg);
   color: var(--fg-default);
   min-height: 32px;
   flex: 0 0 auto;
-  inline-size: auto;
-  max-width: min(56vw, 180px);
+  inline-size: var(--zip-topbar-links-inline-size);
+  max-width: var(--zip-topbar-links-inline-size);
+  max-inline-size: var(--zip-topbar-links-inline-size);
   padding: 0 var(--space-xs);
   font: var(--spectrum-font-weight-medium) var(--spectrum-font-size-100)/1.2 var(--font-system);
   cursor: pointer;
@@ -955,10 +999,18 @@ body.zip-ticket-cloud-search-busy * {
 }
 
 .zip-footer-brand-mark {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
   filter: none;
+}
+
+.zip-round-z-icon {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: 100%;
+  object-fit: contain;
+  border-radius: 999px;
 }
 
 .zip-logo-svg {
@@ -2173,6 +2225,27 @@ body.zip-ticket-cloud-search-busy * {
   filter: drop-shadow(0 8px 14px var(--zip-shadow-soft));
 }
 
+.login-hero-build-icon.login-hero-build-toolbox {
+  width: clamp(180px, 44vw, 318px);
+  height: auto;
+  aspect-ratio: 824 / 590;
+  border-radius: 0;
+  filter:
+    drop-shadow(0 10px 18px var(--zip-shadow-mid))
+    drop-shadow(0 0 10px color-mix(in srgb, rgb(var(--zip-accent-900)) 20%, transparent));
+}
+
+.login-hero-build-toolbox .zip-toolbox-svg,
+.login-hero-build-toolbox .zip-toolbox-fallback-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.login-hero-build-toolbox .zip-toolbox-svg {
+  overflow: visible;
+}
+
 .login-hero-build-pill {
   display: inline-flex;
   align-items: center;
@@ -2260,6 +2333,11 @@ body.zip-ticket-cloud-search-busy * {
     width: clamp(92px, 24vw, 160px);
     height: clamp(92px, 24vw, 160px);
   }
+
+  .login-hero-build-icon.login-hero-build-toolbox {
+    width: clamp(140px, 42vw, 236px);
+    height: auto;
+  }
 }
 
 .section {
@@ -2285,26 +2363,37 @@ body.zip-ticket-cloud-search-busy * {
 }
 
 .ticket-section-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-xs);
+  display: grid;
+  grid-template-columns: minmax(var(--zip-ticket-header-title-min-inline-size), 1fr) auto;
+  grid-template-areas:
+    "title status"
+    "filters filters";
+  align-items: start;
+  column-gap: var(--space-xs);
+  row-gap: var(--space-xxs);
   margin-bottom: 0;
-  flex-wrap: wrap;
-  min-width: 0;
+  min-width: var(--zip-ticket-header-min-inline-size);
+  min-inline-size: var(--zip-ticket-header-min-inline-size);
 }
 
 .ticket-section-title {
+  grid-area: title;
   margin: 0;
-  min-width: 0;
+  min-width: var(--zip-ticket-header-title-min-inline-size);
+  min-inline-size: var(--zip-ticket-header-title-min-inline-size);
 }
 
 .ticket-network-indicator {
-  margin-left: auto;
+  grid-area: status;
+  justify-self: end;
+  margin-left: 0;
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
   flex: 0 0 auto;
+  min-inline-size: var(--zip-ticket-network-min-inline-size);
+  max-inline-size: min(100%, 280px);
   padding: 3px 8px;
   border: 1px solid var(--zip-surface-border-accent);
   border-radius: 999px;
@@ -2328,16 +2417,24 @@ body.zip-ticket-cloud-search-busy * {
   text-decoration: none;
 }
 
+#zipTicketNetworkLabel {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .ticket-section-link:hover { text-decoration: underline; }
 
 .ticket-section-filters {
+  grid-area: filters;
   display: flex;
   align-items: stretch;
   gap: var(--zip-density-gap-md);
   flex-wrap: wrap;
-  flex: 1 1 100%;
+  flex: 1 1 auto;
   min-width: 0;
-  margin-top: var(--space-xxs);
+  margin-top: 0;
   padding: var(--space-xxs);
   border: 1px solid var(--zip-surface-border-accent);
   border-bottom: 0;
@@ -3304,12 +3401,14 @@ th, td {
 
 .table-wrap > table > thead > tr > th {
   font-weight: var(--spectrum-black-font-weight, 800);
+  font-size: var(--zip-density-font-detail);
+  line-height: var(--zip-density-line-detail);
   letter-spacing: 0.02em;
 }
 
 .table-wrap > table > tbody > tr > td {
-  font-size: var(--zip-density-font-body);
-  line-height: var(--zip-density-line-body);
+  font-size: var(--zip-density-font-detail);
+  line-height: var(--zip-density-line-detail);
 }
 
 .table-wrap > table > tbody > tr.ticket-row > td,

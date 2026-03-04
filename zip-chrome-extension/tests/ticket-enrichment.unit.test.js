@@ -158,6 +158,33 @@ test("translation cache is reused across repeated enrichment calls", async () =>
   assert.ok(second.metrics.translationCacheHits >= 2);
 });
 
+test("scalar requester/organization IDs are resolved for enrichment", async () => {
+  const tickets = [
+    { id: "221", requester: "1", organization: "50" }
+  ];
+  const mock = buildZendeskFetchMock({
+    usersById: {
+      "1": { id: "1", name: "Casey Rivera", email: "casey@example.com" }
+    },
+    organizationsById: {
+      "50": { id: "50", name: "Contoso" }
+    }
+  });
+
+  const result = await enrichTicketsWithRequestorOrg(tickets, {
+    baseUrl: "https://example.zendesk.com",
+    fetchJson: mock.fetchJson,
+    targetLocale: "en-US",
+    translationCache: createTranslationCache({ ttlMs: 60_000 })
+  });
+
+  assert.equal(mock.calls.users, 1);
+  assert.equal(mock.calls.organizations, 1);
+  assert.equal(result.tickets[0].requestor_name_translated, "Casey Rivera");
+  assert.equal(result.tickets[0].organization_name_translated, "Contoso");
+  assert.equal(result.tickets[0].requestor, "<a href=\"mailto:casey@example.com\">Casey Rivera</a>");
+});
+
 test("translation provider failures fall back to original strings", async () => {
   const tickets = [
     { id: "301", requester_id: "8", organization_id: "80" }

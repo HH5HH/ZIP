@@ -42,6 +42,16 @@ test("content runtime defines enrichTicketsWithRequestorOrg and applies it to se
   assert.match(source, /moduleApi\.enrichTicketsWithRequestorOrg\(rows,/);
 });
 
+test("content requester/org extractors support scalar id payloads and required enrichment fields", () => {
+  const source = fs.readFileSync(CONTENT_JS_PATH, "utf8");
+  assert.match(source, /const REQUIRED_TICKET_ENRICHMENT_FIELDS = \[/);
+  assert.match(source, /"requester_id"/);
+  assert.match(source, /"organization_id"/);
+  assert.match(source, /source\.requester != null && typeof source\.requester !== "object"/);
+  assert.match(source, /source\.organization != null && typeof source\.organization !== "object"/);
+  assert.match(source, /normalizeZendeskEntityId\(candidates\[i\]\)/);
+});
+
 test("sidepanel forwards agent locale into all ticket-loading actions", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   assert.match(source, /action:\s*"loadTickets"[\s\S]*locale:\s*getPreferredTicketLocale\(\)/);
@@ -55,7 +65,13 @@ test("manifest loads ticket-enrichment.js before content.js for Zendesk/Slack co
   const manifest = JSON.parse(fs.readFileSync(MANIFEST_JSON_PATH, "utf8"));
   const contentScript = Array.isArray(manifest.content_scripts) ? manifest.content_scripts[0] : null;
   assert.ok(contentScript && Array.isArray(contentScript.js), "content_scripts[0].js should exist");
-  const scriptList = contentScript.js.join(" ");
-  assert.match(scriptList, /ticket-enrichment\.js/);
-  assert.match(scriptList, /ticket-enrichment\.js\s+content\.js/);
+  const scriptList = contentScript.js;
+  const enrichmentIndex = scriptList.indexOf("ticket-enrichment.js");
+  const zendeskSearchIndex = scriptList.indexOf("zendesk-ticket-search.js");
+  const contentIndex = scriptList.indexOf("content.js");
+  assert.ok(enrichmentIndex >= 0, "ticket-enrichment.js should be present");
+  assert.ok(zendeskSearchIndex >= 0, "zendesk-ticket-search.js should be present");
+  assert.ok(contentIndex >= 0, "content.js should be present");
+  assert.ok(enrichmentIndex < zendeskSearchIndex, "ticket enrichment should load before zendesk search client");
+  assert.ok(zendeskSearchIndex < contentIndex, "zendesk search client should load before content.js");
 });

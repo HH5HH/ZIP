@@ -7,7 +7,7 @@
 4. Open Zendesk dashboard and launch ZIP.
 5. If prompted, click `Login with Zendesk`, then triage from `Assigned Tickets`.
 
-![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
+![ZIP Master Brand Preview](../assets/zipToolBox.png)
 
 This binder combines all current ZIP user-training documents into one package.
 
@@ -37,7 +37,7 @@ Source: /Users/minnick/Documents/PASS/ZIP/zip-chrome-extension/docs/ZIP_PRINT_TH
 7. Click `Login with Zendesk` if prompted.
 8. Click `Assigned Tickets` and start triage.
 
-![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
+![ZIP Master Brand Preview](../assets/zipToolBox.png)
 
 ## 30-Second Operating Pattern
 - Start in `Assigned Tickets`.
@@ -79,7 +79,7 @@ Install and begin work in under two minutes:
 5. Open ZIP from the extension icon, then click `Login with Zendesk` if needed.
 6. Use `Assigned Tickets` immediately and begin triage.
 
-![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
+![ZIP Master Brand Preview](../assets/zipToolBox.png)
 
 ## Release Snapshot
 - Product: ZIP (ZipTool)
@@ -147,7 +147,7 @@ Congratulations, your PASS Zendesk life is no longer being throttled.
 5. Open ZIP and click `Login with Zendesk` if needed.
 6. Click `Assigned Tickets` and begin response workflow.
 
-![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
+![ZIP Master Brand Preview](../assets/zipToolBox.png)
 
 ## Mission
 ZIP = ZipTool. ZIP into INFO from the Zendesk API.
@@ -229,7 +229,7 @@ Congratulations, your PASS Zendesk life is no longer being throttled.
 5. Open ZIP, authenticate with `Login with Zendesk` if prompted.
 6. Work from `Assigned Tickets`, then pivot by Group/View/Org as needed.
 
-![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
+![ZIP Master Brand Preview](../assets/zipToolBox.png)
 
 ## App Mission
 ZIP = ZipTool. ZIP into INFO from the Zendesk API.
@@ -659,7 +659,7 @@ If the urgent line just paged, do this now:
 6. Click ZIP, then click `Login with Zendesk` if prompted.
 7. Click `Assigned Tickets` and start triage.
 
-![ZIP Master Brand Preview](docs/assets/brand/zeek-info-peek-master-preview-1024.png)
+![ZIP Master Brand Preview](../assets/zipToolBox.png)
 
 **Mission:** Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. Don't get stuck wasting cycles on blockers. If ZIP can make your job faster, better, or more enjoyable, please share feedback.
 
