@@ -118,7 +118,7 @@ If the urgent line just paged, do this now:
 6. Click ZIP, drop `ZIP.KEY` on the unlock card, then click `Login with Zendesk` if prompted.
 7. Click `Assigned Tickets` and start triage.
 
-![ZIP Master Brand Preview](docs/assets/brand/zeek-info-peek-master-preview-1024.png)
+![ZIP Master Brand Preview](assets/zipToolBox.png)
 
 **Mission:** Ship secure, scalable automations that connect our tools and help customers as fast as technology allows. Don't get stuck wasting cycles on blockers. If ZIP can make your job faster, better, or more enjoyable, please share feedback.
 
@@ -220,7 +220,30 @@ Runs on:
 Uses active logged-in Zendesk browser session to call:
 
 - `/api/v2/users/me.json`
-- `/api/v2/search.json?query=type:ticket assignee:{email} status:open status:pending status:hold`
+- `/api/v2/search/export.json?query=...&filter[type]=ticket&page[size]=100`
+- `/api/v2/incremental/tickets/cursor.json?start_time=...` (automatic fallback for bulk/sync)
+
+### Zendesk Ticket Search Config
+
+The ticket-only search client now uses one top-level API:
+
+`searchTickets(query, { maxResults=100, fieldsNeeded=[], useIncremental=false, cacheTTL=30, debug=false })`
+
+Supported knobs:
+- `pageSize`: per-page fetch size (`<= 100`, default `100`).
+- `maxResults`: hard cap for returned tickets (stops paging as soon as cap is met).
+- `concurrency`: max concurrent Zendesk GETs through the shared client (default `4`).
+- `cacheTTL`: cache TTL in seconds (default `30`).
+- `fallbackThreshold`: slow-first-page threshold in milliseconds for incremental recommendation logs (default `1500`).
+- `fieldsNeeded`: sparse ticket fields list; heavy fields (comments/audits/events) are trimmed unless explicitly requested.
+- `debug`: include timing/page breakdown in returned metrics when true.
+
+Behavior defaults:
+- Query tightening adds `type:ticket`, non-closed status filters, and `updated>=<90-days-ago>` when missing.
+- Broad wildcard searches can be blocked unless caller explicitly opts in.
+- Requests follow cursor links from Zendesk responses and avoid offset paging.
+- Cache keys include query, page size, field set, and auth scope.
+- `useIncremental=true`, `sync=true`, or very large `maxResults` (default threshold `> 10000`) automatically switches to incremental export mode.
 
 ## Auth QA Checklist (Sidepanel)
 

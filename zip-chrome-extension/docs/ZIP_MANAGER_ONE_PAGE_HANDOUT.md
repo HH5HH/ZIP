@@ -10,7 +10,7 @@ Congratulations, your PASS Zendesk life is no longer being throttled.
 5. Open ZIP and click `Login with Zendesk` if needed.
 6. Click `Assigned Tickets` and begin response workflow.
 
-![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
+![ZIP Master Brand Preview](../assets/zipToolBox.png)
 
 ## Mission
 ZIP = ZipTool. ZIP into INFO from the Zendesk API.

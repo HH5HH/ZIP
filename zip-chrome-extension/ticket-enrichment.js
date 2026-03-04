@@ -22,6 +22,19 @@
     return id;
   }
 
+  function normalizeNumericEntityId(value) {
+    const id = normalizeEntityId(value);
+    if (!id) return "";
+    return /^\d+$/.test(id) ? id : "";
+  }
+
+  function normalizeEntityDisplayText(value) {
+    if (value == null || typeof value === "object") return "";
+    const text = toSafeString(value).replace(/\s+/g, " ");
+    if (!text) return "";
+    return normalizeNumericEntityId(text) ? "" : text;
+  }
+
   function normalizeEmailAddress(value) {
     const raw = toSafeString(value).toLowerCase();
     if (!raw) return "";
@@ -246,22 +259,25 @@
 
   function buildTicketRequestorId(row) {
     const source = row && typeof row === "object" ? row : {};
-    return normalizeEntityId(
+    return normalizeNumericEntityId(
       source.requester_id
       || source.requesterId
       || source.requestor_id
       || source.requestorId
       || (source.requester && source.requester.id)
       || (source.requestor && source.requestor.id)
+      || (source.requester != null && typeof source.requester !== "object" ? source.requester : "")
+      || (source.requestor != null && typeof source.requestor !== "object" ? source.requestor : "")
     );
   }
 
   function buildTicketOrganizationId(row) {
     const source = row && typeof row === "object" ? row : {};
-    return normalizeEntityId(
+    return normalizeNumericEntityId(
       source.organization_id
       || source.organizationId
       || (source.organization && source.organization.id)
+      || (source.organization != null && typeof source.organization !== "object" ? source.organization : "")
     );
   }
 
@@ -275,7 +291,8 @@
       ticket && ticket.requester_name,
       ticket && ticket.requesterName,
       ticket && ticket.requestorName,
-      ticket && ticket.requester
+      normalizeEntityDisplayText(ticket && ticket.requester),
+      normalizeEntityDisplayText(ticket && ticket.requestor)
     ]);
   }
 
@@ -287,7 +304,9 @@
         ticket && ticket.requestor_email,
         ticket && ticket.requester_email,
         ticket && ticket.requesterEmail,
-        ticket && ticket.requestorEmail
+        ticket && ticket.requestorEmail,
+        normalizeEntityDisplayText(ticket && ticket.requester),
+        normalizeEntityDisplayText(ticket && ticket.requestor)
       ])
     );
   }
@@ -298,7 +317,7 @@
       ticket && ticket.organization_name_translated,
       ticket && ticket.organization_name,
       ticket && ticket.organizationName,
-      ticket && ticket.organization
+      normalizeEntityDisplayText(ticket && ticket.organization)
     ]);
   }
 

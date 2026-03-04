@@ -10,7 +10,7 @@ Congratulations, your PASS Zendesk life is no longer being throttled.
 5. Open ZIP, authenticate with `Login with Zendesk` if prompted.
 6. Work from `Assigned Tickets`, then pivot by Group/View/Org as needed.
 
-![ZIP Master Brand Preview](assets/brand/zeek-info-peek-master-preview-1024.png)
+![ZIP Master Brand Preview](../assets/zipToolBox.png)
 
 ## App Mission
 ZIP = ZipTool. ZIP into INFO from the Zendesk API.

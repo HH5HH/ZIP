@@ -23,8 +23,8 @@
           <img
             id="zipSlacktivatedIcon"
             class="slacktivated-icon"
-            src="icons/icon128.png"
-            data-default-src="icons/icon128.png"
+            src="assets/brand/icons/icon128.png"
+            data-default-src="assets/brand/icons/icon128.png"
             alt="ZIP Slack session status"
           />
         </span>
@@ -56,17 +56,7 @@
       <div class="login-card">
         <div class="login-card-right">
           <div class="login-hero-build" role="img" aria-label="ZIP build version">
-            <svg class="zip-logo-svg login-hero-build-icon" viewBox="0 0 128 128" role="img" aria-label="ZIP logo">
-              <rect class="zip-logo-shell-top" x="10" y="18" width="108" height="64" rx="14"></rect>
-              <ellipse class="zip-logo-shell-gloss" cx="40" cy="31" rx="26" ry="14"></ellipse>
-              <rect class="zip-logo-shell-front" x="10" y="58" width="108" height="40" rx="11"></rect>
-              <path class="zip-logo-shell-seam" d="M10 58H118"></path>
-              <ellipse class="zip-logo-badge" cx="64" cy="46" rx="34" ry="21"></ellipse>
-              <ellipse class="zip-logo-badge-ring" cx="64" cy="46" rx="34" ry="21"></ellipse>
-              <path class="zip-logo-z" d="M42 33H80L84 36H42V33ZM74 36H84L51 53H41L74 36ZM42 53H84V59H42V53Z"></path>
-              <circle class="zip-logo-led" cx="84" cy="81" r="3"></circle>
-              <circle class="zip-logo-led" cx="95" cy="81" r="3"></circle>
-            </svg>
+            <div id="zipLoginHeroToolBox" class="login-hero-build-icon login-hero-build-toolbox" aria-hidden="true"></div>
             <div class="login-hero-build-pill">
               <span class="login-hero-build-label">ZIP</span>
               <span class="login-hero-build-sep" aria-hidden="true">|</span>
@@ -120,18 +110,18 @@
           </div>
           <div class="ticket-section-filters">
             <div class="ticket-section-by-group">
-              <select id="zipGroupMemberSelect" class="org-select group-member-select zip-select-control" aria-label="By Group or Agent">
-                <option value="">By Group / Agent</option>
+              <select id="zipGroupMemberSelect" class="org-select group-member-select zip-select-control" aria-label="By Group or Agent" disabled>
+                <option value="" selected disabled>loading... Group / Agent</option>
               </select>
             </div>
             <div class="ticket-section-by-view">
-              <select id="zipViewSelect" class="org-select view-select zip-select-control" aria-label="By View">
-                <option value="">By View</option>
+              <select id="zipViewSelect" class="org-select view-select zip-select-control" aria-label="By View" disabled>
+                <option value="" selected disabled>loading... View</option>
               </select>
             </div>
             <div class="ticket-section-by-org">
-              <select id="zipOrgSelect" class="org-select org-count-select zip-select-control" aria-label="By Organization">
-                <option value="">By Organization</option>
+              <select id="zipOrgSelect" class="org-select org-count-select zip-select-control" aria-label="By Organization" disabled>
+                <option value="" selected disabled>loading... Organization</option>
               </select>
             </div>
           </div>
@@ -184,17 +174,13 @@
             </svg>
           </button>
           <button id="zipSlackItToMeBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="SLACK TO ZIPTOOL PANEL" aria-label="SLACK TO ZIPTOOL PANEL" disabled>
-            <svg id="zipSlackPanelIcon" class="zip-logo-svg zip-slack-panel-icon" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
-              <rect class="zip-logo-shell-top" x="10" y="18" width="108" height="64" rx="14"></rect>
-              <ellipse class="zip-logo-shell-gloss" cx="40" cy="31" rx="26" ry="14"></ellipse>
-              <rect class="zip-logo-shell-front" x="10" y="58" width="108" height="40" rx="11"></rect>
-              <path class="zip-logo-shell-seam" d="M10 58H118"></path>
-              <ellipse class="zip-logo-badge" cx="64" cy="46" rx="34" ry="21"></ellipse>
-              <ellipse class="zip-logo-badge-ring" cx="64" cy="46" rx="34" ry="21"></ellipse>
-              <path class="zip-logo-z" d="M42 33H80L84 36H42V33ZM74 36H84L51 53H41L74 36ZM42 53H84V59H42V53Z"></path>
-              <circle class="zip-logo-led" cx="84" cy="81" r="3"></circle>
-              <circle class="zip-logo-led" cx="95" cy="81" r="3"></circle>
-            </svg>
+            <img
+              id="zipSlackPanelIcon"
+              class="zip-slack-panel-icon zip-round-z-icon"
+              src="assets/brand/icons/icon128.png"
+              alt=""
+              aria-hidden="true"
+            />
           </button>
           <button id="zipExportCsvBtn" class="btn spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Export current table as csv" aria-label="Export current ticket table as csv" disabled>
             <span class="spectrum-Button-label">CSV</span>
@@ -261,17 +247,7 @@
   <footer class="zip-footer" id="zipFooter">
     <span id="zipStatus" class="zip-footer-status">Initializing...</span>
     <a href="#" id="zipAppVersionLink" class="zip-footer-version zip-footer-brand-refresh" title="Refresh ZIP">
-      <svg class="zip-logo-svg zip-footer-brand-mark" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
-        <rect class="zip-logo-shell-top" x="10" y="18" width="108" height="64" rx="14"></rect>
-        <ellipse class="zip-logo-shell-gloss" cx="40" cy="31" rx="26" ry="14"></ellipse>
-        <rect class="zip-logo-shell-front" x="10" y="58" width="108" height="40" rx="11"></rect>
-        <path class="zip-logo-shell-seam" d="M10 58H118"></path>
-        <ellipse class="zip-logo-badge" cx="64" cy="46" rx="34" ry="21"></ellipse>
-        <ellipse class="zip-logo-badge-ring" cx="64" cy="46" rx="34" ry="21"></ellipse>
-        <path class="zip-logo-z" d="M42 33H80L84 36H42V33ZM74 36H84L51 53H41L74 36ZM42 53H84V59H42V53Z"></path>
-        <circle class="zip-logo-led" cx="84" cy="81" r="3"></circle>
-        <circle class="zip-logo-led" cx="95" cy="81" r="3"></circle>
-      </svg>
+      <img class="zip-footer-brand-mark zip-round-z-icon" src="assets/brand/icons/icon128.png" alt="" aria-hidden="true" />
       <span class="zip-footer-brand-sep" aria-hidden="true">|</span>
       <span class="zip-footer-brand-subtitle">ZipTool</span>
       <span class="zip-footer-brand-sep" aria-hidden="true">|</span>
@@ -282,17 +258,7 @@
   <div id="zipContextMenuBackdrop" class="zip-context-menu-backdrop hidden" aria-hidden="true"></div>
   <div id="zipContextMenu" class="zip-context-menu hidden" role="menu" aria-label="ZIP context menu">
     <div class="zip-context-menu-root" role="presentation">
-      <svg class="zip-logo-svg zip-context-menu-logo" viewBox="0 0 128 128" aria-hidden="true" focusable="false">
-        <rect class="zip-logo-shell-top" x="10" y="18" width="108" height="64" rx="14"></rect>
-        <ellipse class="zip-logo-shell-gloss" cx="40" cy="31" rx="26" ry="14"></ellipse>
-        <rect class="zip-logo-shell-front" x="10" y="58" width="108" height="40" rx="11"></rect>
-        <path class="zip-logo-shell-seam" d="M10 58H118"></path>
-        <ellipse class="zip-logo-badge" cx="64" cy="46" rx="34" ry="21"></ellipse>
-        <ellipse class="zip-logo-badge-ring" cx="64" cy="46" rx="34" ry="21"></ellipse>
-        <path class="zip-logo-z" d="M42 33H80L84 36H42V33ZM74 36H84L51 53H41L74 36ZM42 53H84V59H42V53Z"></path>
-        <circle class="zip-logo-led" cx="84" cy="81" r="3"></circle>
-        <circle class="zip-logo-led" cx="95" cy="81" r="3"></circle>
-      </svg>
+      <img class="zip-context-menu-logo zip-round-z-icon" src="assets/brand/icons/icon128.png" alt="" aria-hidden="true" />
       <span id="zipContextMenuBuild" class="zip-context-menu-build">ZIP</span>
     </div>
     <div class="zip-context-menu-divider" role="separator"></div>
