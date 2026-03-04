@@ -52,6 +52,13 @@ test("content requester/org extractors support scalar id payloads and required e
   assert.match(source, /normalizeZendeskEntityId\(candidates\[i\]\)/);
 });
 
+test("content forces requestor/org hydration when ids exist but fields are blank", () => {
+  const source = fs.readFileSync(CONTENT_JS_PATH, "utf8");
+  assert.match(source, /function ticketNeedsRequestorOrgHydration\(row\)/);
+  assert.match(source, /const forceHydration = !enabled && rows\.some\(\(row\) => ticketNeedsRequestorOrgHydration\(row\)\);/);
+  assert.match(source, /const shouldRunEnrichment = enabled \|\| forceHydration;/);
+});
+
 test("sidepanel forwards agent locale into all ticket-loading actions", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   assert.match(source, /action:\s*"loadTickets"[\s\S]*locale:\s*getPreferredTicketLocale\(\)/);
