@@ -174,19 +174,10 @@ function buildThemeOptions() {
   const options = [];
   THEME_COLOR_STOPS.forEach((stop) => {
     THEME_ACCENT_FAMILIES.forEach((accent) => {
-      const accentMeta = THEME_PALETTE_DATA
-        && Array.isArray(THEME_PALETTE_DATA.colors)
-        ? THEME_PALETTE_DATA.colors.find((entry) => String(entry && entry.id || "").trim().toLowerCase() === accent.id)
-        : null;
       const baseLabel = String(accent.label || accent.id || "Color").trim() || "Color";
-      const lightThemeLabel = String(accentMeta && accentMeta.lightThemeName || baseLabel).trim() || baseLabel;
-      const darkThemeLabel = String(accentMeta && accentMeta.darkThemeName || ("Dark " + baseLabel)).trim() || ("Dark " + baseLabel);
-      const optionLabel = stop.id === "light"
-        ? ((accentMeta && accentMeta.lightThemeName) ? lightThemeLabel : (stop.label + " X " + baseLabel))
-        : ((accentMeta && accentMeta.darkThemeName) ? darkThemeLabel : (stop.label + " X " + baseLabel));
       options.push({
         id: "s2-" + stop.id + "-" + accent.id,
-        label: optionLabel,
+        label: stop.label + " X " + baseLabel,
         spectrumColorStop: stop.spectrumColorStop,
         themeColorStop: stop.id,
         paletteSet: stop.paletteSet,
