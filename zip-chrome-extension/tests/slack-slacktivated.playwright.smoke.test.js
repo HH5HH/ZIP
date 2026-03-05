@@ -128,8 +128,8 @@ function buildSidepanelHarnessBootstrap(options) {
 
       function runtimeResponse(message) {
         const type = String(message && message.type || "");
-        if (type === "ZIP_GET_THEME") return { themeId: "s2-dark-azure-blue", options: [] };
-        if (type === "ZIP_SET_THEME") return { ok: true, themeId: String(message.themeId || "s2-dark-azure-blue"), options: [] };
+        if (type === "ZIP_GET_THEME") return { themeId: "s2-dark-cornflower", options: [] };
+        if (type === "ZIP_SET_THEME") return { ok: true, themeId: String(message.themeId || "s2-dark-cornflower"), options: [] };
         if (type === "ZIP_GET_SIDEPANEL_CONTEXT") return { layout: "right", capabilities: { setLayout: true, setSide: false } };
         if (type === "ZIP_GET_UPDATE_STATE") return { updateAvailable: false };
         if (type === "ZIP_GET_AUTH_STATE") return { loggedIn: true };

@@ -176,7 +176,7 @@
     ticketRequestorProfileCacheById: Object.create(null),
     ticketOrganizationProfileCacheById: Object.create(null),
     ticketEnrichmentMetrics: null,
-    themeId: "s2-dark-azure-blue",
+    themeId: "s2-dark-cerulean",
     themeOptions: [],
     themeFlyoutStop: ""
   };
@@ -249,7 +249,7 @@
     && THEME_PALETTE_DATA.colors.length
   )
     ? THEME_PALETTE_DATA.colors.map((entry) => ({ ...entry }))
-    : [{ id: "azure-blue", name: "Azure Blue", hex: "#0078D4", spectrumToken: "spectrum-blue-600", recommendedForeground: "#ffffff", notes: "" }];
+    : [{ id: "cornflower", name: "Cornflower", hex: "#6495ED", spectrumToken: "spectrum-blue-600", recommendedForeground: "#111111", notes: "" }];
   const THEME_ACCENT_FAMILIES = THEME_ACCENT_SWATCHES.map((accent) => ({
     id: String(accent.id || "").trim().toLowerCase(),
     label: String(accent.name || accent.label || accent.id || "Color").trim() || "Color"
@@ -275,7 +275,7 @@
     && THEME_ACCENT_IDS.has(String(THEME_PALETTE_DATA.defaultAccentId || "").trim().toLowerCase())
   )
     ? String(THEME_PALETTE_DATA.defaultAccentId).trim().toLowerCase()
-    : (THEME_ACCENT_FAMILIES[0] ? THEME_ACCENT_FAMILIES[0].id : "azure-blue");
+    : (THEME_ACCENT_FAMILIES[0] ? THEME_ACCENT_FAMILIES[0].id : "cornflower");
   const DEFAULT_THEME_ID = "s2-dark-" + DEFAULT_THEME_ACCENT_ID;
 
   function buildLegacyThemeAliases() {
@@ -306,9 +306,16 @@
     const options = [];
     THEME_COLOR_STOPS.forEach((stop) => {
       THEME_ACCENT_FAMILIES.forEach((accent) => {
+        const accentMeta = THEME_ACCENT_FAMILY_BY_ID[accent.id] || {};
+        const baseLabel = String(accent.label || accent.id || "Color").trim() || "Color";
+        const lightThemeLabel = String(accentMeta.lightThemeName || baseLabel).trim() || baseLabel;
+        const darkThemeLabel = String(accentMeta.darkThemeName || ("Dark " + baseLabel)).trim() || ("Dark " + baseLabel);
+        const optionLabel = stop.id === "light"
+          ? (accentMeta.lightThemeName ? lightThemeLabel : (stop.label + " X " + baseLabel))
+          : (accentMeta.darkThemeName ? darkThemeLabel : (stop.label + " X " + baseLabel));
         options.push({
           id: "s2-" + stop.id + "-" + accent.id,
-          label: stop.label + " X " + accent.label,
+          label: optionLabel,
           spectrumColorStop: stop.spectrumColorStop,
           themeColorStop: stop.id,
           paletteSet: stop.paletteSet,
@@ -326,7 +333,7 @@
     dark: "spectrum--dark"
   };
   const THEME_TONE_BY_COLOR_STOP = {
-    dark: { primary: "800", hover: "700", down: "600", link: "900", focus: "800" },
+    dark: { primary: "800", hover: "700", down: "600", link: "1000", focus: "800" },
     light: { primary: "900", hover: "1000", down: "1000", link: "900", focus: "800" }
   };
   function normalizeHexColor(hexValue) {
@@ -392,6 +399,33 @@
       ? 0
       : (delta / (1 - Math.abs((2 * lightness) - 1)));
     return [hue, saturation, lightness];
+  }
+
+  function hslToRgbTriplet(hue, saturation, lightness) {
+    const h = ((Number(hue) % 360) + 360) % 360;
+    const s = clampNumber(saturation, 0, 1);
+    const l = clampNumber(lightness, 0, 1);
+    if (s <= 0) {
+      const gray = clampRgbChannel(l * 255);
+      return [gray, gray, gray];
+    }
+    const q = l < 0.5 ? l * (1 + s) : (l + s - (l * s));
+    const p = (2 * l) - q;
+    const hueToChannel = (tValue) => {
+      let t = tValue;
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < (1 / 6)) return p + ((q - p) * 6 * t);
+      if (t < 0.5) return q;
+      if (t < (2 / 3)) return p + ((q - p) * ((2 / 3) - t) * 6);
+      return p;
+    };
+    const normalizedHue = h / 360;
+    return [
+      clampRgbChannel(hueToChannel(normalizedHue + (1 / 3)) * 255),
+      clampRgbChannel(hueToChannel(normalizedHue) * 255),
+      clampRgbChannel(hueToChannel(normalizedHue - (1 / 3)) * 255)
+    ];
   }
 
   function degreesToRadians(value) {
@@ -1526,9 +1560,25 @@
     return THEME_ACCENT_FAMILY_BY_ID[key] || THEME_ACCENT_FAMILY_BY_ID[DEFAULT_THEME_ACCENT_ID] || null;
   }
 
-  function getAccentFamilyLabel(accentFamily) {
+  function getAccentThemeLabel(accentMeta, themeColorStop) {
+    const meta = accentMeta && typeof accentMeta === "object" ? accentMeta : null;
+    const baseLabel = String(
+      (meta && (meta.name || meta.label || meta.id))
+      || "Color"
+    ).trim() || "Color";
+    const stop = normalizeThemeColorStop(themeColorStop);
+    if (stop === "light" && meta && meta.lightThemeName) {
+      return String(meta.lightThemeName).trim() || baseLabel;
+    }
+    if (stop === "dark" && meta && meta.darkThemeName) {
+      return String(meta.darkThemeName).trim() || ("Dark " + baseLabel);
+    }
+    return baseLabel;
+  }
+
+  function getAccentFamilyLabel(accentFamily, themeColorStop) {
     const meta = getAccentFamilyMeta(accentFamily);
-    return meta && meta.name ? String(meta.name) : "Color";
+    return getAccentThemeLabel(meta, themeColorStop);
   }
 
   function normalizeThemeId(themeId) {
@@ -1614,6 +1664,110 @@
     return Math.pow((normalized + 0.055) / 1.055, 2.4);
   }
 
+  function getRelativeLuminance(rgbTriplet) {
+    const [r, g, b] = rgbTriplet;
+    return 0.2126 * relativeChannel(r) + 0.7152 * relativeChannel(g) + 0.0722 * relativeChannel(b);
+  }
+
+  function getContrastRatio(rgbA, rgbB) {
+    const luminanceA = getRelativeLuminance(rgbA);
+    const luminanceB = getRelativeLuminance(rgbB);
+    const lighter = Math.max(luminanceA, luminanceB);
+    const darker = Math.min(luminanceA, luminanceB);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  function buildSpicedLinkRgb(baseRgb, themeColorStop) {
+    const stop = normalizeThemeColorStop(themeColorStop);
+    const [hue, saturation, lightness] = rgbTripletToHsl(baseRgb);
+    if (saturation < 0.08) {
+      if (stop === "light") return mixRgbTriplets(baseRgb, [0, 0, 0], 0.18);
+      return mixRgbTriplets(baseRgb, [255, 255, 255], 0.24);
+    }
+    const isYellowFamily = hue >= 42 && hue <= 88;
+    if (stop === "light") {
+      const targetSaturation = clampNumber((saturation * 0.82) + 0.26, 0.55, 0.92);
+      const baselineLightness = isYellowFamily ? 0.29 : 0.36;
+      const targetLightness = clampNumber(
+        baselineLightness + ((0.5 - lightness) * 0.22),
+        isYellowFamily ? 0.26 : 0.3,
+        isYellowFamily ? 0.37 : 0.46
+      );
+      return hslToRgbTriplet(hue, targetSaturation, targetLightness);
+    }
+    const targetSaturation = clampNumber((saturation * 0.78) + 0.24, 0.52, 0.9);
+    const baselineLightness = isYellowFamily ? 0.74 : 0.67;
+    const targetLightness = clampNumber(
+      baselineLightness + ((0.52 - lightness) * 0.16),
+      isYellowFamily ? 0.66 : 0.6,
+      isYellowFamily ? 0.82 : 0.78
+    );
+    return hslToRgbTriplet(hue, targetSaturation, targetLightness);
+  }
+
+  function getReadableLinkRgb(linkRgb, themeColorStop, accentFamily) {
+    const stop = normalizeThemeColorStop(themeColorStop);
+    const base = parseRgbTriplet(linkRgb);
+    const white = [255, 255, 255];
+    const black = [0, 0, 0];
+    const accent = normalizeAccentFamily(accentFamily);
+    const spiced = buildSpicedLinkRgb(base, stop);
+    if (stop === "light") {
+      const minimumContrast = 4.8;
+      if (accent === "bubblegum") {
+        // Keep Bubblegum links saturated and lively in light mode.
+        const vividBubblegumLink = [194, 48, 130];
+        if (getContrastRatio(vividBubblegumLink, white) >= minimumContrast) {
+          return rgbTripletToString(vividBubblegumLink);
+        }
+      }
+      if (getContrastRatio(spiced, white) >= minimumContrast) {
+        return rgbTripletToString(spiced);
+      }
+      for (let step = 1; step <= 24; step += 1) {
+        const ratio = (step / 24) * 0.78;
+        const candidate = mixRgbTriplets(spiced, black, ratio);
+        if (getContrastRatio(candidate, white) >= minimumContrast) {
+          return rgbTripletToString(candidate);
+        }
+      }
+      if (getContrastRatio(base, white) >= minimumContrast) {
+        return rgbTripletToString(base);
+      }
+      for (let step = 1; step <= 24; step += 1) {
+        const ratio = (step / 24) * 0.82;
+        const candidate = mixRgbTriplets(base, black, ratio);
+        if (getContrastRatio(candidate, white) >= minimumContrast) {
+          return rgbTripletToString(candidate);
+        }
+      }
+      return rgbTripletToString(mixRgbTriplets(base, black, 0.82));
+    }
+    const darkSurface = [27, 27, 27];
+    const minimumContrast = 4.5;
+    if (getContrastRatio(spiced, darkSurface) >= minimumContrast) {
+      return rgbTripletToString(spiced);
+    }
+    for (let step = 1; step <= 20; step += 1) {
+      const ratio = (step / 20) * 0.58;
+      const candidate = mixRgbTriplets(spiced, white, ratio);
+      if (getContrastRatio(candidate, darkSurface) >= minimumContrast) {
+        return rgbTripletToString(candidate);
+      }
+    }
+    if (getContrastRatio(base, darkSurface) >= minimumContrast) {
+      return rgbTripletToString(base);
+    }
+    for (let step = 1; step <= 20; step += 1) {
+      const ratio = (step / 20) * 0.58;
+      const candidate = mixRgbTriplets(base, white, ratio);
+      if (getContrastRatio(candidate, darkSurface) >= minimumContrast) {
+        return rgbTripletToString(candidate);
+      }
+    }
+    return rgbTripletToString(mixRgbTriplets(base, white, 0.58));
+  }
+
   function getAccessibleOnPrimaryRgb(primaryRgb) {
     const [r, g, b] = parseRgbTriplet(primaryRgb);
     const luminance = 0.2126 * relativeChannel(r) + 0.7152 * relativeChannel(g) + 0.0722 * relativeChannel(b);
@@ -1671,8 +1825,8 @@
       const glowAlpha = clampNumber(0.14 + (energy * 0.045), 0.14, 0.24);
       const feedbackBgAlpha = clampNumber(0.12 + (energy * 0.032), 0.12, 0.21);
       const feedbackBorderAlpha = clampNumber(0.30 + (energy * 0.065), 0.30, 0.48);
-      const zebraContrast = clampNumber(12 + (energy * 2.6) + (hueWaveA * 1.2) - (neutrality * 1.4), 11.5, 18.5);
-      const zebraHoverBoost = clampNumber(7 + (energy * 1) + (hueWaveC * 0.8), 7, 10.8);
+      const zebraContrast = clampNumber(12 + (energy * 2.6) + (hueWaveA * 1.2) - (neutrality * 1.4), 14, 22);
+      const zebraHoverBoost = clampNumber(7 + (energy * 1) + (hueWaveC * 0.8), 8, 12);
       return {
         "--zip-theme-vibe-body-radial-alpha": formatCssAlpha(topbarAAlpha + 0.01),
         "--zip-theme-vibe-body-start-mix": formatCssPercent(bodyStartMix),
@@ -1732,8 +1886,8 @@
     const glowAlpha = clampNumber(0.20 + (energy * 0.06), 0.20, 0.34);
     const feedbackBgAlpha = clampNumber(0.16 + (energy * 0.04), 0.16, 0.27);
     const feedbackBorderAlpha = clampNumber(0.36 + (energy * 0.07), 0.36, 0.58);
-    const zebraContrast = clampNumber(13.5 + (energy * 2.8) + (hueWaveA * 1.4) - (neutrality * 1.2), 13, 20);
-    const zebraHoverBoost = clampNumber(8 + (energy * 1.2) + (hueWaveC * 0.8), 8, 12);
+    const zebraContrast = clampNumber(13.5 + (energy * 2.8) + (hueWaveA * 1.4) - (neutrality * 1.2), 15, 23);
+    const zebraHoverBoost = clampNumber(8 + (energy * 1.2) + (hueWaveC * 0.8), 9, 13.5);
     return {
       "--zip-theme-vibe-body-radial-alpha": formatCssAlpha(topbarAAlpha + 0.03),
       "--zip-theme-vibe-body-start-mix": formatCssPercent(bodyStartMix),
@@ -1783,11 +1937,29 @@
     const downRgb = getAccentPaletteValue(option.accentFamily, option.paletteSet, tone.down);
     const hoverRgb = getAccentPaletteValue(option.accentFamily, option.paletteSet, tone.hover);
     const primaryRgb = getAccentPaletteValue(option.accentFamily, option.paletteSet, tone.primary);
-    const linkRgb = getAccentPaletteValue(option.accentFamily, option.paletteSet, tone.link);
+    const rawLinkRgb = getAccentPaletteValue(option.accentFamily, option.paletteSet, tone.link);
+    const linkRgb = getReadableLinkRgb(rawLinkRgb, option.themeColorStop, option.accentFamily);
     const tone1000 = getAccentPaletteValue(option.accentFamily, option.paletteSet, "1000");
     const tone1100 = getAccentPaletteValue(option.accentFamily, option.paletteSet, "1100");
     const focusRgb = getAccentPaletteValue(option.accentFamily, option.paletteSet, tone.focus);
     const onPrimaryRgb = getAccessibleOnPrimaryRgb(primaryRgb);
+    const linkBaseTriplet = parseRgbTriplet(linkRgb);
+    const linkHoverTriplet = option.themeColorStop === "light"
+      ? mixRgbTriplets(linkBaseTriplet, [0, 0, 0], 0.12)
+      : mixRgbTriplets(linkBaseTriplet, [255, 255, 255], 0.15);
+    const linkDownTriplet = option.themeColorStop === "light"
+      ? mixRgbTriplets(linkBaseTriplet, [0, 0, 0], 0.22)
+      : mixRgbTriplets(linkBaseTriplet, [255, 255, 255], 0.08);
+    const linkHoverRgb = getReadableLinkRgb(
+      rgbTripletToString(linkHoverTriplet),
+      option.themeColorStop,
+      option.accentFamily
+    );
+    const linkDownRgb = getReadableLinkRgb(
+      rgbTripletToString(linkDownTriplet),
+      option.themeColorStop,
+      option.accentFamily
+    );
     if (!document.body || !document.body.style) return;
     document.body.style.setProperty("--zip-accent-500", tone500);
     document.body.style.setProperty("--zip-accent-600", downRgb);
@@ -1809,6 +1981,11 @@
     document.body.style.setProperty("--spectrum-accent-color-1000", "rgb(" + tone1000 + ")");
     document.body.style.setProperty("--spectrum-accent-color-1100", "rgb(" + tone1100 + ")");
     document.body.style.setProperty("--spectrum-focus-indicator-color", "rgb(" + focusRgb + ")");
+    document.body.style.setProperty("--spectrum-accent-content-color-default", "rgb(" + linkRgb + ")");
+    document.body.style.setProperty("--spectrum-accent-content-color-hover", "rgb(" + linkHoverRgb + ")");
+    document.body.style.setProperty("--spectrum-accent-content-color-down", "rgb(" + linkDownRgb + ")");
+    document.body.style.setProperty("--spectrum-text-color-link", "rgb(" + linkRgb + ")");
+    document.body.style.setProperty("--fg-primary", "rgb(" + linkRgb + ")");
   }
 
   function getThemeSwatchRgb(themeOption) {
@@ -1992,6 +2169,7 @@
       const accentMeta = getAccentFamilyMeta(colorId);
       if (!accentMeta) return;
       const accentId = normalizeAccentFamily(accentMeta.id);
+      const accentDisplayName = getAccentThemeLabel(accentMeta, stopId);
       const accentTheme = getThemeOptionByStopAndAccent(stopId, accentId, options);
       const accentThemeId = normalizeThemeId(accentTheme.id);
       const swatchTheme = {
@@ -2013,13 +2191,13 @@
       const isSelected = accentThemeId === activeThemeId;
       colorBtn.classList.toggle("is-selected", isSelected);
       colorBtn.setAttribute("aria-checked", isSelected ? "true" : "false");
-      const titleParts = [String(accentMeta.name || accentMeta.label || accentId)];
+      const titleParts = [accentDisplayName];
       if (accentMeta.spectrumToken) titleParts.push(String(accentMeta.spectrumToken));
       if (accentMeta.notes) titleParts.push(String(accentMeta.notes));
       colorBtn.title = titleParts.join(" • ");
       colorBtn.setAttribute(
         "aria-label",
-        String(accentMeta.name || accentId) + (isSelected ? " (active)" : "")
+        accentDisplayName + (isSelected ? " (active)" : "")
       );
       applyThemeSwatchStyles(colorBtn, swatchTheme);
 
@@ -2028,7 +2206,7 @@
       swatchChip.setAttribute("aria-hidden", "true");
       const nameEl = document.createElement("span");
       nameEl.className = "zip-context-menu-theme-color-name";
-      nameEl.textContent = String(accentMeta.name || accentMeta.label || accentId);
+      nameEl.textContent = accentDisplayName;
       colorBtn.appendChild(swatchChip);
       colorBtn.appendChild(nameEl);
 
@@ -2089,7 +2267,7 @@
       els.contextMenuThemeStopToggle.title = "Toggle light/dark theme (currently " + activeStop.label + ")";
     }
     if (els.contextMenuThemeColorToggle) {
-      const accentLabel = getAccentFamilyLabel(activeAccent);
+      const accentLabel = getAccentFamilyLabel(activeAccent, activeStop.id);
       els.contextMenuThemeColorToggle.textContent = accentLabel;
       applyThemeSwatchStyles(els.contextMenuThemeColorToggle, activeTheme);
     }

@@ -125,7 +125,7 @@ const THEME_ACCENT_SWATCHES = (
   && THEME_PALETTE_DATA.colors.length
 )
   ? THEME_PALETTE_DATA.colors.map((entry) => ({ ...entry }))
-  : [{ id: "azure-blue", name: "Azure Blue" }];
+  : [{ id: "cornflower", name: "Cornflower" }];
 const THEME_ACCENT_FAMILIES = THEME_ACCENT_SWATCHES.map((accent) => ({
   id: String(accent.id || "").trim().toLowerCase(),
   label: String(accent.name || accent.label || accent.id || "Color").trim() || "Color"
@@ -136,7 +136,7 @@ const DEFAULT_THEME_ACCENT_ID = (
   && THEME_ACCENT_IDS.has(String(THEME_PALETTE_DATA.defaultAccentId || "").trim().toLowerCase())
 )
   ? String(THEME_PALETTE_DATA.defaultAccentId).trim().toLowerCase()
-  : (THEME_ACCENT_FAMILIES[0] ? THEME_ACCENT_FAMILIES[0].id : "azure-blue");
+  : (THEME_ACCENT_FAMILIES[0] ? THEME_ACCENT_FAMILIES[0].id : "cornflower");
 const DEFAULT_THEME_ID = "s2-dark-" + DEFAULT_THEME_ACCENT_ID;
 const LEGACY_ACCENT_ID_MAP = (
   THEME_PALETTE_DATA
@@ -174,9 +174,19 @@ function buildThemeOptions() {
   const options = [];
   THEME_COLOR_STOPS.forEach((stop) => {
     THEME_ACCENT_FAMILIES.forEach((accent) => {
+      const accentMeta = THEME_PALETTE_DATA
+        && Array.isArray(THEME_PALETTE_DATA.colors)
+        ? THEME_PALETTE_DATA.colors.find((entry) => String(entry && entry.id || "").trim().toLowerCase() === accent.id)
+        : null;
+      const baseLabel = String(accent.label || accent.id || "Color").trim() || "Color";
+      const lightThemeLabel = String(accentMeta && accentMeta.lightThemeName || baseLabel).trim() || baseLabel;
+      const darkThemeLabel = String(accentMeta && accentMeta.darkThemeName || ("Dark " + baseLabel)).trim() || ("Dark " + baseLabel);
+      const optionLabel = stop.id === "light"
+        ? ((accentMeta && accentMeta.lightThemeName) ? lightThemeLabel : (stop.label + " X " + baseLabel))
+        : ((accentMeta && accentMeta.darkThemeName) ? darkThemeLabel : (stop.label + " X " + baseLabel));
       options.push({
         id: "s2-" + stop.id + "-" + accent.id,
-        label: stop.label + " X " + accent.label,
+        label: optionLabel,
         spectrumColorStop: stop.spectrumColorStop,
         themeColorStop: stop.id,
         paletteSet: stop.paletteSet,
