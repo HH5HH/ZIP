@@ -222,13 +222,26 @@ test("theme palette v2 has 20 unique swatches with required fields", () => {
 
 test("theme palette v2 group ordering matches required hue flow", () => {
   const expectedOrder = [
-    "azure-blue", "indigo", "violet",
-    "pink", "fuchsia", "magenta",
-    "petrus-red", "carmine",
-    "pumpkin", "amber", "sunflower",
-    "chartreuse", "celery", "emerald", "cyan",
-    "cinnamon", "bronze",
-    "silver", "slate-gray", "charcoal"
+    "porcelain",
+    "cardinal",
+    "razzmatazz",
+    "tangelo",
+    "amber",
+    "aureolin",
+    "chartreuse",
+    "kelly-green",
+    "jade",
+    "teal",
+    "turquoise",
+    "capri",
+    "cerulean",
+    "zaffre",
+    "indigo",
+    "electric-violet",
+    "fuchsia",
+    "burnt-sienna",
+    "payne-gray",
+    "obsidian"
   ];
   const groups = Array.isArray(palette.groups) ? palette.groups : [];
   const ordered = groups.flatMap((group) => (Array.isArray(group.colorIds) ? group.colorIds : []));
