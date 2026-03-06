@@ -1201,8 +1201,12 @@
     const query = String(rawQuery == null ? "" : rawQuery).replace(/\s+/g, " ").trim();
     if (!query) return { tickets: [] };
     const opts = options && typeof options === "object" ? options : {};
+    const preserveNativeSearchResults = Object.prototype.hasOwnProperty.call(opts, "preserveNativeSearchResults")
+      ? !!opts.preserveNativeSearchResults
+      : true;
     return searchTickets(query, {
       ...opts,
+      preserveNativeSearchResults,
       maxResults: normalizeSearchLimit(
         Object.prototype.hasOwnProperty.call(opts, "maxResults") ? opts.maxResults : opts.limit,
         DEFAULT_TICKET_SEARCH_LIMIT,
@@ -1219,6 +1223,7 @@
 
   async function searchTickets(query, options) {
     const opts = options && typeof options === "object" ? options : {};
+    const preserveNativeSearchResults = !!opts.preserveNativeSearchResults;
     const limit = normalizeSearchLimit(
       Object.prototype.hasOwnProperty.call(opts, "maxResults") ? opts.maxResults : opts.limit,
       DEFAULT_TICKET_SEARCH_LIMIT,
@@ -1312,7 +1317,7 @@
       const raw = sourceRows[i];
       const type = String((raw && raw.result_type) || "").toLowerCase();
       if (type && type !== "ticket") continue;
-      if (!includeTicketByStatus(raw)) continue;
+      if (!preserveNativeSearchResults && !includeTicketByStatus(raw)) continue;
       const normalized = normalizeTicket(raw || {});
       const ticketId = normalizeTicketId(normalized.id);
       if (!ticketId || seenTicketIds.has(ticketId)) continue;
@@ -1340,6 +1345,7 @@
 
   async function searchTicketsLegacyOffset(query, options) {
     const opts = options && typeof options === "object" ? options : {};
+    const preserveNativeSearchResults = !!opts.preserveNativeSearchResults;
     const limit = normalizeSearchLimit(opts.limit, 0, MAX_TICKET_SEARCH_RESULTS);
     const perPage = normalizeSearchLimit(
       opts.perPage,
@@ -1373,7 +1379,7 @@
         const raw = rows[i];
         const type = String((raw && raw.result_type) || "").toLowerCase();
         if (type && type !== "ticket") continue;
-        if (!includeTicketByStatus(raw)) continue;
+        if (!preserveNativeSearchResults && !includeTicketByStatus(raw)) continue;
         const normalized = normalizeTicket(raw || {});
         const ticketId = normalizeTicketId(normalized.id);
         if (!ticketId || seenTicketIds.has(ticketId)) continue;
