@@ -3751,16 +3751,65 @@
     syncTicketTableHorizontalScrollState();
   }
 
+  function parseCssPixelValue(value, fallback) {
+    const parsed = Number.parseFloat(String(value == null ? "" : value).trim());
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function syncTicketTableVerticalSizing() {
+    if (!els.ticketTableWrap || typeof window === "undefined" || typeof window.getComputedStyle !== "function") return;
+    const wrap = els.ticketTableWrap;
+    const table = wrap.querySelector("table");
+    if (!table) return;
+
+    const rootStyles = window.getComputedStyle(document.body || document.documentElement);
+    const configuredRows = Number.parseInt(String(rootStyles.getPropertyValue("--zip-ticket-table-max-visible-rows") || "").trim(), 10);
+    const maxVisibleRows = Number.isFinite(configuredRows) && configuredRows > 0 ? configuredRows : 10;
+    const scrollbarSpace = parseCssPixelValue(rootStyles.getPropertyValue("--zip-ticket-table-scrollbar-space"), 14);
+
+    const headerCell = table.querySelector("thead > tr > th");
+    const rowCell = table.querySelector("tbody > tr > td");
+    if (!headerCell || !rowCell) {
+      wrap.style.removeProperty("min-height");
+      wrap.style.removeProperty("max-height");
+      return;
+    }
+
+    const headerHeight = headerCell.getBoundingClientRect().height;
+    const rowHeight = rowCell.getBoundingClientRect().height;
+    if (!(headerHeight > 0) || !(rowHeight > 0)) {
+      wrap.style.removeProperty("min-height");
+      wrap.style.removeProperty("max-height");
+      return;
+    }
+
+    const renderedRowCount = table.querySelectorAll("tbody > tr").length;
+    const targetVisibleRows = Math.min(maxVisibleRows, Math.max(1, renderedRowCount || 1));
+    const hasHorizontalScroll = wrap.classList.contains("table-wrap-hscroll");
+    const horizontalScrollbarAllowance = hasHorizontalScroll ? scrollbarSpace : 0;
+    const frameCompensation = 2;
+    const targetHeight = Math.ceil(
+      headerHeight
+      + (rowHeight * targetVisibleRows)
+      + horizontalScrollbarAllowance
+      + frameCompensation
+    );
+    wrap.style.minHeight = targetHeight + "px";
+    wrap.style.maxHeight = targetHeight + "px";
+  }
+
   function syncTicketTableHorizontalScrollState() {
     if (!els.ticketTableWrap) return;
     const wrap = els.ticketTableWrap;
     const table = wrap.querySelector("table");
     if (!table) {
       wrap.classList.remove("table-wrap-hscroll");
+      syncTicketTableVerticalSizing();
       return;
     }
     const hasHorizontalScroll = (table.scrollWidth - wrap.clientWidth) > 1;
     wrap.classList.toggle("table-wrap-hscroll", hasHorizontalScroll);
+    syncTicketTableVerticalSizing();
   }
 
   function setTicketTableLoading(on) {
