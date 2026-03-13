@@ -4198,7 +4198,7 @@
       const canUseSlackItToMe = slackReady
         && !state.passAiSlackAuthPolling
         && !state.slackItToMeLoading;
-      const slackItToMeTitle = slackReady ? "SLACK TO ZIPTOOL PANEL" : SLACKTIVATED_LOGIN_TOOLTIP;
+      const slackItToMeTitle = slackReady ? "zip-zap tickets to SLACK" : SLACKTIVATED_LOGIN_TOOLTIP;
       els.slackItToMeBtn.classList.remove("hidden");
       els.slackItToMeBtn.disabled = !canUseSlackItToMe;
       els.slackItToMeBtn.title = slackItToMeTitle;
@@ -8575,11 +8575,21 @@
     return /^https?:\/\//i.test(String(value || "").trim());
   }
 
+  function decodePassAiHtmlEntities(value) {
+    return String(value == null ? "" : value)
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+  }
+
   function buildPassAiMarkdownLinkHtml(label, url) {
-    const href = String(url || "").trim();
-    if (!isPassAiHttpUrl(href)) return escapePassAiHtml(label || href);
+    const href = decodePassAiHtmlEntities(url).trim();
+    const text = decodePassAiHtmlEntities(label || href);
+    if (!isPassAiHttpUrl(href)) return escapePassAiHtml(text || href);
     const safeHref = escapePassAiHtml(href);
-    const safeLabel = escapePassAiHtml(label || href);
+    const safeLabel = escapePassAiHtml(text || href);
     return '<a href="' + safeHref + '" target="_blank" rel="noopener noreferrer">' + safeLabel + "</a>";
   }
 
@@ -8588,6 +8598,58 @@
       .replace(/^[-*+]\s+/, "")
       .replace(/:(https?:\/\/)/gi, ": $1")
       .trim();
+  }
+
+  function replacePassAiMarkdownInlineLinks(value) {
+    const text = String(value == null ? "" : value);
+    let result = "";
+    let cursor = 0;
+
+    while (cursor < text.length) {
+      const labelStart = text.indexOf("[", cursor);
+      if (labelStart < 0) {
+        result += text.slice(cursor);
+        break;
+      }
+      result += text.slice(cursor, labelStart);
+
+      const labelEnd = text.indexOf("](", labelStart + 1);
+      if (labelEnd < 0) {
+        result += text.slice(labelStart);
+        break;
+      }
+
+      const urlStart = labelEnd + 2;
+      if (!/^https?:\/\//i.test(decodePassAiHtmlEntities(text.slice(urlStart)))) {
+        result += text.slice(labelStart, urlStart);
+        cursor = urlStart;
+        continue;
+      }
+
+      let urlEnd = urlStart;
+      let depth = 1;
+      while (urlEnd < text.length) {
+        const char = text[urlEnd];
+        if (char === "(") depth += 1;
+        if (char === ")") {
+          depth -= 1;
+          if (depth === 0) break;
+        }
+        urlEnd += 1;
+      }
+
+      if (depth !== 0 || urlEnd >= text.length) {
+        result += text.slice(labelStart);
+        break;
+      }
+
+      const label = text.slice(labelStart + 1, labelEnd);
+      const url = text.slice(urlStart, urlEnd);
+      result += buildPassAiMarkdownLinkHtml(label, url);
+      cursor = urlEnd + 1;
+    }
+
+    return result;
   }
 
   function parsePassAiMarkdownReferences(value) {
@@ -8634,9 +8696,7 @@
     html = html.replace(/(^|[\s(])_([^_\n][^_\n]*?)_(?=[\s).,!?:;]|$)/g, "$1<em>$2</em>");
     html = html.replace(/~~([^~]+)~~/g, "<del>$1</del>");
 
-    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi, (_match, label, url) => {
-      return buildPassAiMarkdownLinkHtml(label, url);
-    });
+    html = replacePassAiMarkdownInlineLinks(html);
 
     html = html.replace(/\[([^\]]+)\]\[([^\]]*)\]/g, (_match, label, refIdRaw) => {
       const refId = normalizePassAiMarkdownRefKey(refIdRaw || label);
