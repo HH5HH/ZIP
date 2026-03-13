@@ -79,6 +79,11 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /function normalizeSlackMeDraftText\(value\)/);
   assert.match(js, /function convertSlackMeDraftToMrkdwn\(value\)/);
   assert.match(js, /function handleSlackMeListContinuationEnter\(\)/);
+  assert.match(js, /const linkTextPlaceholder = "your text here";/);
+  assert.match(js, /const linkTargetPlaceholder = "the link";/);
+  assert.match(js, /const replacement = "\[" \+ label \+ "\]\(" \+ url \+ "\)";/);
+  assert.doesNotMatch(js, /selected \+ " https:\/\/"/);
+  assert.doesNotMatch(js, /return insertSlackMeText\("https:\/\/"\);/);
   assert.match(js, /function applySlackMeToolbarAction\(action\)/);
   assert.match(js, /event\.target\.closest\("\[data-slack-format\]"\)/);
   assert.match(js, /if \(\(event\.metaKey \|\| event\.ctrlKey\) && !event\.altKey\)/);

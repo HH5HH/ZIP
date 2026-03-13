@@ -2712,27 +2712,30 @@
     const selection = getSlackMeInputSelectionState();
     if (!selection) return false;
     const selected = String(selection.selected || "").trim();
+    const linkTextPlaceholder = "your text here";
+    const linkTargetPlaceholder = "the link";
+    let label = linkTextPlaceholder;
+    let url = linkTargetPlaceholder;
+    let nextSelectionStart = selection.start + 1;
+    let nextSelectionEnd = nextSelectionStart + label.length;
+
     if (selected && looksLikeSlackMeUrl(selected)) {
-      const normalized = normalizeSlackMeUrl(selected);
-      return replaceSlackMeInputRange(
-        selection.start,
-        selection.end,
-        normalized,
-        selection.start + normalized.length,
-        selection.start + normalized.length
-      );
+      url = normalizeSlackMeUrl(selected);
+      nextSelectionEnd = nextSelectionStart + label.length;
+    } else if (selected) {
+      label = selected;
+      nextSelectionStart = selection.start + label.length + 3;
+      nextSelectionEnd = nextSelectionStart + url.length;
     }
-    if (selected) {
-      const replacement = selected + " https://";
-      return replaceSlackMeInputRange(
-        selection.start,
-        selection.end,
-        replacement,
-        selection.start + selected.length + 1,
-        selection.start + replacement.length
-      );
-    }
-    return insertSlackMeText("https://");
+
+    const replacement = "[" + label + "](" + url + ")";
+    return replaceSlackMeInputRange(
+      selection.start,
+      selection.end,
+      replacement,
+      nextSelectionStart,
+      nextSelectionEnd
+    );
   }
 
   function applySlackMeToolbarAction(action) {
