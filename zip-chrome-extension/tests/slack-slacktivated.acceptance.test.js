@@ -61,7 +61,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(html, /id="zipTogglePassAiIcon"/);
   assert.match(html, /id="zipSlackItToMeBtn"/);
   assert.match(html, /id="zipSlackPanelIcon"/);
-  assert.match(html, /id="zipSlackItToMeBtn"[\s\S]*title="SLACK TO ZIPTOOL PANEL"/);
+  assert.match(html, /id="zipSlackItToMeBtn"[\s\S]*title="zip-zap tickets to SLACK"/);
   assert.match(html, /<script src="slack-runtime-config\.js"><\/script>/);
   assert.match(html, /id="zipTogglePassAiBtn"[^>]*class="[^"]*\bhidden\b[^"]*"/);
   assert.doesNotMatch(html, /id="zipSlackItToMeBtn"[^>]*class="[^"]*\bhidden\b[^"]*"/);
