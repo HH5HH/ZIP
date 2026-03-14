@@ -95,7 +95,7 @@ Install and begin work in under two minutes:
 - Single polished package for pilot install and user validation.
 - Quick-start-first documentation for urgent operational use.
 
-## Team Activation Path
+## Team SLACKTIVATION Path
 1. Send this first: `docs/pdf/ZIP_PRINT_THIS_FIRST_QUICK_START.pdf`
 2. Send install page: `/Users/minnick/Documents/PASS/ZIP/zip.html`
 3. Team loads extension in Dev Mode.
@@ -584,8 +584,8 @@ If the team needs to get running immediately:
 | ID | Scenario | Preconditions | Steps | Expected Result |
 |---|---|---|---|---|
 | UAT-001 | Load extension | ZIP folder available | 1. Open `chrome://extensions` 2. Load unpacked ZIP folder | Extension loads without manifest errors |
-| UAT-002 | Action click opens panel | Zendesk tab open | 1. Activate Zendesk tab 2. Click ZIP icon | ZIP side panel opens |
-| UAT-003 | Action click from non-Zendesk | Non-Zendesk tab active | 1. Activate non-Zendesk tab 2. Click ZIP icon | Side panel remains domain-aware; use context menu/shortcut behavior per policy |
+| UAT-002 | Action click opens panel | Zendesk tab open | 1. Focus Zendesk tab 2. Click ZIP icon | ZIP side panel opens |
+| UAT-003 | Action click from non-Zendesk | Non-Zendesk tab active | 1. Focus non-Zendesk tab 2. Click ZIP icon | Side panel remains domain-aware; use context menu/shortcut behavior per policy |
 | UAT-004 | Context menu side panel position settings | ZIP installed | 1. Right-click extension icon 2. Click `⚙ > Side panel position` | Chrome opens side panel settings page |
 | UAT-005 | Context menu Ask Eric feedback | ZIP installed | 1. Right-click extension icon 2. Click `Ask Eric` | Default mail client opens with prefilled recipient/subject |
 | UAT-006 | Keyboard shortcut open/close (Win/Linux) | Shortcut available | 1. Press `Ctrl+Shift+Y` on Zendesk tab 2. Press again | Opens ZIP panel, then closes/toggles where supported |
@@ -757,4 +757,3 @@ When no setter is available, side placement remains controlled by Chrome/browser
 ## Enterprise Option
 
 If teammates cannot use "Load unpacked", your Chrome admin can deploy this extension via managed policy.
-

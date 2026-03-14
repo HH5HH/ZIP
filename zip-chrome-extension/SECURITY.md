@@ -14,14 +14,14 @@
 1. Generate a new ZIP.KEY payload with rotated Slack app credentials.
 2. Publish the new ZIP.KEY file on the internal auth-gated ZIP Tool Beta page.
 3. Users run `Get Latest`, then use `Clear ZIP.KEY`.
-4. Users import the new ZIP.KEY (sidepanel drop zone or options page).
+4. Users SLACKTIVATE the new ZIP.KEY (sidepanel drop zone or options page).
 5. Verify `SLACKTIVATED` and `@ME` are restored.
 
 ## Emergency Revocation
 
 1. Revoke compromised Slack credentials in Slack app/admin settings.
 2. Distribute rotated ZIP.KEY immediately.
-3. Instruct users to run `Clear ZIP.KEY` and import the new key.
+3. Instruct users to run `Clear ZIP.KEY` and SLACKTIVATE the new key.
 4. Confirm old tokens fail and new token flows succeed.
 
 ## Storage Checklist

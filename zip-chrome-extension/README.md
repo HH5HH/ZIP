@@ -1,6 +1,6 @@
 # ZIP Chrome Extension (No 3P Dependencies)
 
-**ZIP = ZipTool** — ZIP into INFO from the Zendesk API.
+**ZipTool** is the Adobe PASS browser extension for mission-critical continuity. It lives where the work happens, turns live Zendesk context into immediate Slack-connected action, and keeps Support, TAM, and Engineering on the same signal at the exact moment a case needs movement. SLACKTIVATION is how ZIP closes the gap between triage and response, and the dual-mode Blondie Button is the next step: one path for personal velocity, one path for #PASS-TRANSITION, so handoff happens with shared context, shared urgency, and no dropped thread.
 
 ## NO POPUPS OR NEW AUTH FLOWS
 
@@ -43,9 +43,9 @@ OpenID behavior:
 - Without an explicit redirect URI, ZIP uses adobedx workspace-session SLACKTIVATION only (no OpenID redirect page).
 - Production build fallback: when running under extension ID `ibijkkpjfgaocgmpafbcckhhdkpbldoc`, ZIP defaults OpenID redirect URI to `https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-openid` and takes precedence over ZIP.KEY redirect URI overrides.
 
-## ZIP.KEY Unlock Flow
+## ZIP.KEY SLACKTIVATION Flow
 
-ZIP sidepanel now requires a one-time `ZIP.KEY` import before showing `Sign in with Zendesk`.
+ZIP sidepanel now requires a one-time `ZIP.KEY` import to SLACKTIVATE the Slack bridge before showing `Sign in with Zendesk`.
 
 Key envelope format:
 - Prefix: `ZIPKEY1:`
@@ -101,7 +101,7 @@ Template file:
 - `zip-chrome-extension/ZIP.KEY.template`
 
 Admin and developer controls:
-- Sidepanel unlock card supports drag-and-drop `ZIP.KEY` import.
+- Sidepanel SLACKTIVATION card supports drag-and-drop `ZIP.KEY` import.
 - Extension settings page (`options.html`) supports file import, paste import, and one-click `Clear ZIP.KEY`.
 - Clear/reset is available from both menus:
   - Chrome action context menu: `Clear ZIP.KEY`
@@ -115,7 +115,7 @@ If the urgent line just paged, do this now:
 3. Click **Load unpacked**.
 4. Select `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`.
 5. Open `https://adobeprimetime.zendesk.com/agent/dashboard?brand_id=2379046`.
-6. Click ZIP, drop `ZIP.KEY` on the unlock card, then click `Login with Zendesk` if prompted.
+6. Click ZIP, drop `ZIP.KEY` on the SLACKTIVATION card, then click `Login with Zendesk` if prompted.
 7. Click `Assigned Tickets` and start triage.
 
 ![ZIP Master Brand Preview](assets/zipToolBox.png)
@@ -165,7 +165,7 @@ After one-time install, runtime flow is:
 
 1. Open Zendesk page
 2. Click the ZIP bubble
-3. Import `ZIP.KEY` on the login card (one-time per required service settings)
+3. SLACKTIVATE `ZIP.KEY` on the login card (one-time per required service settings)
 4. If logged out, click Login with Zendesk
 5. After sign-in, ZIP loads profile + assigned tickets automatically
 

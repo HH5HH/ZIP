@@ -17,6 +17,7 @@
   const PASS_AI_SLACK_APP_ID = "A0AGPACM3UG";
   const ZIP_OFFICIAL_EXTENSION_ID = "ibijkkpjfgaocgmpafbcckhhdkpbldoc";
   const ZIP_OFFICIAL_SLACK_REDIRECT_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-openid";
+  const ZIP_OFFICIAL_WORKSPACE_DEEPLINK_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-user";
   const PASS_AI_SLACK_OIDC_DEFAULT_SCOPE = "openid profile email";
   const PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH = "slack-user";
   const ZIP_KEY_FILE_PREFIX = "ZIPKEY1:";
@@ -46,6 +47,7 @@
   const ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY = "zip_pass_transition_channel_name";
   const ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY = "zip_pass_transition_member_ids";
   const ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY = "zip_pass_transition_members_synced_at";
+  const ZIP_PENDING_WORKSPACE_CLIENT_DEEPLINK_STORAGE_KEY = "zip.pending.workspace.client.deeplink.v1";
   const SLACKTIVATED_SESSION_CACHE_VERSION = 1;
   const SLACKTIVATED_PENDING_ICON_URL = "assets/brand/icons/icon128.png";
   const SLACKTIVATED_LOGIN_TOOLTIP = "ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/";
@@ -58,8 +60,6 @@
     active: "assets/blondie-button-active.png",
     ack: "assets/blondie-button-zipzap200.png"
   });
-  const PASS_TRANSITION_USER_MESSAGE_LABEL = "*USER MESSAGE*";
-  const PASS_TRANSITION_REPORT_LABEL = "*ZIP-ZAP REPORT*";
   const PASS_TRANSITION_SECTION_DIVIDER = "----------------------------------------";
   const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP.KEY and reset ZIP now? This signs you out, clears SLACKTIVATION, and requires re-importing ZIP.KEY.";
   const PASS_AI_POLL_INTERVAL_MS = 1500;
@@ -72,6 +72,7 @@
   const SLACK_IT_TO_ME_MAX_MESSAGE_CHARS = 36000;
   const ZIP_TOOL_BETA_ARTICLE_URL = "https://tve.zendesk.com/hc/en-us/articles/46503360732436-ZIP-TOOL-beta";
   const ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM = "zipdeeplink";
+  const ZIP_APPLY_WORKSPACE_DEEPLINK_MESSAGE_TYPE = "ZIP_APPLY_WORKSPACE_DEEPLINK";
   const ZIP_TOOL_BETA_LINK_LABEL = "zip-zap";
   const ZIP_TOOL_DEEPLINK_LINK_LABEL = "in ZipTool";
   const IS_WORKSPACE_MODE = new URLSearchParams(window.location.search || "").get("mode") === "workspace";
@@ -236,6 +237,9 @@
   let slackItToMeAckResetTimerId = null;
   let slackLoginFlowOpenedTabId = null;
   let slackLoginFlowOpenedByZip = false;
+  let passTransitionRecipientsRequestInFlight = null;
+  let passTransitionRecipientsRequestToken = 0;
+  let passTransitionRecipientsResolvedKey = "";
   let eventsWired = false;
   const AUTH_CHECK_INTERVAL_ACTIVE_MS = 60 * 1000;
   const AUTH_CHECK_INTERVAL_LOGGED_OUT_MS = 15 * 1000;
@@ -2430,6 +2434,27 @@
     return state.slackMeMode === "transition" ? "transition" : "self";
   }
 
+  function buildPassTransitionRecipientCacheKey() {
+    const passTransition = state.zipSecretConfig && state.zipSecretConfig.passTransition
+      ? state.zipSecretConfig.passTransition
+      : null;
+    return [
+      normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+      normalizePassAiSlackChannelId(passTransition && passTransition.channelId || ""),
+      String(passTransition && passTransition.membersSyncedAt || "").trim(),
+      String(passTransition && passTransition.memberCount || 0)
+    ].join("::");
+  }
+
+  function invalidatePassTransitionRecipientState() {
+    passTransitionRecipientsRequestToken += 1;
+    passTransitionRecipientsRequestInFlight = null;
+    passTransitionRecipientsResolvedKey = "";
+    state.slackMeSelectedRecipientId = "";
+    state.slackMePassTransitionLoading = false;
+    state.slackMePassTransitionRecipients = [];
+  }
+
   function normalizePassTransitionRecipientShape(input) {
     const raw = input && typeof input === "object" ? input : {};
     const userId = normalizePassAiSlackUserId(raw.userId || raw.user_id || "");
@@ -2439,13 +2464,12 @@
       || raw.user_name
       || raw.displayName
       || raw.display_name
-      || raw.label
       || ""
     );
+    const label = normalizePassAiSlackDisplayName(raw.label || "") || userName || ("@" + userId);
     const avatarUrl = normalizePassAiSlackAvatarUrl(raw.avatarUrl || raw.avatar_url || "");
     const statusIcon = normalizePassAiSlackStatusIcon(raw.statusIcon || raw.status_icon || "");
     const statusMessage = normalizePassAiSlackStatusMessage(raw.statusMessage || raw.status_message || "");
-    const label = userName || ("@" + userId);
     return {
       userId,
       userName,
@@ -2476,6 +2500,58 @@
   function setSelectedPassTransitionRecipient(userId) {
     const normalized = normalizePassAiSlackUserId(userId || "");
     state.slackMeSelectedRecipientId = normalized;
+  }
+
+  async function refreshPassTransitionRecipients(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const cacheKey = buildPassTransitionRecipientCacheKey();
+    if (!opts.force && cacheKey && passTransitionRecipientsResolvedKey === cacheKey && getSlackMePassTransitionRecipients().length) {
+      return getSlackMePassTransitionRecipients();
+    }
+    if (passTransitionRecipientsRequestInFlight) {
+      return passTransitionRecipientsRequestInFlight;
+    }
+    const requestToken = passTransitionRecipientsRequestToken;
+    passTransitionRecipientsRequestInFlight = (async () => {
+      const response = await sendBackgroundRequest("ZIP_GET_PASS_TRANSITION_RECIPIENTS", {
+        force: opts.force === true
+      });
+      if (!response || response.ok !== true) {
+        throw new Error(normalizePassAiCommentBody(response && (response.error || response.message)) || "Unable to load PASS-TRANSITION members.");
+      }
+      const recipients = Array.isArray(response.members)
+        ? response.members.map((entry) => normalizePassTransitionRecipientShape(entry)).filter(Boolean)
+        : [];
+      if (requestToken !== passTransitionRecipientsRequestToken) {
+        return getSlackMePassTransitionRecipients();
+      }
+      state.slackMePassTransitionRecipients = recipients;
+      const activeRecipient = recipients.find((entry) => entry.userId === normalizePassAiSlackUserId(state.slackMeSelectedRecipientId || ""));
+      if (!activeRecipient) {
+        setSelectedPassTransitionRecipient(recipients[0] && recipients[0].userId);
+      }
+      passTransitionRecipientsResolvedKey = buildPassTransitionRecipientCacheKey();
+      return recipients;
+    })().finally(() => {
+      if (requestToken === passTransitionRecipientsRequestToken) {
+        passTransitionRecipientsRequestInFlight = null;
+      }
+    });
+    return passTransitionRecipientsRequestInFlight;
+  }
+
+  function prefetchPassTransitionRecipients(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const passTransition = state.zipSecretConfig && state.zipSecretConfig.passTransition
+      ? state.zipSecretConfig.passTransition
+      : null;
+    if (!isPassAiSlacktivated()) {
+      return Promise.resolve([]);
+    }
+    if (!normalizePassAiSlackChannelId(passTransition && passTransition.channelId || "")) {
+      return Promise.resolve([]);
+    }
+    return refreshPassTransitionRecipients({ force: opts.force === true });
   }
 
   function renderPassTransitionRecipientOptions() {
@@ -2514,25 +2590,14 @@
   async function loadPassTransitionRecipients(options) {
     const opts = options && typeof options === "object" ? options : {};
     if (state.slackMePassTransitionLoading) {
-      return getSlackMePassTransitionRecipients();
+      return passTransitionRecipientsRequestInFlight
+        ? passTransitionRecipientsRequestInFlight.catch(() => [])
+        : getSlackMePassTransitionRecipients();
     }
     state.slackMePassTransitionLoading = true;
     syncSlackMeDialogUi();
     try {
-      const response = await sendBackgroundRequest("ZIP_GET_PASS_TRANSITION_RECIPIENTS", {
-        force: opts.force === true
-      });
-      if (!response || response.ok !== true) {
-        throw new Error(normalizePassAiCommentBody(response && (response.error || response.message)) || "Unable to load PASS-TRANSITION members.");
-      }
-      const recipients = Array.isArray(response.members)
-        ? response.members.map((entry) => normalizePassTransitionRecipientShape(entry)).filter(Boolean)
-        : [];
-      state.slackMePassTransitionRecipients = recipients;
-      const activeRecipient = recipients.find((entry) => entry.userId === normalizePassAiSlackUserId(state.slackMeSelectedRecipientId || ""));
-      if (!activeRecipient) {
-        setSelectedPassTransitionRecipient(recipients[0] && recipients[0].userId);
-      }
+      const recipients = await refreshPassTransitionRecipients({ force: opts.force === true });
       if (!recipients.length) {
         throw new Error("No PASS-TRANSITION members are available to receive a handoff.");
       }
@@ -2562,7 +2627,7 @@
     const transitionMode = getSlackMeDialogMode() === "transition";
     const transitionRecipient = transitionMode ? getSelectedPassTransitionRecipient() : null;
     const displayName = transitionMode
-      ? (transitionRecipient && (transitionRecipient.userName || transitionRecipient.label || transitionRecipient.userId) || "")
+      ? (transitionRecipient && (transitionRecipient.label || transitionRecipient.userName || transitionRecipient.userId) || "")
       : getSlacktivatedDisplayName();
     const labelText = transitionMode
       ? (
@@ -3010,18 +3075,18 @@
     state.slackMeMode = mode;
     state.slackMeNoteLoading = false;
     clearSlackMeDialogStatus();
-    els.slackMeDialogBackdrop.classList.remove("hidden");
-    els.slackMeDialogBackdrop.setAttribute("aria-hidden", "false");
     if (els.slackMeInput) {
       els.slackMeInput.value = "";
     }
     if (mode !== "transition") {
       setSelectedPassTransitionRecipient("");
     }
-    syncSlackMeDialogUi();
     if (mode === "transition") {
-      await ensurePassTransitionRecipientsLoaded({ force: opts.forceRecipients === true });
+      await loadPassTransitionRecipients({ force: opts.forceRecipients === true });
     }
+    els.slackMeDialogBackdrop.classList.remove("hidden");
+    els.slackMeDialogBackdrop.setAttribute("aria-hidden", "false");
+    syncSlackMeDialogUi();
     const focusTarget = (
       mode === "transition"
       && els.slackMeRecipientSelect
@@ -3040,25 +3105,19 @@
   function buildPassTransitionShareMarkdown(rows, noteText, recipient) {
     const ticketMarkdown = buildSlackItToMeMarkdown(rows);
     const handoffNote = convertSlackMeDraftToMrkdwn(noteText || "");
-    const recipientLabel = escapeSlackMrkdwn(
-      recipient && (recipient.userName || recipient.label || recipient.userId) || "#pass-transition"
-    );
-    const sections = [
-      "*PASS-TRANSITION HANDOFF*",
-      "_Recipient:_ " + recipientLabel,
-      ""
-    ];
+    const sections = [];
     if (handoffNote) {
+      const senderName = normalizePassAiSlackDisplayName(state.passAiSlackUserName || "")
+        || normalizePassAiSlackDisplayName(getSlacktivatedDisplayName())
+        || "sender";
+      const senderLabel = "*Note from @" + escapeSlackMrkdwn(senderName.replace(/^@+/, "").trim()) + ":*";
       sections.push(
-        PASS_TRANSITION_USER_MESSAGE_LABEL,
+        senderLabel,
         handoffNote,
         "",
         PASS_TRANSITION_SECTION_DIVIDER,
-        "",
-        PASS_TRANSITION_REPORT_LABEL
+        ""
       );
-    } else {
-      sections.push(PASS_TRANSITION_REPORT_LABEL);
     }
     sections.push(ticketMarkdown);
     return sections.join("\n").trim();
@@ -3100,13 +3159,6 @@
     syncSlackMeDialogUi();
     try {
       const slackApiTokens = getPassAiSlackApiTokenConfig();
-      const botDeliveryToken = isPassAiSlackBotApiToken(slackApiTokens.botToken || "")
-        ? (slackApiTokens.botToken || "")
-        : (
-          isPassAiSlackBotApiToken(slackApiTokens.userToken || "")
-            ? (slackApiTokens.userToken || "")
-            : ""
-        );
       await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
       const response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_USER", {
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
@@ -3115,14 +3167,14 @@
         avatarUrl: recipient.avatarUrl || "",
         directChannelId: "",
         markdownText: buildPassTransitionShareMarkdown(rows, noteText, recipient),
-        botToken: botDeliveryToken,
+        botToken: "",
         userToken: slackApiTokens.userToken || "",
         autoBootstrapSlackTab: true,
         preferApiFirst: true,
-        preferBotDmDelivery: !!botDeliveryToken,
+        preferBotDmDelivery: false,
         requireNativeNewMessage: false,
         requireBotDelivery: false,
-        allowBotDelivery: !!botDeliveryToken,
+        allowBotDelivery: false,
         skipUnreadMark: true,
         forceNewMessage: true
       });
@@ -3132,7 +3184,7 @@
         const responseCodeLabel = responseCode ? ("[" + responseCode + "] ") : "";
         throw new Error(responseCodeLabel + responseMessage);
       }
-      const recipientLabel = recipient.userName || recipient.label || recipient.userId;
+      const recipientLabel = recipient.label || recipient.userName || recipient.userId;
       const sentRows = Math.min(rows.length, SLACK_IT_TO_ME_MAX_ROWS);
       const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
       const deliveryMode = String(response && response.delivery_mode || "").trim();
@@ -5587,25 +5639,17 @@
   }
 
   function getZipToolSlackDeeplinkBaseUrl() {
-    const openIdConfig = getPassAiSlackOpenIdConfig();
-    try {
-      if (chrome && chrome.identity && typeof chrome.identity.getRedirectURL === "function") {
-        const preferredPath = String(
-          openIdConfig && openIdConfig.redirectPath
-          || PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH
-        ).trim() || PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH;
-        const runtimeCandidates = [
-          chrome.identity.getRedirectURL(preferredPath),
-          chrome.identity.getRedirectURL("slack-openid"),
-          chrome.identity.getRedirectURL("")
-        ];
-        for (let i = 0; i < runtimeCandidates.length; i += 1) {
-          const resolved = normalizeZipKeyRedirectUri(runtimeCandidates[i]);
-          if (resolved) return resolved;
-        }
-      }
-    } catch (_) {}
-    return normalizeZipKeyRedirectUri(ZIP_OFFICIAL_SLACK_REDIRECT_URI);
+    // ZIP footer deeplinks must stay on the official ZipTool chromiumapp
+    // prefix so shared Blondie code never routes users into another app.
+    const candidates = [
+      ZIP_OFFICIAL_WORKSPACE_DEEPLINK_URI,
+      ZIP_OFFICIAL_SLACK_REDIRECT_URI
+    ];
+    for (let i = 0; i < candidates.length; i += 1) {
+      const resolved = normalizeZipKeyRedirectUri(candidates[i]);
+      if (resolved) return resolved;
+    }
+    return "";
   }
 
   function buildZipToolSlackDeeplinkUrl() {
@@ -7546,6 +7590,78 @@
     window.history.replaceState({}, document.title, nextUrl);
   }
 
+  function normalizeQueuedZipWorkspaceClientDeeplink(value) {
+    const source = value && typeof value === "object" ? value : {};
+    const encodedPayload = String(source.encodedPayload || "").trim();
+    const targetTabId = Number(source.targetTabId);
+    if (!encodedPayload || !Number.isFinite(targetTabId) || targetTabId <= 0) return null;
+    return {
+      encodedPayload,
+      targetTabId,
+      createdAtMs: Math.max(0, Number(source.createdAtMs || 0))
+    };
+  }
+
+  async function clearStoredZipWorkspaceDeeplinkIfMatches(encodedPayload, targetTabId) {
+    const stored = await getChromeStorageLocal([ZIP_PENDING_WORKSPACE_CLIENT_DEEPLINK_STORAGE_KEY]).catch(() => ({}));
+    const current = normalizeQueuedZipWorkspaceClientDeeplink(stored && stored[ZIP_PENDING_WORKSPACE_CLIENT_DEEPLINK_STORAGE_KEY]);
+    if (!current) return false;
+    if (current.encodedPayload !== String(encodedPayload || "").trim()) return false;
+    if (Number(current.targetTabId) !== Number(targetTabId)) return false;
+    await removeChromeStorageLocal([ZIP_PENDING_WORKSPACE_CLIENT_DEEPLINK_STORAGE_KEY]).catch(() => {});
+    return true;
+  }
+
+  async function consumeStoredZipWorkspaceDeeplinkForCurrentClient() {
+    if (IS_WORKSPACE_MODE) return false;
+    const stored = await getChromeStorageLocal([ZIP_PENDING_WORKSPACE_CLIENT_DEEPLINK_STORAGE_KEY]).catch(() => ({}));
+    const queued = normalizeQueuedZipWorkspaceClientDeeplink(stored && stored[ZIP_PENDING_WORKSPACE_CLIENT_DEEPLINK_STORAGE_KEY]);
+    if (!queued) return false;
+    const currentZendeskTabId = Number(state.zendeskTabId);
+    if (Number.isFinite(currentZendeskTabId) && currentZendeskTabId > 0 && queued.targetTabId !== currentZendeskTabId) {
+      return false;
+    }
+    const accepted = handleRuntimeWorkspaceDeeplinkMessage({
+      encodedPayload: queued.encodedPayload,
+      targetTabId: queued.targetTabId
+    });
+    if (!accepted) return false;
+    await removeChromeStorageLocal([ZIP_PENDING_WORKSPACE_CLIENT_DEEPLINK_STORAGE_KEY]).catch(() => {});
+    return true;
+  }
+
+  function handleRuntimeWorkspaceDeeplinkMessage(messagePayload) {
+    if (IS_WORKSPACE_MODE) return false;
+    const payloadSource = messagePayload && typeof messagePayload === "object" ? messagePayload : {};
+    const encodedPayload = String(payloadSource.encodedPayload || "").trim();
+    if (!encodedPayload) return false;
+    const parsedPayload = parseZipWorkspaceDeeplinkPayload(encodedPayload);
+    if (!parsedPayload) return false;
+    const targetTabId = Number(payloadSource.targetTabId);
+    if (Number.isFinite(targetTabId) && targetTabId > 0 && state.zendeskTabId != null) {
+      const currentZendeskTabId = Number(state.zendeskTabId);
+      if (Number.isFinite(currentZendeskTabId) && currentZendeskTabId > 0 && currentZendeskTabId !== targetTabId) {
+        return false;
+      }
+    }
+    state.pendingWorkspaceDeeplink = parsedPayload;
+    clearStoredZipWorkspaceDeeplinkIfMatches(encodedPayload, targetTabId).catch(() => {});
+    if (!state.user) return true;
+    applyPendingWorkspaceDeeplink()
+      .then((deeplinkResult) => {
+        if (!deeplinkResult || !deeplinkResult.applied) return;
+        if (deeplinkResult.sourceKind === "ticket") {
+          setStatus("ZIP deeplink ready for ZD #" + deeplinkResult.sourceId + ". " + getTicketTableContextStatusMessage(), false);
+        } else {
+          setStatus("ZIP deeplink ready. " + getTicketTableContextStatusMessage(), false);
+        }
+      })
+      .catch((err) => {
+        setStatus("ZIP deeplink failed: " + formatErrorMessage(err, "Unknown error"), true);
+      });
+    return true;
+  }
+
   function decodeZipKeyPayloadBase64(value) {
     const compact = String(value || "")
       .replace(/\s+/g, "")
@@ -8093,7 +8209,11 @@
       throw new Error(String(response && response.error || "Unable to persist ZIP.KEY secrets."));
     }
     writeZipConfigMeta(meta);
+    invalidatePassTransitionRecipientState();
     await refreshZipSecretConfigFromStorage();
+    if (isPassAiSlacktivated()) {
+      prefetchPassTransitionRecipients({ force: true }).catch(() => {});
+    }
   }
 
   function getZipConfigGateStatus() {
@@ -8640,6 +8760,14 @@
     const requestedStatusMessage = normalizePassAiSlackStatusMessage(
       nextState && (nextState.statusMessage || nextState.status_message || "")
     );
+    const shouldResetPassTransitionRecipients = !ready || !!(
+      requestedUserId
+      && priorUserId
+      && requestedUserId !== priorUserId
+    );
+    if (shouldResetPassTransitionRecipients) {
+      invalidatePassTransitionRecipientState();
+    }
     const preservePreviousIdentity = !requestedUserId || !priorUserId || requestedUserId === priorUserId;
     const hasRequestedWebReady = !!(
       nextState
@@ -8692,6 +8820,10 @@
       state.passAiSlackAuthError = String((nextState && nextState.error) || "").trim();
     }
     updateTicketActionButtons();
+
+    if (state.passAiSlackReady && state.passAiSlackWebReady) {
+      prefetchPassTransitionRecipients({ force: false }).catch(() => {});
+    }
 
     if (clearPersisted) {
       slackSessionCacheHydrated = true;
@@ -12537,6 +12669,7 @@
       return true;
     }
     if (msg.type === "ZIP_KEY_CLEARED") {
+      invalidatePassTransitionRecipientState();
       refreshZipSecretConfigFromStorage()
         .catch(() => {})
         .then(() => {
@@ -12596,8 +12729,15 @@
     if (typeof window !== "undefined") window.__ZIP_LOGIN_HANDLER_READY__ = true;
     retryCatalogLoadOnSelectFocus();
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage && chrome.runtime.onMessage.addListener) {
-      chrome.runtime.onMessage.addListener((msg) => {
+      chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (!msg || typeof msg !== "object") return;
+        if (msg.type === ZIP_APPLY_WORKSPACE_DEEPLINK_MESSAGE_TYPE) {
+          const accepted = handleRuntimeWorkspaceDeeplinkMessage(msg.payload);
+          if (typeof sendResponse === "function") {
+            sendResponse({ ok: true, accepted });
+          }
+          return;
+        }
         if (msg.type === "ZIP_THEME_CHANGED") {
           applyThemeState(msg);
           return;
@@ -12610,7 +12750,9 @@
         refreshZipSecretConfigFromStorage()
           .then(() => applyZipConfigAfterStorageRefresh({ reportStatus: false }))
           .catch(() => {});
-        loadSidePanelContext();
+        loadSidePanelContext()
+          .then(() => consumeStoredZipWorkspaceDeeplinkForCurrentClient())
+          .catch(() => {});
         loadContextMenuUpdateState(false).catch(() => {});
         loadThemeState().catch(() => {});
         if (state.user) refreshSlacktivatedState({ silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
@@ -12630,7 +12772,9 @@
           refreshZipSecretConfigFromStorage()
             .then(() => applyZipConfigAfterStorageRefresh({ reportStatus: false }))
             .catch(() => {});
-          loadSidePanelContext();
+          loadSidePanelContext()
+            .then(() => consumeStoredZipWorkspaceDeeplinkForCurrentClient())
+            .catch(() => {});
           loadContextMenuUpdateState(false).catch(() => {});
           loadThemeState().catch(() => {});
           if (state.user) refreshSlacktivatedState({ silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
@@ -13179,6 +13323,7 @@
     await refreshZipSecretConfigFromStorage().catch(() => {});
     await loadThemeState().catch(() => {});
     await loadSidePanelContext().catch(() => {});
+    await consumeStoredZipWorkspaceDeeplinkForCurrentClient().catch(() => false);
     initializeZdApiContainerVisibility();
     populateAppDescription();
     populateApiPathSelect();
