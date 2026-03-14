@@ -34,14 +34,31 @@ function loadPassAiMarkdownHelpers() {
     extractFunctionSource(source, "normalizePassAiMarkdownRefKey"),
     extractFunctionSource(source, "isPassAiHttpUrl"),
     extractFunctionSource(source, "decodePassAiHtmlEntities"),
+    extractFunctionSource(source, "isPassAiUnderParUrl"),
+    extractFunctionSource(source, "shouldStripPassAiUnderParContextParam"),
+    extractFunctionSource(source, "stripPassAiUnderParContextParams"),
+    extractFunctionSource(source, "sanitizePassAiUnderParHash"),
+    extractFunctionSource(source, "sanitizePassAiMarkdownHref"),
     extractFunctionSource(source, "buildPassAiMarkdownLinkHtml"),
     extractFunctionSource(source, "replacePassAiMarkdownInlineLinks"),
     extractFunctionSource(source, "renderPassAiInlineMarkdown"),
     "module.exports = { renderPassAiInlineMarkdown };"
   ].join("\n\n");
-  const context = { module: { exports: {} }, exports: {} };
+  const context = {
+    module: { exports: {} },
+    exports: {},
+    URL,
+    URLSearchParams,
+    decodeURIComponent
+  };
   vm.runInNewContext(script, context, { filename: SIDEPANEL_JS_PATH });
   return context.module.exports;
+}
+
+function extractHref(html) {
+  const match = String(html || "").match(/href="([^"]+)"/);
+  assert.ok(match, "Expected rendered HTML to include an href.");
+  return match[1].replace(/&amp;/g, "&");
 }
 
 test("renderPassAiInlineMarkdown preserves full UnderPAR-style query links", () => {
@@ -55,4 +72,49 @@ test("renderPassAiInlineMarkdown preserves full UnderPAR-style query links", () 
   );
   assert.doesNotMatch(html, /&amp;amp;/);
   assert.match(html, />in UnderPAR<\/a>/);
+});
+
+test("renderPassAiInlineMarkdown strips UnderPAR global context query params", () => {
+  const { renderPassAiInlineMarkdown } = loadPassAiMarkdownHelpers();
+  const url = "https://underpar.example/search?workspace=cmu&query=(status:open%20AND%20service:cmu)&globalContext=%7B%22env%22%3A%22ENV3%22%7D&environment=ENV3&mediaCompany=MediaCompany4";
+  const html = renderPassAiInlineMarkdown("[in UnderPAR](" + url + ")", {});
+  const href = extractHref(html);
+  const parsed = new URL(href);
+
+  assert.equal(parsed.origin + parsed.pathname, "https://underpar.example/search");
+  assert.equal(parsed.searchParams.get("workspace"), "cmu");
+  assert.equal(parsed.searchParams.get("query"), "(status:open AND service:cmu)");
+  assert.equal(parsed.searchParams.get("globalContext"), null);
+  assert.equal(parsed.searchParams.get("environment"), null);
+  assert.equal(parsed.searchParams.get("mediaCompany"), null);
+  assert.doesNotMatch(html, /globalContext|environment=|mediaCompany=/);
+});
+
+test("renderPassAiInlineMarkdown strips UnderPAR hash-route global context params", () => {
+  const { renderPassAiInlineMarkdown } = loadPassAiMarkdownHelpers();
+  const url = "https://underpar.example/#/cm-workspace?workspace=cmu&selectedEnv=ENV4&selectedMediaCompany=MediaCompany3&query=service:cmu";
+  const html = renderPassAiInlineMarkdown("[in UnderPAR](" + url + ")", {});
+  const href = extractHref(html);
+  const parsed = new URL(href);
+  const hashQuery = parsed.hash.split("?")[1] || "";
+  const hashParams = new URLSearchParams(hashQuery);
+
+  assert.equal(parsed.origin + parsed.pathname, "https://underpar.example/");
+  assert.ok(parsed.hash.startsWith("#/cm-workspace?"), "Expected the CM workspace hash route to be preserved.");
+  assert.equal(hashParams.get("workspace"), "cmu");
+  assert.equal(hashParams.get("query"), "service:cmu");
+  assert.equal(hashParams.get("selectedEnv"), null);
+  assert.equal(hashParams.get("selectedMediaCompany"), null);
+  assert.doesNotMatch(html, /selectedEnv|selectedMediaCompany/);
+});
+
+test("renderPassAiInlineMarkdown preserves non-UnderPAR query context", () => {
+  const { renderPassAiInlineMarkdown } = loadPassAiMarkdownHelpers();
+  const url = "https://example.com/search?workspace=cmu&environment=ENV3";
+  const html = renderPassAiInlineMarkdown("[external](" + url + ")", {});
+
+  assert.ok(
+    html.includes('href="https://example.com/search?workspace=cmu&amp;environment=ENV3"'),
+    "Expected non-UnderPAR links to remain unchanged."
+  );
 });

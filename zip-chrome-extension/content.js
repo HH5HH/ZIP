@@ -4100,7 +4100,7 @@
     text.style.cursor = "pointer";
     text.style.color = "#1473e6";
     text.style.textDecoration = "underline";
-    text.textContent = "ZipTool: Please drop ZIP.KEY - click to configure";
+    text.textContent = "ZipTool: Please drop ZIP.KEY to SLACKTIVATE";
     text.addEventListener("click", () => openZipOptionsFromContent());
 
     const close = document.createElement("button");

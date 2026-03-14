@@ -77,6 +77,20 @@
     return "";
   }
 
+  function readZipKeyListValue(payload, candidates) {
+    const list = Array.isArray(candidates) ? candidates : [];
+    for (let i = 0; i < list.length; i += 1) {
+      const value = getZipKeyValueByPath(payload, list[i]);
+      if (value == null) continue;
+      if (Array.isArray(value)) return normalizeSlackUserIdCsv(value);
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed) return trimmed;
+      }
+    }
+    return "";
+  }
+
   function normalizeScope(value) {
     const raw = String(value || "").trim().toLowerCase();
     if (!raw) return DEFAULT_SCOPE;
@@ -125,6 +139,53 @@
   function normalizeChannelId(value) {
     const channelId = String(value || "").trim().toUpperCase();
     return /^[CGD][A-Z0-9]{8,}$/.test(channelId) ? channelId : "";
+  }
+
+  function normalizeChannelName(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const withoutPrefix = raw.replace(/^#+/, "").trim();
+    if (!withoutPrefix) return "";
+    return "#" + withoutPrefix;
+  }
+
+  function normalizeSlackUserIdList(value) {
+    const out = [];
+    const seen = new Set();
+    const add = (candidate) => {
+      const normalized = String(candidate || "").trim().toUpperCase();
+      if (!/^[UW][A-Z0-9]{8,}$/.test(normalized) || seen.has(normalized)) return;
+      seen.add(normalized);
+      out.push(normalized);
+    };
+    if (Array.isArray(value)) {
+      value.forEach(add);
+      return out;
+    }
+    const raw = String(value || "").trim();
+    if (!raw) return out;
+    if (raw.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(add);
+          return out;
+        }
+      } catch (_) {}
+    }
+    raw.split(/[\s,|]+/).forEach(add);
+    return out;
+  }
+
+  function normalizeSlackUserIdCsv(value) {
+    return normalizeSlackUserIdList(value).join(",");
+  }
+
+  function normalizeIsoDateTime(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const stamp = Date.parse(raw);
+    return Number.isFinite(stamp) ? new Date(stamp).toISOString() : "";
   }
 
   function normalizeMention(value) {
@@ -300,6 +361,71 @@
       "singularity.mention",
       "mention"
     ]));
+    const passTransitionChannelId = normalizeChannelId(readZipKeyValue(payload, [
+      "services.slacktivation.pass_transition.channel_id",
+      "services.slacktivation.pass_transition.channelId",
+      "services.slacktivation.pass_transition_channel_id",
+      "services.slacktivation.passTransitionChannelId",
+      "slacktivation.pass_transition.channel_id",
+      "slacktivation.pass_transition.channelId",
+      "slacktivation.pass_transition_channel_id",
+      "slacktivation.passTransitionChannelId",
+      "pass_transition.channel_id",
+      "pass_transition.channelId",
+      "pass_transition_channel_id",
+      "passTransitionChannelId"
+    ]));
+    const passTransitionChannelName = normalizeChannelName(readZipKeyValue(payload, [
+      "services.slacktivation.pass_transition.channel_name",
+      "services.slacktivation.pass_transition.channelName",
+      "services.slacktivation.pass_transition_channel_name",
+      "services.slacktivation.passTransitionChannelName",
+      "slacktivation.pass_transition.channel_name",
+      "slacktivation.pass_transition.channelName",
+      "slacktivation.pass_transition_channel_name",
+      "slacktivation.passTransitionChannelName",
+      "pass_transition.channel_name",
+      "pass_transition.channelName",
+      "pass_transition_channel_name",
+      "passTransitionChannelName"
+    ]));
+    const passTransitionMemberIds = normalizeSlackUserIdList(readZipKeyListValue(payload, [
+      "services.slacktivation.pass_transition.member_ids",
+      "services.slacktivation.pass_transition.memberIds",
+      "services.slacktivation.pass_transition.members",
+      "services.slacktivation.pass_transition_member_ids",
+      "services.slacktivation.passTransitionMemberIds",
+      "slacktivation.pass_transition.member_ids",
+      "slacktivation.pass_transition.memberIds",
+      "slacktivation.pass_transition.members",
+      "slacktivation.pass_transition_member_ids",
+      "slacktivation.passTransitionMemberIds",
+      "pass_transition.member_ids",
+      "pass_transition.memberIds",
+      "pass_transition.members",
+      "pass_transition_member_ids",
+      "passTransitionMemberIds"
+    ]));
+    const passTransitionMembersSyncedAt = normalizeIsoDateTime(readZipKeyValue(payload, [
+      "services.slacktivation.pass_transition.members_synced_at",
+      "services.slacktivation.pass_transition.membersSyncedAt",
+      "services.slacktivation.pass_transition.last_synced_at",
+      "services.slacktivation.pass_transition.lastSyncedAt",
+      "services.slacktivation.pass_transition_members_synced_at",
+      "services.slacktivation.passTransitionMembersSyncedAt",
+      "slacktivation.pass_transition.members_synced_at",
+      "slacktivation.pass_transition.membersSyncedAt",
+      "slacktivation.pass_transition.last_synced_at",
+      "slacktivation.pass_transition.lastSyncedAt",
+      "slacktivation.pass_transition_members_synced_at",
+      "slacktivation.passTransitionMembersSyncedAt",
+      "pass_transition.members_synced_at",
+      "pass_transition.membersSyncedAt",
+      "pass_transition.last_synced_at",
+      "pass_transition.lastSyncedAt",
+      "pass_transition_members_synced_at",
+      "passTransitionMembersSyncedAt"
+    ]));
     const missingFields = [];
     if (!userToken) missingFields.push("user_token");
     if (!singularityChannelId) missingFields.push("singularity_channel_id");
@@ -323,6 +449,12 @@
       singularity: {
         channelId: singularityChannelId,
         mention: singularityMention
+      },
+      passTransition: {
+        channelId: passTransitionChannelId,
+        channelName: passTransitionChannelName,
+        memberIds: passTransitionMemberIds,
+        membersSyncedAt: passTransitionMembersSyncedAt
       },
       meta: {
         keyVersion: String(readZipKeyValue(payload, ["keyVersion", "version", "meta.version"]) || "").trim(),
@@ -349,22 +481,22 @@
   }
 
   async function refreshStatus() {
-    setStatus("Checking current ZIP.KEY status…");
+    setStatus("Checking ZIP.KEY SLACKTIVATION status…");
     try {
       const status = await sendBackgroundRequest("ZIP_CHECK_SECRETS");
       if (status && status.ok) {
-        setStatus("ZIP.KEY is loaded and required Slack secrets are available.", { ok: true });
+        setStatus("ZIP.KEY is SLACKTIVATED and required Slack bridge secrets are available.", { ok: true });
       } else {
-        setStatus("ZIP.KEY is not loaded. Import a ZIP.KEY file to continue.", { error: true });
+        setStatus("ZIP.KEY is not SLACKTIVATED. Import a ZIP.KEY file to continue.", { error: true });
       }
     } catch (err) {
-      setStatus("Unable to read ZIP.KEY status: " + (err && err.message ? err.message : "Unknown error"), { error: true });
+      setStatus("Unable to read ZIP.KEY SLACKTIVATION status: " + (err && err.message ? err.message : "Unknown error"), { error: true });
     }
   }
 
   async function importZipKey() {
     if (els.importBtn) els.importBtn.disabled = true;
-    setStatus("Importing ZIP.KEY…");
+    setStatus("SLACKTIVATING ZIP.KEY…");
     try {
       const payloadText = await getImportPayloadText();
       if (!payloadText) {
@@ -378,7 +510,7 @@
       }
       if (els.text) els.text.value = "";
       if (els.file) els.file.value = "";
-      setStatus("ZIP.KEY imported successfully.", { ok: true });
+      setStatus("ZIP.KEY imported successfully. SLACKTIVATION is ready.", { ok: true });
     } catch (err) {
       setStatus(String(err && err.message || "Unable to import ZIP.KEY."), { error: true });
     } finally {
@@ -398,13 +530,13 @@
       return;
     }
     if (els.clearBtn) els.clearBtn.disabled = true;
-    setStatus("Clearing ZIP.KEY secrets…");
+    setStatus("Clearing ZIP.KEY SLACKTIVATION secrets…");
     try {
       const response = await sendBackgroundRequest("ZIP_CLEAR_KEY");
       if (!response || response.ok !== true) {
         throw new Error(String(response && response.error || "Unable to clear ZIP.KEY."));
       }
-      setStatus("ZIP.KEY secrets cleared.", { ok: true });
+      setStatus("ZIP.KEY SLACKTIVATION secrets cleared.", { ok: true });
     } catch (err) {
       setStatus(String(err && err.message || "Unable to clear ZIP.KEY."), { error: true });
     } finally {

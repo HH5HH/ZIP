@@ -67,7 +67,7 @@
         </div>
         <div class="login-card-left">
           <section id="zipConfigGate" class="zip-config-gate" aria-live="polite">
-            <h2 class="zip-config-gate-title">Please drop ZIP.KEY to activate</h2>
+            <h2 class="zip-config-gate-title">Please drop ZIP.KEY to SLACKTIVATE</h2>
             <p id="zipConfigGateMessage" class="zip-config-gate-message">
               Drag and drop your ZIP.KEY file onto the target below.
             </p>
@@ -77,7 +77,7 @@
               type="button"
               aria-describedby="zipConfigGateMeta"
             >
-              <span id="zipConfigDropAction" class="spectrum-Button-label">DROP ZIP.KEY TO ACTIVATE</span>
+              <span id="zipConfigDropAction" class="spectrum-Button-label">DROP ZIP.KEY TO SLACKTIVATE</span>
             </button>
             <input
               id="zipConfigFileInput"
@@ -85,7 +85,7 @@
               type="file"
               accept=".key,.txt,text/plain,application/octet-stream"
             />
-            <p id="zipConfigGateMeta" class="zip-config-gate-meta">Supports ZIPKEY1 files.</p>
+            <p id="zipConfigGateMeta" class="zip-config-gate-meta hidden"></p>
           </section>
           <button
             id="zipLoginBtn"
@@ -174,11 +174,11 @@
               <path d="M12 5a7 7 0 1 1-6.93 8h2.03a5 5 0 1 0 1.24-4.1L11 11H4V4l2.81 2.81A8.96 8.96 0 0 1 12 5z" fill="currentColor"></path>
             </svg>
           </button>
-          <button id="zipSlackItToMeBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="zip-zap tickets to SLACK" aria-label="zip-zap tickets to SLACK" disabled>
+          <button id="zipSlackItToMeBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Click: zip-zap tickets to SLACK. Shift+Click: share visible tickets to PASS-TRANSITION." aria-label="Click: zip-zap tickets to SLACK. Shift+Click: share visible tickets to PASS-TRANSITION." disabled>
             <img
               id="zipSlackPanelIcon"
               class="zip-slack-panel-icon zip-round-z-icon"
-              src="assets/brand/icons/icon128.png"
+              src="assets/blondie-button-inactive.png"
               alt=""
               aria-hidden="true"
             />
@@ -337,6 +337,13 @@
           <span id="zipSlackMeRecipientLabel" class="zip-slack-me-recipient-label">you</span>
           <button id="zipSlackMeCloseBtn" class="zip-slack-me-dialog-close" type="button" aria-label="Close Slack note dialog">&times;</button>
         </div>
+        <div id="zipSlackMeRecipientSelectWrap" class="zip-slack-me-recipient-select-wrap hidden">
+          <label class="zip-visually-hidden" for="zipSlackMeRecipientSelect">PASS-TRANSITION member</label>
+          <select id="zipSlackMeRecipientSelect" class="zip-select-control zip-slack-me-recipient-select" aria-label="PASS-TRANSITION member">
+            <option value="">Choose PASS-TRANSITION member</option>
+          </select>
+          <p id="zipSlackMeRecipientHelp" class="zip-slack-me-recipient-help">Shift+Click shares the visible ticket view with one PASS-TRANSITION member.</p>
+        </div>
       </div>
       <label class="zip-visually-hidden" for="zipSlackMeInput">Slack message</label>
       <div class="zip-slack-me-editor-shell">
@@ -351,7 +358,7 @@
         <textarea id="zipSlackMeInput" class="zip-slack-me-input spectrum-Textfield-input" rows="6" placeholder="Type your personal Slack note..."></textarea>
         <div class="zip-slack-me-editor-footer">
           <button id="zipSlackMeSendBtn" class="btn spectrum-Button spectrum-Button--fill spectrum-Button--accent spectrum-Button--sizeS" type="button">
-            <span class="spectrum-Button-label">SEND</span>
+            <span id="zipSlackMeSendLabel" class="spectrum-Button-label">SEND</span>
           </button>
         </div>
       </div>
