@@ -1823,6 +1823,23 @@ body.zip-ticket-cloud-search-busy * {
   color: var(--zip-menu-fg);
 }
 
+.zip-slack-me-recipient-select-wrap {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.zip-slack-me-recipient-select {
+  width: 100%;
+}
+
+.zip-slack-me-recipient-help {
+  margin: 0;
+  color: color-mix(in srgb, var(--zip-menu-fg-subtle) 92%, transparent);
+  font-size: var(--spectrum-font-size-75);
+  line-height: 1.35;
+}
+
 .zip-slack-me-dialog-close {
   margin-left: auto;
   border: none;
@@ -2942,9 +2959,20 @@ input::placeholder {
 }
 
 .zip-slack-panel-icon {
-  inline-size: 14px;
-  block-size: 14px;
+  inline-size: 16px;
+  block-size: 16px;
   flex: 0 0 auto;
+  object-fit: cover;
+}
+
+#zipSlackItToMeBtn:disabled .zip-slack-panel-icon {
+  filter: none;
+  opacity: 1;
+}
+
+#zipSlackItToMeBtn:not(:disabled) .zip-slack-panel-icon {
+  filter: none;
+  opacity: 1;
 }
 
 #zipSlackPanelIcon .zip-logo-z {

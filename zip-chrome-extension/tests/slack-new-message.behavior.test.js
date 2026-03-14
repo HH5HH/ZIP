@@ -30,6 +30,15 @@ test("background sanitizes Slack self-DM payloads to always send new messages", 
   assert.match(source, /delivery_mode:\s*"bot_direct_channel"/);
 });
 
+test("background targeted recipient send requires the requested Slack user", () => {
+  const source = fs.readFileSync(BACKGROUND_JS_PATH, "utf8");
+  assert.match(source, /async function slackSendMarkdownToUserViaApi\(input\)/);
+  assert.match(source, /preferRequestedUser:\s*true/);
+  assert.match(source, /requireRequestedUser:\s*true/);
+  assert.match(source, /msg\.type === "ZIP_SLACK_API_SEND_TO_USER"/);
+  assert.match(source, /if \(requireRequestedUser\) \{\s*pushUserIdCandidate\(requestedUserId\);/);
+});
+
 test("content self-DM action strips thread fields before chat.postMessage", () => {
   const source = fs.readFileSync(CONTENT_JS_PATH, "utf8");
   assert.match(source, /async function slackSendMarkdownToSelfAction\(inner\)/);
@@ -51,4 +60,26 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
   assert.match(source, /const sendPayload = \{[\s\S]*skipUnreadMark:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*directChannelId:\s*normalizePassAiSlackDirectChannelId\(state\.passAiSlackDirectChannelId \|\| ""\)[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*botToken:\s*botDeliveryToken[\s\S]*\};/);
+});
+
+test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", () => {
+  const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
+  assert.match(source, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition" \}\)/);
+  assert.match(source, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS"/);
+  assert.match(source, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER"/);
+});
+
+test("workspace deeplinks route through the redirect URL into ZIP workspace mode", () => {
+  const background = fs.readFileSync(BACKGROUND_JS_PATH, "utf8");
+  const sidepanel = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
+
+  assert.match(background, /const ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM = "zipdeeplink";/);
+  assert.match(background, /function parseZipWorkspaceDeeplinkUrl\(value\)/);
+  assert.match(background, /function maybeRouteZipWorkspaceDeeplinkTab\(tabId,\s*url\)/);
+  assert.match(background, /chrome\.tabs\.onUpdated\.addListener\(\(tabId,\s*_info,\s*tab\) => \{[\s\S]*if \(maybeRouteZipWorkspaceDeeplinkTab\(tabId,\s*tab\.url\)\) return;/);
+
+  assert.match(sidepanel, /function loadSingleTicketById\(ticketId\)/);
+  assert.match(sidepanel, /function applyPendingWorkspaceDeeplink\(\)/);
+  assert.match(sidepanel, /state\.pendingWorkspaceDeeplink = readZipWorkspaceDeeplinkFromLocation\(\);/);
+  assert.match(sidepanel, /await openTicketFromWorkspaceDeeplink\(TICKET_URL_PREFIX \+ ticketId,\s*ticketId\);/);
 });

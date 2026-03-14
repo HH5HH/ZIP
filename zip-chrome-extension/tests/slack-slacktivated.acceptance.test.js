@@ -39,6 +39,9 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(html, /class="zip-slack-me-recipient-field"/);
   assert.match(html, /id="zipSlackMeRecipientAvatar"/);
   assert.match(html, /id="zipSlackMeRecipientLabel"/);
+  assert.match(html, /id="zipSlackMeRecipientSelectWrap"/);
+  assert.match(html, /id="zipSlackMeRecipientSelect"/);
+  assert.match(html, /id="zipSlackMeRecipientHelp"/);
   assert.match(html, /class="zip-slack-me-editor-shell"/);
   assert.match(html, /class="zip-slack-me-toolbar"/);
   assert.doesNotMatch(html, /data-slack-format="bold"/);
@@ -61,13 +64,14 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(html, /id="zipTogglePassAiIcon"/);
   assert.match(html, /id="zipSlackItToMeBtn"/);
   assert.match(html, /id="zipSlackPanelIcon"/);
-  assert.match(html, /id="zipSlackItToMeBtn"[\s\S]*title="zip-zap tickets to SLACK"/);
+  assert.match(html, /id="zipSlackItToMeBtn"[\s\S]*Shift\+Click: share visible tickets to PASS-TRANSITION\./);
   assert.match(html, /<script src="slack-runtime-config\.js"><\/script>/);
   assert.match(html, /id="zipTogglePassAiBtn"[^>]*class="[^"]*\bhidden\b[^"]*"/);
   assert.doesNotMatch(html, /id="zipSlackItToMeBtn"[^>]*class="[^"]*\bhidden\b[^"]*"/);
   assert.doesNotMatch(html, /id="zipSlackLoginBtn"/);
 
   assert.match(js, /SLACKTIVATED_LOGIN_TOOLTIP/);
+  assert.match(js, /SLACK_IT_TO_ME_DUAL_MODE_TOOLTIP = "Click: zip-zap tickets to SLACK\. Shift\+Click: share visible tickets to PASS-TRANSITION\."/);
   assert.match(js, /slacktivatedBtn:\s*\$\("zipSlacktivatedBtn"\)/);
   assert.match(js, /slacktivatedStatusWrap:\s*\$\("zipSlacktivatedStatusWrap"\)/);
   assert.match(js, /contextMenuClearKey:\s*\$\("zipContextMenuClearKey"\)/);
@@ -75,6 +79,13 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /slackMeDialogBackdrop:\s*\$\("zipSlackMeDialogBackdrop"\)/);
   assert.match(js, /slackMeInput:\s*\$\("zipSlackMeInput"\)/);
   assert.match(js, /slackMeRecipientAvatar:\s*\$\("zipSlackMeRecipientAvatar"\)/);
+  assert.match(js, /slackMeRecipientSelect:\s*\$\("zipSlackMeRecipientSelect"\)/);
+  assert.match(js, /slackMeRecipientHelp:\s*\$\("zipSlackMeRecipientHelp"\)/);
+  assert.match(js, /slackMeSendLabel:\s*\$\("zipSlackMeSendLabel"\)/);
+  assert.match(js, /function getSlackMeDialogMode\(\)/);
+  assert.match(js, /function loadPassTransitionRecipients\(options\)/);
+  assert.match(js, /function buildPassTransitionShareMarkdown\(rows,\s*noteText,\s*recipient\)/);
+  assert.match(js, /function sendPassTransitionShareFromDialog\(\)/);
   assert.match(js, /function syncSlackMeRecipientIdentity\(\)/);
   assert.match(js, /function normalizeSlackMeDraftText\(value\)/);
   assert.match(js, /function convertSlackMeDraftToMrkdwn\(value\)/);
@@ -110,6 +121,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /els\.passAiToggleBtn\.classList\.toggle\("hidden", !hasSelectedTicket\)/);
   assert.match(js, /els\.slackItToMeBtn\.classList\.remove\("hidden"\)/);
   assert.match(js, /const canUseSlackItToMe = slackReady/);
+  assert.match(js, /const slackItToMeTitle = slackReady \? SLACK_IT_TO_ME_DUAL_MODE_TOOLTIP : SLACKTIVATED_LOGIN_TOOLTIP;/);
   assert.match(js, /function isPassAiSlacktivated\(\)\s*\{\s*return !!\(state\.passAiSlackReady && state\.passAiSlackWebReady\);\s*\}/);
   assert.match(js, /function buildPassAiSlackLoginUrl\(\)\s*\{\s*return buildPassAiSlackWorkspaceLandingUrl\(\);\s*\}/);
   assert.match(js, /getSlackTabCandidates\(\{\s*injectableOnly: true,\s*includeBackground: true,\s*workspaceOrigin\s*\}\)\.catch/);
@@ -158,8 +170,11 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /allowSlackTabBootstrapCreate:\s*false/);
   assert.match(js, /function getPassAiSlackApiTokenConfig\(\)/);
   assert.match(js, /runContextMenuAction\("clearZipKey"\)/);
-  assert.match(js, /function openSlackMeDialog\(\)/);
+  assert.match(js, /async function openSlackMeDialog\(options\)/);
   assert.match(js, /function sendSlackMeNoteFromDialog\(\)/);
+  assert.match(js, /openSlackMeDialog\(\{ mode: "self" \}\)/);
+  assert.match(js, /els\.slackMeRecipientSelect\.addEventListener\("change"/);
+  assert.match(js, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition" \}\)/);
   assert.match(js, /let shouldCloseSlackMeDialog = false;/);
   assert.match(js, /shouldCloseSlackMeDialog = true;/);
   assert.match(js, /if \(shouldCloseSlackMeDialog\) \{\s*hideSlackMeDialog\(\);/);
@@ -172,6 +187,8 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /function clearSlackMeDialogStatus\(\)/);
   assert.match(js, /setSlackMeDialogStatus\("@SLACK ME failed: " \+ message, true\);/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
+  assert.match(js, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS"/);
+  assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER"/);
   assert.doesNotMatch(js, /sendBackgroundRequest\("ZIP_SLACK_API_QAI_SEND"/);
   assert.doesNotMatch(js, /sendBackgroundRequest\("ZIP_SLACK_API_QAI_POLL"/);
   assert.match(js, /Q&AI primary send transport=slack_web/);
@@ -217,9 +234,14 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /mailto:/);
   assert.match(js, /return "• " \+ parts\.join\(" "\);/);
   assert.match(js, /const ZIP_TOOL_BETA_ARTICLE_URL = "https:\/\/tve\.zendesk\.com\/hc\/en-us\/articles\/46503360732436-ZIP-TOOL-beta";/);
-  assert.match(js, /const ZIP_TOOL_SIGNATURE_TEXT_SLUG = "\/\/ <" \+ ZIP_TOOL_BETA_ARTICLE_URL \+ "\|via ZipTool>";/);
-  assert.match(js, /const ZIP_TOOL_SIGNATURE_ICON_SLUG = ":ziptool: <" \+ ZIP_TOOL_BETA_ARTICLE_URL \+ "\|beta>";/);
-  assert.match(js, /return normalized \+ "\\n\\n" \+ ZIP_TOOL_SIGNATURE_ICON_SLUG;/);
+  assert.match(js, /const ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM = "zipdeeplink";/);
+  assert.match(js, /const ZIP_TOOL_BETA_LINK_LABEL = "zip-zap";/);
+  assert.match(js, /const ZIP_TOOL_DEEPLINK_LINK_LABEL = "in ZipTool";/);
+  assert.match(js, /function buildZipWorkspaceDeeplinkPayload\(\)/);
+  assert.match(js, /function buildZipToolSlackDeeplinkUrl\(\)/);
+  assert.match(js, /function buildZipToolSlackFooterLine\(\)/);
+  assert.match(js, /return normalized \+ "\\n\\n" \+ buildZipToolSlackFooterLine\(\);/);
+  assert.match(js, /const signatureLine = buildZipToolSlackFooterLine\(\);/);
   assert.match(js, /SLACK_TO_ZIPTOOL delivered/);
   assert.match(js, /preferBotDmDelivery:\s*false/);
   assert.match(js, /allowBotDelivery:\s*false/);
@@ -233,6 +255,9 @@ test("sidepanel styles avoid custom Slack header spinner overlay", () => {
   assert.match(css, /\.zip-slack-me-dialog\s*\{[\s\S]*width:\s*min\(980px,\s*calc\(100vw\s*-\s*12px\)\);/);
   assert.match(css, /\.zip-slack-me-recipient-field\s*\{/);
   assert.match(css, /\.zip-slack-me-recipient-chip\s*\{/);
+  assert.match(css, /\.zip-slack-me-recipient-select-wrap\s*\{/);
+  assert.match(css, /\.zip-slack-me-recipient-select\s*\{/);
+  assert.match(css, /\.zip-slack-me-recipient-help\s*\{/);
   assert.match(css, /\.zip-slack-me-editor-shell\s*\{[\s\S]*border:\s*2px\s+solid/);
   assert.match(css, /\.zip-slack-me-toolbar\s*\{[\s\S]*flex-wrap:\s*nowrap;/);
   assert.match(css, /\.zip-slack-me-toolbar\s*\{[\s\S]*overflow-x:\s*auto;/);

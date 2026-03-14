@@ -32,6 +32,10 @@ const ZIP_SLACK_KEY_META_STORAGE_KEY = "zip_slack_key_meta";
 const ZIP_SLACK_SESSION_CACHE_STORAGE_KEY = "zip_slack_session_cache_v1";
 const ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY = "zip_singularity_channel_id";
 const ZIP_SINGULARITY_MENTION_STORAGE_KEY = "zip_singularity_mention";
+const ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY = "zip_pass_transition_channel_id";
+const ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY = "zip_pass_transition_channel_name";
+const ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY = "zip_pass_transition_member_ids";
+const ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY = "zip_pass_transition_members_synced_at";
 // Runtime-config / storage values should populate tokens. Do not hardcode live tokens in source.
 const SLACK_API_DEFAULT_BOT_TOKEN = "";
 const SLACK_API_SECONDARY_BOT_TOKEN = "";
@@ -41,6 +45,7 @@ const SLACK_OPENID_DEFAULT_REDIRECT_PATH = "slack-user";
 const SLACK_OPENID_STATUS_VERIFY_TTL_MS = 60 * 1000;
 const SLACK_TOKEN_FAILURE_BACKOFF_MS = 2 * 60 * 1000;
 const ZIP_PANEL_PATH = "sidepanel.html";
+const ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM = "zipdeeplink";
 const ZIP_CONTENT_SCRIPT_FILE = "content.js";
 const ZENDESK_SUBDOMAIN = (() => {
   try {
@@ -106,7 +111,11 @@ const ZIP_SLACK_STORAGE_KEYS = [
   ZIP_SLACK_KEY_META_STORAGE_KEY,
   ZIP_SLACK_SESSION_CACHE_STORAGE_KEY,
   ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY,
-  ZIP_SINGULARITY_MENTION_STORAGE_KEY
+  ZIP_SINGULARITY_MENTION_STORAGE_KEY,
+  ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
+  ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY,
+  ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY,
+  ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY
 ];
 const THEME_PALETTE_DATA = (
   typeof globalThis !== "undefined"
@@ -225,6 +234,7 @@ const zendeskAuthState = {
 };
 let sessionPollTimerId = null;
 let sessionCheckInFlight = false;
+const zipWorkspaceDeeplinkTabIds = new Set();
 let sessionAboutToExpireSentForDeadline = 0;
 const slackTokenBackoffUntilByToken = new Map();
 const slackMentionUserIdCache = new Map();
@@ -2322,6 +2332,92 @@ function normalizeSingularityMention(value) {
   return "@" + plain;
 }
 
+function normalizeSlackChannelName(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const withoutPrefix = raw.replace(/^#+/, "").trim();
+  if (!withoutPrefix) return "";
+  return "#" + withoutPrefix;
+}
+
+function normalizeSlackUserIdList(value) {
+  const out = [];
+  const seen = new Set();
+  const add = (candidate) => {
+    const normalized = normalizeSlackUserId(candidate);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    out.push(normalized);
+  };
+  if (Array.isArray(value)) {
+    value.forEach(add);
+    return out;
+  }
+  const raw = String(value || "").trim();
+  if (!raw) return out;
+  if (raw.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        parsed.forEach(add);
+        return out;
+      }
+    } catch (_) {}
+  }
+  raw.split(/[\s,|]+/).forEach(add);
+  return out;
+}
+
+function normalizeSlackUserIdCsv(value) {
+  return normalizeSlackUserIdList(value).join(",");
+}
+
+function normalizeIsoDateTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const stamp = Date.parse(raw);
+  return Number.isFinite(stamp) ? new Date(stamp).toISOString() : "";
+}
+
+function buildPassTransitionSnapshot(input) {
+  const source = input && typeof input === "object" ? input : {};
+  const channelId = normalizeSlackChannelId(
+    source.channelId
+    || source.channel_id
+    || source[ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY]
+    || ""
+  );
+  const channelName = normalizeSlackChannelName(
+    source.channelName
+    || source.channel_name
+    || source[ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY]
+    || ""
+  );
+  const memberIds = normalizeSlackUserIdList(
+    source.memberIds
+    || source.member_ids
+    || source.members
+    || source[ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY]
+    || ""
+  );
+  const membersSyncedAt = normalizeIsoDateTime(
+    source.membersSyncedAt
+    || source.members_synced_at
+    || source.lastSyncedAt
+    || source.last_synced_at
+    || source[ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY]
+    || ""
+  );
+  return {
+    channelId,
+    channelName,
+    memberIds,
+    memberCount: memberIds.length,
+    membersSyncedAt,
+    synced: !!(memberIds.length && membersSyncedAt)
+  };
+}
+
 function normalizeZipRedirectPath(value) {
   const raw = String(value || "").trim().replace(/^\/+/, "");
   if (!raw) return SLACK_OPENID_DEFAULT_REDIRECT_PATH;
@@ -2345,6 +2441,73 @@ function normalizeSlackOpenIdRedirectUri(value) {
   if (!host || !host.endsWith(".chromiumapp.org")) return "";
   const pathname = String(parsed.pathname || "").trim() || "/";
   return parsed.origin + pathname;
+}
+
+function getZipWorkspaceDeeplinkRedirectOrigins() {
+  const origins = [];
+  const seen = new Set();
+  const pushOrigin = (value) => {
+    const normalized = normalizeSlackOpenIdRedirectUri(value);
+    if (!normalized) return;
+    try {
+      const parsed = new URL(normalized);
+      if (seen.has(parsed.origin)) return;
+      seen.add(parsed.origin);
+      origins.push(parsed.origin);
+    } catch (_) {}
+  };
+  try {
+    if (chrome.identity && typeof chrome.identity.getRedirectURL === "function") {
+      pushOrigin(chrome.identity.getRedirectURL(""));
+      pushOrigin(chrome.identity.getRedirectURL(SLACK_OPENID_DEFAULT_REDIRECT_PATH));
+      pushOrigin(chrome.identity.getRedirectURL("slack-openid"));
+    }
+  } catch (_) {}
+  return origins;
+}
+
+function parseZipWorkspaceDeeplinkUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  let parsed = null;
+  try {
+    parsed = new URL(raw);
+  } catch (_) {
+    parsed = null;
+  }
+  if (!parsed || parsed.protocol !== "https:") return null;
+  const payload = String(parsed.searchParams.get(ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM) || "").trim();
+  if (!payload) return null;
+  const allowedOrigins = getZipWorkspaceDeeplinkRedirectOrigins();
+  if (!allowedOrigins.includes(parsed.origin)) return null;
+  return {
+    payload,
+    origin: parsed.origin
+  };
+}
+
+function buildZipWorkspaceInternalUrl(encodedPayload) {
+  const payload = String(encodedPayload || "").trim();
+  if (!payload) return "";
+  const params = new URLSearchParams();
+  params.set("mode", "workspace");
+  params.set(ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM, payload);
+  return chrome.runtime.getURL(ZIP_PANEL_PATH + "?" + params.toString());
+}
+
+function maybeRouteZipWorkspaceDeeplinkTab(tabId, url) {
+  const numericTabId = Number(tabId);
+  if (!Number.isFinite(numericTabId)) return false;
+  const parsed = parseZipWorkspaceDeeplinkUrl(url);
+  if (!parsed || zipWorkspaceDeeplinkTabIds.has(numericTabId)) return false;
+  const workspaceUrl = buildZipWorkspaceInternalUrl(parsed.payload);
+  if (!workspaceUrl) return false;
+  zipWorkspaceDeeplinkTabIds.add(numericTabId);
+  chrome.tabs.update(numericTabId, { url: workspaceUrl }, () => {
+    zipWorkspaceDeeplinkTabIds.delete(numericTabId);
+    void chrome.runtime.lastError;
+  });
+  return true;
 }
 
 function normalizeZipConfigServiceName(value) {
@@ -2400,6 +2563,10 @@ function normalizeZipSecretConfig(input) {
   const oidcSource = source.oidc && typeof source.oidc === "object" ? source.oidc : {};
   const apiSource = source.api && typeof source.api === "object" ? source.api : {};
   const singularitySource = source.singularity && typeof source.singularity === "object" ? source.singularity : {};
+  const passTransitionSource = source.passTransition && typeof source.passTransition === "object" ? source.passTransition : {};
+  const passTransitionNestedSource = slacktivationSource.pass_transition && typeof slacktivationSource.pass_transition === "object"
+    ? slacktivationSource.pass_transition
+    : {};
   const fromMeta = source.meta && typeof source.meta === "object" ? source.meta : {};
   const clientId = String(
     source.clientId
@@ -2508,6 +2675,51 @@ function normalizeZipSecretConfig(input) {
     || source.singularity_mention
     || ""
   );
+  const passTransition = buildPassTransitionSnapshot({
+    channelId:
+      source.passTransitionChannelId
+      || slacktivationSource.pass_transition_channel_id
+      || slacktivationSource.passTransitionChannelId
+      || passTransitionNestedSource.channel_id
+      || passTransitionNestedSource.channelId
+      || passTransitionSource.channelId
+      || source[ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY]
+      || source.pass_transition_channel_id
+      || "",
+    channelName:
+      source.passTransitionChannelName
+      || slacktivationSource.pass_transition_channel_name
+      || slacktivationSource.passTransitionChannelName
+      || passTransitionNestedSource.channel_name
+      || passTransitionNestedSource.channelName
+      || passTransitionSource.channelName
+      || source[ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY]
+      || source.pass_transition_channel_name
+      || "",
+    memberIds:
+      source.passTransitionMemberIds
+      || slacktivationSource.pass_transition_member_ids
+      || slacktivationSource.passTransitionMemberIds
+      || passTransitionNestedSource.member_ids
+      || passTransitionNestedSource.memberIds
+      || passTransitionNestedSource.members
+      || passTransitionSource.memberIds
+      || source[ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY]
+      || source.pass_transition_member_ids
+      || "",
+    membersSyncedAt:
+      source.passTransitionMembersSyncedAt
+      || slacktivationSource.pass_transition_members_synced_at
+      || slacktivationSource.passTransitionMembersSyncedAt
+      || passTransitionNestedSource.members_synced_at
+      || passTransitionNestedSource.membersSyncedAt
+      || passTransitionNestedSource.last_synced_at
+      || passTransitionNestedSource.lastSyncedAt
+      || passTransitionSource.membersSyncedAt
+      || source[ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY]
+      || source.pass_transition_members_synced_at
+      || ""
+  });
   const hasRequired = !!(clientId && clientSecret && oauthToken && singularityChannelId && singularityMention);
 
   return {
@@ -2521,6 +2733,7 @@ function normalizeZipSecretConfig(input) {
     oauthToken,
     singularityChannelId,
     singularityMention,
+    passTransition,
     keyLoaded: hasRequired,
     meta: normalizeZipKeyMeta({
       ...fromMeta,
@@ -2566,12 +2779,19 @@ function computeZipSecretsStatus(storedValues) {
   return {
     ok: loadedFlag && missing.length === 0,
     loaded: loadedFlag,
-    missing
+    missing,
+    passTransition: buildPassTransitionSnapshot(values)
   };
 }
 
 async function readZipSecretsStatus() {
-  const keys = ZIP_REQUIRED_SECRET_KEYS.concat([ZIP_SLACK_KEY_LOADED_STORAGE_KEY]);
+  const keys = ZIP_REQUIRED_SECRET_KEYS.concat([
+    ZIP_SLACK_KEY_LOADED_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY
+  ]);
   const stored = await readStorageLocal(keys);
   return computeZipSecretsStatus(stored);
 }
@@ -2606,6 +2826,10 @@ async function storeZipSecrets(input, options) {
   setOrRemove(ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY, normalized.oauthToken);
   setOrRemove(ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY, normalized.singularityChannelId);
   setOrRemove(ZIP_SINGULARITY_MENTION_STORAGE_KEY, normalized.singularityMention);
+  setOrRemove(ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY, normalized.passTransition && normalized.passTransition.channelId);
+  setOrRemove(ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY, normalized.passTransition && normalized.passTransition.channelName);
+  setOrRemove(ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY, normalized.passTransition && normalized.passTransition.memberIds);
+  setOrRemove(ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY, normalized.passTransition && normalized.passTransition.membersSyncedAt);
   updates[ZIP_SLACK_KEY_META_STORAGE_KEY] = normalized.meta;
   updates[ZIP_SLACK_KEY_LOADED_STORAGE_KEY] = normalized.keyLoaded;
 
@@ -2620,9 +2844,18 @@ async function storeZipSecrets(input, options) {
     [ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY]: normalized.oauthToken,
     [ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY]: normalized.singularityChannelId,
     [ZIP_SINGULARITY_MENTION_STORAGE_KEY]: normalized.singularityMention,
+    [ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY]: normalized.passTransition && normalized.passTransition.channelId,
+    [ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY]: normalized.passTransition && normalized.passTransition.channelName,
+    [ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY]: normalized.passTransition && normalized.passTransition.memberIds,
+    [ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY]: normalized.passTransition && normalized.passTransition.membersSyncedAt,
     [ZIP_SLACK_KEY_LOADED_STORAGE_KEY]: normalized.keyLoaded
   });
-  return { ok: status.ok, loaded: status.loaded, missing: status.missing };
+  return {
+    ok: status.ok,
+    loaded: status.loaded,
+    missing: status.missing,
+    passTransition: status.passTransition
+  };
 }
 
 async function clearZipSecrets() {
@@ -2642,6 +2875,249 @@ async function clearZipSecrets() {
     cleared: true,
     loaded: false,
     missing: ZIP_REQUIRED_SECRET_KEYS.slice()
+  };
+}
+
+async function fetchSlackConversationMembersViaApi(workspaceOrigin, token, channelId) {
+  const targetChannel = normalizeSlackChannelId(channelId);
+  if (!targetChannel) {
+    return {
+      ok: false,
+      code: "slack_channel_missing",
+      error: "Slack channel ID is required."
+    };
+  }
+  const memberIds = [];
+  const seen = new Set();
+  let cursor = "";
+  for (let page = 0; page < 20; page += 1) {
+    const fields = {
+      channel: targetChannel,
+      limit: 1000,
+      _x_reason: "zip-pass-transition-members-bg"
+    };
+    if (cursor) fields.cursor = cursor;
+    const result = await postSlackApiWithBearerToken(workspaceOrigin, "/api/conversations.members", fields, token);
+    if (!result || !result.ok) return result || {
+      ok: false,
+      code: "slack_api_error",
+      error: "Unable to hydrate Slack channel members."
+    };
+    const payload = result.payload && typeof result.payload === "object" ? result.payload : {};
+    const members = Array.isArray(payload.members) ? payload.members : [];
+    for (let i = 0; i < members.length; i += 1) {
+      const memberId = normalizeSlackUserId(members[i]);
+      if (!memberId || seen.has(memberId)) continue;
+      seen.add(memberId);
+      memberIds.push(memberId);
+    }
+    cursor = String(payload && payload.response_metadata && payload.response_metadata.next_cursor || "").trim();
+    if (!cursor) break;
+  }
+  return {
+    ok: true,
+    channelId: targetChannel,
+    memberIds
+  };
+}
+
+async function getPassTransitionMembers(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const force = opts.force === true;
+  const stored = await readStorageLocal([
+    ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY
+  ]);
+  const snapshot = buildPassTransitionSnapshot(stored);
+  if (!snapshot.channelId) {
+    return {
+      ok: false,
+      code: "pass_transition_channel_missing",
+      error: "PASS-TRANSITION channel ID is not configured in ZIP.KEY.",
+      ...snapshot
+    };
+  }
+  if (snapshot.memberIds.length && !force) {
+    return {
+      ok: true,
+      cached: true,
+      hydrated: false,
+      ...snapshot
+    };
+  }
+
+  const tokens = await resolveSlackApiTokens({});
+  const tokenAttempts = buildSlackQaiTokenAttempts(tokens, "user");
+  if (!tokenAttempts.length) {
+    return {
+      ok: false,
+      code: "slack_token_missing",
+      error: "Slack token is unavailable for PASS-TRANSITION member hydration.",
+      ...snapshot
+    };
+  }
+
+  const apiOrigins = buildSlackQaiApiOrigins(SLACK_WORKSPACE_ORIGIN);
+  let lastFailureCode = "slack_api_error";
+  let lastFailureError = "Unable to hydrate PASS-TRANSITION members.";
+  let lastFailureTokenKind = "";
+
+  for (let i = 0; i < tokenAttempts.length; i += 1) {
+    const attempt = tokenAttempts[i];
+    const attemptToken = normalizeSlackApiToken(attempt && attempt.token);
+    if (!attemptToken) continue;
+    for (let originIndex = 0; originIndex < apiOrigins.length; originIndex += 1) {
+      const apiOrigin = apiOrigins[originIndex];
+      const membersResult = await fetchSlackConversationMembersViaApi(apiOrigin, attemptToken, snapshot.channelId);
+      if (membersResult && membersResult.ok) {
+        const syncedAt = nowIso();
+        const memberIdsCsv = normalizeSlackUserIdCsv(membersResult.memberIds);
+        await setStorageLocal({
+          [ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY]: snapshot.channelId,
+          [ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY]: snapshot.channelName,
+          [ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY]: memberIdsCsv,
+          [ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY]: syncedAt
+        });
+        return {
+          ok: true,
+          cached: false,
+          hydrated: true,
+          channelId: snapshot.channelId,
+          channelName: snapshot.channelName,
+          memberIds: normalizeSlackUserIdList(memberIdsCsv),
+          memberCount: normalizeSlackUserIdList(memberIdsCsv).length,
+          membersSyncedAt: syncedAt,
+          synced: !!memberIdsCsv,
+          tokenKind: String(attempt && attempt.kind || "").trim().toLowerCase()
+        };
+      }
+      lastFailureCode = String(membersResult && membersResult.code || "slack_api_error").trim().toLowerCase() || "slack_api_error";
+      lastFailureError = String(membersResult && membersResult.error || "Unable to hydrate PASS-TRANSITION members.").trim();
+      lastFailureTokenKind = String(attempt && attempt.kind || "").trim().toLowerCase();
+    }
+  }
+
+  return {
+    ok: false,
+    code: lastFailureCode,
+    error: lastFailureError,
+    tokenKind: lastFailureTokenKind,
+    ...snapshot
+  };
+}
+
+async function getPassTransitionRecipients(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const membersResult = await getPassTransitionMembers({ force: opts.force === true });
+  if (!membersResult || membersResult.ok !== true) {
+    return membersResult || {
+      ok: false,
+      code: "pass_transition_unavailable",
+      error: "PASS-TRANSITION recipients are unavailable."
+    };
+  }
+
+  const memberIds = normalizeSlackUserIdList(membersResult.memberIds);
+  if (!memberIds.length) {
+    return {
+      ok: true,
+      ...membersResult,
+      members: []
+    };
+  }
+
+  const tokens = await resolveSlackApiTokens({});
+  const tokenAttempts = buildSlackQaiTokenAttempts(tokens, "user");
+  if (!tokenAttempts.length) {
+    return {
+      ok: false,
+      code: "slack_token_missing",
+      error: "Slack token is unavailable for PASS-TRANSITION recipient lookup.",
+      ...membersResult
+    };
+  }
+
+  const apiOrigins = buildSlackQaiApiOrigins(SLACK_WORKSPACE_ORIGIN);
+  const openIdSession = await readSlackOpenIdSession();
+  let selfUserId = normalizeSlackUserId(openIdSession && openIdSession.userId);
+  let resolvedToken = "";
+  let resolvedApiOrigin = "";
+  let lastFailureCode = "slack_auth_failed";
+  let lastFailureError = "Unable to load PASS-TRANSITION recipient identities.";
+
+  outer:
+  for (let i = 0; i < tokenAttempts.length; i += 1) {
+    const attempt = tokenAttempts[i];
+    const attemptToken = normalizeSlackApiToken(attempt && attempt.token);
+    if (!attemptToken) continue;
+    if (isSlackTokenTemporarilyBackedOff(attemptToken)) {
+      lastFailureCode = "slack_token_backoff";
+      lastFailureError = "Slack token validation is cooling down after recent failures.";
+      continue;
+    }
+    for (let originIndex = 0; originIndex < apiOrigins.length; originIndex += 1) {
+      const apiOrigin = apiOrigins[originIndex];
+      const auth = await postSlackApiWithBearerToken(apiOrigin, "/api/auth.test", {
+        _x_reason: "zip-pass-transition-recipients-auth-bg"
+      }, attemptToken);
+      if (!auth || !auth.ok) {
+        lastFailureCode = String(auth && auth.code || "slack_auth_failed").trim().toLowerCase() || "slack_auth_failed";
+        lastFailureError = String(auth && auth.error || "Unable to validate Slack token for PASS-TRANSITION recipients.").trim();
+        if (isSlackTokenInvalidationCode(lastFailureCode)) {
+          markSlackTokenBackoff(attemptToken);
+          await invalidateStoredSlackToken(attemptToken);
+        }
+        continue;
+      }
+      clearSlackTokenBackoff(attemptToken);
+      resolvedToken = attemptToken;
+      resolvedApiOrigin = apiOrigin;
+      const authPayload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
+      if (!selfUserId) {
+        selfUserId = normalizeSlackUserId(authPayload.user_id || authPayload.user);
+      }
+      break outer;
+    }
+  }
+
+  if (!resolvedToken || !resolvedApiOrigin) {
+    return {
+      ok: false,
+      code: lastFailureCode,
+      error: lastFailureError,
+      ...membersResult
+    };
+  }
+
+  const recipients = [];
+  for (let i = 0; i < memberIds.length; i += 1) {
+    const memberId = memberIds[i];
+    if (!memberId) continue;
+    if (selfUserId && memberId === selfUserId) continue;
+    const identity = await fetchSlackIdentityViaApi(resolvedApiOrigin, resolvedToken, memberId).catch(() => null);
+    const userName = normalizeSlackDisplayName(identity && identity.userName || "");
+    recipients.push({
+      userId: memberId,
+      userName,
+      displayName: userName,
+      avatarUrl: normalizeSlackAvatarUrl(identity && identity.avatarUrl || ""),
+      statusIcon: normalizeSlackStatusIcon(identity && identity.statusIcon || ""),
+      statusIconUrl: normalizeSlackStatusIconUrl(identity && identity.statusIconUrl || ""),
+      statusMessage: normalizeSlackStatusMessage(identity && identity.statusMessage || ""),
+      label: userName || ("@" + memberId)
+    });
+  }
+  recipients.sort((left, right) => String(left && left.label || "").localeCompare(String(right && right.label || ""), undefined, {
+    sensitivity: "base"
+  }));
+
+  return {
+    ok: true,
+    ...membersResult,
+    selfUserId,
+    members: recipients
   };
 }
 
@@ -2837,6 +3313,14 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
 
   const openIdSession = await readSlackOpenIdSession();
   const requestedUserId = normalizeSlackUserId(body.userId || body.user_id);
+  const requireRequestedUser = body.requireRequestedUser === true;
+  if (requireRequestedUser && !requestedUserId) {
+    return {
+      ok: false,
+      code: "slack_user_identity_missing",
+      error: "A PASS-TRANSITION recipient is required for targeted Slack delivery."
+    };
+  }
   const openIdUserId = normalizeSlackUserId(openIdSession && openIdSession.userId);
   const userIdCandidates = [];
   const pushUserIdCandidate = (value) => {
@@ -2844,8 +3328,12 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
     if (!normalized) return;
     if (!userIdCandidates.includes(normalized)) userIdCandidates.push(normalized);
   };
-  pushUserIdCandidate(requestedUserId);
-  pushUserIdCandidate(openIdUserId);
+  if (requireRequestedUser) {
+    pushUserIdCandidate(requestedUserId);
+  } else {
+    pushUserIdCandidate(requestedUserId);
+    pushUserIdCandidate(openIdUserId);
+  }
   if (!userIdCandidates.length) {
     return {
       ok: false,
@@ -3024,6 +3512,25 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
   };
 }
 
+async function slackSendMarkdownToUserViaApi(input) {
+  const body = input && typeof input === "object" ? input : {};
+  const requestedUserId = normalizeSlackUserId(body.userId || body.user_id);
+  if (!requestedUserId) {
+    return {
+      ok: false,
+      code: "slack_user_identity_missing",
+      error: "A PASS-TRANSITION recipient is required for targeted Slack delivery."
+    };
+  }
+  return slackSendMarkdownToSelfViaApi({
+    ...body,
+    userId: requestedUserId,
+    user_id: requestedUserId,
+    preferRequestedUser: true,
+    requireRequestedUser: true
+  });
+}
+
 async function slackSendMarkdownToSelfViaApi(input) {
   const body = input && typeof input === "object" ? input : {};
   const markdownText = String(body.markdownText || body.text || body.messageText || "").trim();
@@ -3037,6 +3544,8 @@ async function slackSendMarkdownToSelfViaApi(input) {
   const skipUnreadMark = body.skipUnreadMark !== false;
   const preferApiFirst = body.preferApiFirst !== false;
   const preferBotDmDelivery = body.preferBotDmDelivery !== false;
+  const preferRequestedUser = body.preferRequestedUser === true;
+  const requireRequestedUser = body.requireRequestedUser === true;
   const requireBotDelivery = body.requireBotDelivery === true;
   const allowBotDelivery = body.allowBotDelivery === true || requireBotDelivery;
   // Prefer SLACKTIVATED user-identity delivery. Bot delivery is fallback.
@@ -3206,6 +3715,13 @@ async function slackSendMarkdownToSelfViaApi(input) {
 
   const openIdSession = await readSlackOpenIdSession();
   const requestedUserId = normalizeSlackUserId(body.userId || body.user_id);
+  if (requireRequestedUser && !requestedUserId) {
+    return {
+      ok: false,
+      code: "slack_user_identity_missing",
+      error: "A PASS-TRANSITION recipient is required for targeted Slack delivery."
+    };
+  }
   const openIdUserId = normalizeSlackUserId(openIdSession && openIdSession.userId);
 
   let resolvedUserName = normalizeSlackDisplayName(
@@ -3260,9 +3776,17 @@ async function slackSendMarkdownToSelfViaApi(input) {
       if (!normalized) return;
       if (!userIdCandidates.includes(normalized)) userIdCandidates.push(normalized);
     };
-    pushUserIdCandidate(authUserId);
-    pushUserIdCandidate(requestedUserId);
-    pushUserIdCandidate(openIdUserId);
+    if (requireRequestedUser) {
+      pushUserIdCandidate(requestedUserId);
+    } else if (preferRequestedUser) {
+      pushUserIdCandidate(requestedUserId);
+      pushUserIdCandidate(authUserId);
+      pushUserIdCandidate(openIdUserId);
+    } else {
+      pushUserIdCandidate(authUserId);
+      pushUserIdCandidate(requestedUserId);
+      pushUserIdCandidate(openIdUserId);
+    }
     if (!userIdCandidates.length) {
       lastFailureCode = "slack_user_identity_missing";
       lastFailureError = "Unable to resolve Slack user identity for @ME delivery.";
@@ -5340,6 +5864,7 @@ setInterval(() => {
 
 chrome.tabs.onUpdated.addListener((tabId, _info, tab) => {
   if (!tab?.url) return;
+  if (maybeRouteZipWorkspaceDeeplinkTab(tabId, tab.url)) return;
   setOptionsForTab(tabId, tab.url).catch(() => {});
 });
 
@@ -5425,7 +5950,61 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch(() => sendResponse({
         ok: false,
         loaded: false,
-        missing: ZIP_REQUIRED_SECRET_KEYS.slice()
+        missing: ZIP_REQUIRED_SECRET_KEYS.slice(),
+        passTransition: buildPassTransitionSnapshot({})
+      }));
+    return true;
+  }
+  if (
+    msg.type === "ZIP_GET_PASS_TRANSITION_MEMBERS"
+    || msg.type === "ZIP_SYNC_PASS_TRANSITION_MEMBERS"
+    || msg.type === "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS"
+  ) {
+    getPassTransitionMembers({
+      force: msg.force === true || msg.type === "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS"
+    })
+      .then((result) => sendResponse(result || {
+        ok: false,
+        code: "pass_transition_unavailable",
+        error: "PASS-TRANSITION member hydration did not return a result."
+      }))
+      .catch((err) => sendResponse({
+        ok: false,
+        code: "pass_transition_hydration_failed",
+        error: err && err.message ? err.message : "Unable to hydrate PASS-TRANSITION members."
+      }));
+    return true;
+  }
+  if (msg.type === "ZIP_GET_PASS_TRANSITION_RECIPIENTS") {
+    getPassTransitionRecipients({
+      force: msg.force === true
+    })
+      .then((result) => sendResponse(result || {
+        ok: false,
+        code: "pass_transition_recipients_unavailable",
+        error: "PASS-TRANSITION recipients did not return a result."
+      }))
+      .catch((err) => sendResponse({
+        ok: false,
+        code: "pass_transition_recipients_failed",
+        error: err && err.message ? err.message : "Unable to load PASS-TRANSITION recipients."
+      }));
+    return true;
+  }
+  if (msg.type === "ZIP_GET_PASS_TRANSITION_CONFIG") {
+    readStorageLocal([
+      ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
+      ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY,
+      ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY,
+      ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY
+    ])
+      .then((stored) => sendResponse({
+        ok: true,
+        ...buildPassTransitionSnapshot(stored)
+      }))
+      .catch((err) => sendResponse({
+        ok: false,
+        error: err && err.message ? err.message : "Unable to read PASS-TRANSITION configuration."
       }));
     return true;
   }
@@ -5598,6 +6177,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch((err) => sendResponse({
         ok: false,
         error: err && err.message ? err.message : "Slack API send failed."
+      }));
+    return true;
+  }
+  if (msg.type === "ZIP_SLACK_API_SEND_TO_USER") {
+    slackSendMarkdownToUserViaApi(msg)
+      .then((result) => sendResponse(result || { ok: false, error: "Slack API targeted send did not return a result." }))
+      .catch((err) => sendResponse({
+        ok: false,
+        error: err && err.message ? err.message : "Slack API targeted send failed."
       }));
     return true;
   }

@@ -267,6 +267,7 @@ function createChromeHarness(options) {
     chrome,
     console,
     URL,
+    URLSearchParams,
     TextEncoder,
     TextDecoder,
     crypto: { randomUUID: () => "00000000-0000-0000-0000-000000000000" },
@@ -485,6 +486,126 @@ test("ZIP_CHECK_SECRETS reports missing state until ZIP_IMPORT_KEY_PAYLOAD succe
   assert.equal(afterClear.zip_slack_key_loaded, false);
 });
 
+test("ZIP_IMPORT_KEY_PAYLOAD preserves PASS-TRANSITION cache for load-once member hydration", async () => {
+  const harness = createChromeHarness({ zendeskTabs: [] });
+
+  const imported = await harness.sendRuntimeMessage({
+    type: "ZIP_IMPORT_KEY_PAYLOAD",
+    config: {
+      oidc: {
+        clientId: "pass-transition-client-id",
+        clientSecret: "pass-transition-client-secret",
+        scope: "openid profile email",
+        redirectPath: "slack-user"
+      },
+      api: {
+        userToken: "xoxp-pass-transition-user"
+      },
+      singularity: {
+        channelId: "C123456789A",
+        mention: "@Singularity"
+      },
+      passTransition: {
+        channelId: "C09NHJCMFC1",
+        channelName: "#pass-transition",
+        memberIds: ["U1234567890", "U2345678901"],
+        membersSyncedAt: "2026-03-13T00:00:00.000Z"
+      }
+    }
+  });
+  assert.equal(imported && imported.ok, true);
+  assert.equal(imported && imported.passTransition && imported.passTransition.channelId, "C09NHJCMFC1");
+  assert.deepEqual(
+    Array.from(imported && imported.passTransition && imported.passTransition.memberIds || []),
+    ["U1234567890", "U2345678901"]
+  );
+
+  const stored = harness.storageDump();
+  assert.equal(String(stored.zip_pass_transition_channel_id || ""), "C09NHJCMFC1");
+  assert.equal(String(stored.zip_pass_transition_channel_name || ""), "#pass-transition");
+  assert.equal(String(stored.zip_pass_transition_member_ids || ""), "U1234567890,U2345678901");
+  assert.equal(String(stored.zip_pass_transition_members_synced_at || ""), "2026-03-13T00:00:00.000Z");
+
+  harness.resetCalls();
+  const members = await harness.sendRuntimeMessage({ type: "ZIP_GET_PASS_TRANSITION_MEMBERS" });
+  assert.equal(members && members.ok, true);
+  assert.equal(members && members.cached, true);
+  assert.equal(members && members.hydrated, false);
+  assert.deepEqual(Array.from(members && members.memberIds || []), ["U1234567890", "U2345678901"]);
+  assert.equal(harness.calls.fetch.length, 0);
+});
+
+test("PASS-TRANSITION hydration falls back to bot token after channel_not_found on user token", async () => {
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    fetch: ({ init }) => {
+      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+      const authorization = String(headers.Authorization || headers.authorization || "");
+      if (authorization === "Bearer xoxp-pass-transition-user") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: false, error: "channel_not_found" }),
+          text: async () => ""
+        });
+      }
+      if (authorization === "Bearer xoxb-pass-transition-bot") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, members: ["U1234567890", "U2345678901"] }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  const imported = await harness.sendRuntimeMessage({
+    type: "ZIP_IMPORT_KEY_PAYLOAD",
+    config: {
+      oidc: {
+        clientId: "pass-transition-client-id",
+        clientSecret: "pass-transition-client-secret",
+        scope: "openid profile email",
+        redirectPath: "slack-user"
+      },
+      api: {
+        userToken: "xoxp-pass-transition-user",
+        botToken: "xoxb-pass-transition-bot"
+      },
+      singularity: {
+        channelId: "C123456789A",
+        mention: "@Singularity"
+      },
+      passTransition: {
+        channelId: "C09NHJCMFC1",
+        channelName: "#pass-transition"
+      }
+    }
+  });
+  assert.equal(imported && imported.ok, true);
+
+  harness.resetCalls();
+  const members = await harness.sendRuntimeMessage({ type: "ZIP_GET_PASS_TRANSITION_MEMBERS" });
+  assert.equal(members && members.ok, true);
+  assert.equal(members && members.cached, false);
+  assert.equal(members && members.hydrated, true);
+  assert.equal(members && members.tokenKind, "bot");
+  assert.deepEqual(Array.from(members && members.memberIds || []), ["U1234567890", "U2345678901"]);
+  assert.equal(harness.calls.fetch.length >= 2, true);
+
+  const stored = harness.storageDump();
+  assert.equal(String(stored.zip_pass_transition_member_ids || ""), "U1234567890,U2345678901");
+  assert.equal(typeof stored.zip_pass_transition_members_synced_at, "string");
+  assert.notEqual(String(stored.zip_pass_transition_members_synced_at || ""), "");
+});
+
 test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", async () => {
   const harness = createChromeHarness({ zendeskTabs: [] });
   harness.resetCalls();
@@ -608,6 +729,7 @@ test("sidepanel login wiring uses LOGIN_CLICKED with no ZIP local sign-out path"
 
 test("sidepanel requires ZIP.KEY gate before Zendesk login", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
+  const html = fs.readFileSync(path.join(ROOT, "sidepanel.html"), "utf8");
   assert.match(source, /const ZIP_KEY_FILE_PREFIX = "ZIPKEY1:";/);
   assert.match(source, /const ZIP_CONFIG_META_STORAGE_KEY = "zip\.config\.meta\.v1";/);
   assert.match(source, /const ZIP_SLACKTIVATION_SERVICE_KEY = "slacktivation";/);
@@ -620,7 +742,14 @@ test("sidepanel requires ZIP.KEY gate before Zendesk login", () => {
   assert.match(source, /function importZipKeyFromFile\(file\)/);
   assert.match(source, /const gateStatus = enforceZipConfigGate\(\{ reportStatus: true \}\);/);
   assert.match(source, /msg\.type === "ZIP_KEY_CLEARED"/);
+  assert.match(source, /Please drop an updated ZIP\.KEY to SLACKTIVATE ZIP\./);
+  assert.match(source, /Please drop ZIP\.KEY to SLACKTIVATE ZIP\./);
+  assert.match(source, /DROP ZIP\.KEY TO SLACKTIVATE/);
+  assert.match(html, /Please drop ZIP\.KEY to SLACKTIVATE/);
+  assert.match(html, /DROP ZIP\.KEY TO SLACKTIVATE/);
   assert.doesNotMatch(source, /ZIP\.KEY cleared\. Drop the latest ZIP\.KEY file to continue\./);
+  assert.doesNotMatch(source, /Supports ZIPKEY1 files \(JSON or KEY=VALUE\)\./);
+  assert.doesNotMatch(html, /Supports ZIPKEY1 files\./);
 });
 
 test("sidepanel ZIP.KEY persistence forwards bot token alongside user token", () => {
