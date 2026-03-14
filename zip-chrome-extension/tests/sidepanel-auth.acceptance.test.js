@@ -606,6 +606,178 @@ test("PASS-TRANSITION hydration falls back to bot token after channel_not_found 
   assert.notEqual(String(stored.zip_pass_transition_members_synced_at || ""), "");
 });
 
+test("PASS-TRANSITION recipients include the current Slack user and filter deleted and bot accounts", async () => {
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    fetch: ({ url, init }) => {
+      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+      const authorization = String(headers.Authorization || headers.authorization || "");
+      const params = new URLSearchParams(String(init && init.body || ""));
+      if (authorization !== "Bearer xoxp-pass-transition-user") {
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: async () => ({ ok: false, error: "invalid_auth" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/auth.test")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "U999999999", user: "minnick" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/users.info")) {
+        const userId = String(params.get("user") || "").trim().toUpperCase();
+        const payloadByUserId = {
+          U999999999: {
+            ok: true,
+            user: {
+              id: "U999999999",
+              name: "minnick",
+              real_name: "Minnick Example",
+              deleted: false,
+              is_bot: false,
+              is_app_user: false,
+              profile: {
+                display_name: "Minnick Example",
+                real_name: "Minnick Example",
+                email: "minnick@example.com",
+                image_72: "https://example.com/minnick.png"
+              }
+            }
+          },
+          U111111111: {
+            ok: true,
+            user: {
+              id: "U111111111",
+              name: "alice",
+              real_name: "Alice Example",
+              deleted: false,
+              is_bot: false,
+              is_app_user: false,
+              profile: {
+                display_name: "Alice Example",
+                real_name: "Alice Example",
+                email: "alice@example.com",
+                image_72: "https://example.com/alice.png"
+              }
+            }
+          },
+          U222222222: {
+            ok: true,
+            user: {
+              id: "U222222222",
+              name: "bob",
+              real_name: "Bob Example",
+              deleted: false,
+              is_bot: false,
+              is_app_user: false,
+              profile: {
+                display_name: "Bob Example",
+                real_name: "Bob Example",
+                email: "bob@example.com",
+                image_72: "https://example.com/bob.png"
+              }
+            }
+          },
+          U333333333: {
+            ok: true,
+            user: {
+              id: "U333333333",
+              name: "deleted-user",
+              real_name: "Deleted User",
+              deleted: true,
+              is_bot: false,
+              is_app_user: false,
+              profile: {
+                display_name: "Deleted User",
+                real_name: "Deleted User",
+                email: "deleted@example.com"
+              }
+            }
+          },
+          U444444444: {
+            ok: true,
+            user: {
+              id: "U444444444",
+              name: "zip-bot",
+              real_name: "ZIP Bot",
+              deleted: false,
+              is_bot: true,
+              is_app_user: false,
+              profile: {
+                display_name: "ZIP Bot",
+                real_name: "ZIP Bot",
+                email: "zip-bot@example.com"
+              }
+            }
+          }
+        };
+        const payload = payloadByUserId[userId] || { ok: false, error: "user_not_found" };
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => payload,
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  const imported = await harness.sendRuntimeMessage({
+    type: "ZIP_IMPORT_KEY_PAYLOAD",
+    config: {
+      oidc: {
+        clientId: "pass-transition-client-id",
+        clientSecret: "pass-transition-client-secret",
+        scope: "openid profile email",
+        redirectPath: "slack-user"
+      },
+      api: {
+        userToken: "xoxp-pass-transition-user"
+      },
+      singularity: {
+        channelId: "C123456789A",
+        mention: "@Singularity"
+      },
+      passTransition: {
+        channelId: "C09NHJCMFC1",
+        channelName: "#pass-transition",
+        memberIds: ["U999999999", "U222222222", "U111111111", "U333333333", "U444444444"],
+        membersSyncedAt: "2026-03-14T00:00:00.000Z"
+      }
+    }
+  });
+  assert.equal(imported && imported.ok, true);
+
+  harness.resetCalls();
+  const recipients = await harness.sendRuntimeMessage({ type: "ZIP_GET_PASS_TRANSITION_RECIPIENTS" });
+  assert.equal(recipients && recipients.ok, true);
+  assert.equal(String(recipients && recipients.selfUserId || ""), "U999999999");
+  assert.deepEqual(
+    Array.from(recipients && recipients.members || []).map((entry) => entry.userId),
+    ["U999999999", "U111111111", "U222222222"]
+  );
+  assert.deepEqual(
+    Array.from(recipients && recipients.members || []).map((entry) => entry.label),
+    ["Minnick Example (@minnick)", "Alice Example (@alice)", "Bob Example (@bob)"]
+  );
+  assert.equal(
+    harness.calls.fetch.some((requestUrl) => String(requestUrl).includes("/api/users.profile.get")),
+    false,
+    "PASS-TRANSITION recipients should not fetch self profiles while resolving teammate identities"
+  );
+});
+
 test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", async () => {
   const harness = createChromeHarness({ zendeskTabs: [] });
   harness.resetCalls();

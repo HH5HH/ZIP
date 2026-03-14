@@ -35,6 +35,7 @@ function loadZipWorkspaceDeeplinkHelpers(seed) {
     'const TICKET_SEARCH_MODE_CLOUD = "cloud";',
     'const PASS_AI_SLACK_OIDC_DEFAULT_REDIRECT_PATH = "slack-user";',
     'const ZIP_OFFICIAL_SLACK_REDIRECT_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-openid";',
+    'const ZIP_OFFICIAL_WORKSPACE_DEEPLINK_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-user";',
     'const ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM = "zipdeeplink";',
     'const ZIP_TOOL_BETA_ARTICLE_URL = "https://tve.zendesk.com/hc/en-us/articles/46503360732436-ZIP-TOOL-beta";',
     'const ZIP_TOOL_BETA_LINK_LABEL = "zip-zap";',
@@ -159,7 +160,7 @@ test("Slack footer deeplink preserves view context when no ticket is selected", 
   assert.equal(payload.statusFilter, "pending");
 });
 
-test("Slack footer deeplink stays on the current ZipTool runtime even when config points at another app", () => {
+test("Slack footer deeplink stays on the official ZipTool prefix even when config points at another app", () => {
   const helpers = loadZipWorkspaceDeeplinkHelpers({
     state: {
       selectedTicketId: "54321",
@@ -171,8 +172,8 @@ test("Slack footer deeplink stays on the current ZipTool runtime even when confi
       id: "3600042"
     },
     openIdConfig: {
-      redirectUri: "https://underpar-runtime.chromiumapp.org/slack-openid",
-      redirectPath: "slack-user"
+      redirectUri: "https://underpar-runtime.chromiumapp.org/underpar-user",
+      redirectPath: "underpar-user"
     },
     chrome: {
       identity: {
@@ -187,9 +188,71 @@ test("Slack footer deeplink stays on the current ZipTool runtime even when confi
   const parsed = new URL(deeplinkUrl);
   const payload = JSON.parse(decodeZipWorkspacePayload(parsed.searchParams.get("zipdeeplink")));
 
-  assert.equal(parsed.origin, "https://ziptool-runtime.chromiumapp.org");
+  assert.equal(parsed.origin, "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org");
   assert.equal(parsed.pathname, "/slack-user");
   assert.equal(payload.sourceKind, "ticket");
   assert.equal(payload.sourceId, "54321");
   assert.equal(payload.statusFilter, "hold");
+});
+
+test("Slack footer deeplink ignores non-official runtime ids", () => {
+  const helpers = loadZipWorkspaceDeeplinkHelpers({
+    state: {
+      selectedTicketId: "67890",
+      statusFilter: "new",
+      ticketSearchMode: "local"
+    },
+    activeSource: {
+      kind: "view",
+      id: "3600042"
+    },
+    openIdConfig: {
+      redirectUri: "https://underpar-runtime.chromiumapp.org/underpar-user",
+      redirectPath: "underpar-user"
+    },
+    chrome: {
+      runtime: {
+        id: "abcdefghijklmnopqrstuvwxabcdefab"
+      }
+    }
+  });
+
+  const deeplinkUrl = helpers.buildZipToolSlackDeeplinkUrl();
+  const parsed = new URL(deeplinkUrl);
+  const payload = JSON.parse(decodeZipWorkspacePayload(parsed.searchParams.get("zipdeeplink")));
+
+  assert.equal(parsed.origin, "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org");
+  assert.equal(parsed.pathname, "/slack-user");
+  assert.equal(payload.sourceKind, "ticket");
+  assert.equal(payload.sourceId, "67890");
+  assert.equal(payload.statusFilter, "new");
+});
+
+test("Slack footer deeplink falls back to the official ZipTool workspace redirect path", () => {
+  const helpers = loadZipWorkspaceDeeplinkHelpers({
+    state: {
+      selectedTicketId: null,
+      statusFilter: "solved",
+      ticketSearchMode: "local"
+    },
+    activeSource: {
+      kind: "view",
+      id: "9001"
+    },
+    openIdConfig: {
+      redirectUri: "https://underpar-runtime.chromiumapp.org/underpar-user",
+      redirectPath: "underpar-user"
+    },
+    chrome: {}
+  });
+
+  const deeplinkUrl = helpers.buildZipToolSlackDeeplinkUrl();
+  const parsed = new URL(deeplinkUrl);
+  const payload = JSON.parse(decodeZipWorkspacePayload(parsed.searchParams.get("zipdeeplink")));
+
+  assert.equal(parsed.origin, "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org");
+  assert.equal(parsed.pathname, "/slack-user");
+  assert.equal(payload.sourceKind, "view");
+  assert.equal(payload.sourceId, "9001");
+  assert.equal(payload.statusFilter, "solved");
 });

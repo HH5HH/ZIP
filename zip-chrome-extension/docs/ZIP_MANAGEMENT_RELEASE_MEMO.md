@@ -25,7 +25,7 @@ Install and begin work in under two minutes:
 - Single polished package for pilot install and user validation.
 - Quick-start-first documentation for urgent operational use.
 
-## Team Activation Path
+## Team SLACKTIVATION Path
 1. Send this first: `docs/pdf/ZIP_PRINT_THIS_FIRST_QUICK_START.pdf`
 2. Send install page: `/Users/minnick/Documents/PASS/ZIP/zip.html`
 3. Team loads extension in Dev Mode.
