@@ -4,6 +4,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 output_path="${1:-ziptool_distro.zip}"
+package_root="zip-chrome-extension"
 
 if [[ "$output_path" != /* ]]; then
   output_path="$repo_root/$output_path"
@@ -28,13 +29,14 @@ while IFS= read -r -d '' file; do
       ;;
   esac
   [[ -e "$file" ]] || continue
-  files+=("$file")
-done < <(git ls-files -z)
+  files+=("${file#${package_root}/}")
+done < <(git ls-files -z -- "$package_root")
 
 if [[ ${#files[@]} -eq 0 ]]; then
-  echo "No repository files available to package." >&2
+  echo "No extension files available to package." >&2
   exit 1
 fi
 
+cd "$repo_root/$package_root"
 zip -q "$output_path" "${files[@]}"
 printf '%s\n' "$output_path"

@@ -205,7 +205,7 @@ You can hand off either of these:
 
 1. Folder: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
 2. Master distro zip: `/Users/minnick/Documents/PASS/ZIP/ziptool_distro.zip`
-   Extract it, then load unpacked from `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`.
+   Extract it, then load unpacked from the extracted `ziptool_distro` folder.
 
 Also available:
 
