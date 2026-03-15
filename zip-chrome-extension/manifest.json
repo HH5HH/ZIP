@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ZIP",
-  "version": "1.6.56",
+  "version": "1.6.57",
   "description": "ZipTool is the Adobe PASS browser extension for mission-critical continuity. It lives where the work happens, turns live Zendesk context into immediate Slack-connected action, and keeps Support, TAM, and Engineering on the same signal at the exact moment a case needs movement. SLACKTIVATION is how ZIP closes the gap between triage and response, and the dual-mode Blondie Button is the next step: one path for personal velocity, one path for #PASS-TRANSITION, so handoff happens with shared context, shared urgency, and no dropped thread.",
   "permissions": [
     "sidePanel",

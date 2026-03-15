@@ -37,7 +37,7 @@ function loadZipWorkspaceDeeplinkHelpers(seed) {
     'const ZIP_OFFICIAL_SLACK_REDIRECT_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-openid";',
     'const ZIP_OFFICIAL_WORKSPACE_DEEPLINK_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-user";',
     'const ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM = "zipdeeplink";',
-    'const ZIP_TOOL_BETA_ARTICLE_URL = "https://tve.zendesk.com/hc/en-us/articles/46503360732436-ZIP-TOOL-beta";',
+    'const ZIP_TOOL_BETA_ARTICLE_URL = "https://tve.zendesk.com/hc/en-us/articles/46503360732436-ZIP-ZAP";',
     'const ZIP_TOOL_BETA_LINK_LABEL = "zip-zap";',
     'const ZIP_TOOL_DEEPLINK_LINK_LABEL = "in ZipTool";',
     'const state = globalThis.__seed.state;',
@@ -117,7 +117,7 @@ test("Slack footer deeplink prioritizes selected ticket context", () => {
   });
 
   const footer = helpers.buildZipToolSlackFooterLine();
-  assert.match(footer, /^\/\/ <https:\/\/tve\.zendesk\.com\/hc\/en-us\/articles\/46503360732436-ZIP-TOOL-beta\|zip-zap> :ziptool: <https:\/\/ibijkkpjfgaocgmpafbcckhhdkpbldoc\.chromiumapp\.org\/slack-user\?zipdeeplink=/);
+  assert.match(footer, /^\/\/ <https:\/\/tve\.zendesk\.com\/hc\/en-us\/articles\/46503360732436-ZIP-ZAP\|zip-zap> :ziptool: <https:\/\/ibijkkpjfgaocgmpafbcckhhdkpbldoc\.chromiumapp\.org\/slack-user\?zipdeeplink=/);
   const deeplinkUrl = extractSlackLinkTarget(footer, "in ZipTool");
   const parsed = new URL(deeplinkUrl);
   const payload = JSON.parse(decodeZipWorkspacePayload(parsed.searchParams.get("zipdeeplink")));

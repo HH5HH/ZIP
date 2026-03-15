@@ -70,7 +70,7 @@
   const PASS_AI_SLACK_AUTH_POLL_MAX_ATTEMPTS = 36;
   const SLACK_IT_TO_ME_MAX_ROWS = 120;
   const SLACK_IT_TO_ME_MAX_MESSAGE_CHARS = 36000;
-  const ZIP_TOOL_BETA_ARTICLE_URL = "https://tve.zendesk.com/hc/en-us/articles/46503360732436-ZIP-TOOL-beta";
+  const ZIP_TOOL_BETA_ARTICLE_URL = "https://tve.zendesk.com/hc/en-us/articles/46503360732436-ZIP-ZAP";
   const ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM = "zipdeeplink";
   const ZIP_APPLY_WORKSPACE_DEEPLINK_MESSAGE_TYPE = "ZIP_APPLY_WORKSPACE_DEEPLINK";
   const ZIP_TOOL_BETA_LINK_LABEL = "zip-zap";

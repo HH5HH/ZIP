@@ -233,7 +233,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /const ticketLabel = ticketId \? \("\#" \+ ticketId\) : "\#ticket";/);
   assert.match(js, /mailto:/);
   assert.match(js, /return "• " \+ parts\.join\(" "\);/);
-  assert.match(js, /const ZIP_TOOL_BETA_ARTICLE_URL = "https:\/\/tve\.zendesk\.com\/hc\/en-us\/articles\/46503360732436-ZIP-TOOL-beta";/);
+  assert.match(js, /const ZIP_TOOL_BETA_ARTICLE_URL = "https:\/\/tve\.zendesk\.com\/hc\/en-us\/articles\/46503360732436-ZIP-ZAP";/);
   assert.match(js, /const ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM = "zipdeeplink";/);
   assert.match(js, /const ZIP_TOOL_BETA_LINK_LABEL = "zip-zap";/);
   assert.match(js, /const ZIP_TOOL_DEEPLINK_LINK_LABEL = "in ZipTool";/);
