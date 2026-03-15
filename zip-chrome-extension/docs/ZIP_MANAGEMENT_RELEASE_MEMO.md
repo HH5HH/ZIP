@@ -14,7 +14,7 @@ Install and begin work in under two minutes:
 ## Release Snapshot
 - Product: ZIP (ZipTool)
 - Build version: use current value in `zip-chrome-extension/manifest.json`
-- Package: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip`
+- Package: `/Users/minnick/Documents/PASS/ZIP/ziptool_distro.zip`
 - Install path: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
 - Brand baseline: `/Users/minnick/Downloads/ZEEKINFOPEEK_ZIP_V5_FULL_DELIVERY.zip`
 - App icon pack baseline: `/Users/minnick/Downloads/ZIP_APP_ICON_PACK_round.zip`

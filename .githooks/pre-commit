@@ -4,6 +4,29 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
+BUMP_SCRIPT="$ROOT/zip-chrome-extension/scripts/auto_bump_manifest_version.sh"
+if [[ ! -x "$BUMP_SCRIPT" ]]; then
+  exit 0
+fi
+
+MANIFEST_PATH="zip-chrome-extension/manifest.json"
+DISTRO_BUILD_SCRIPT="$ROOT/scripts/build_ziptool_distro.sh"
+DISTRO_PATH="ziptool_distro.zip"
+
+new_version="$($BUMP_SCRIPT --if-staged-zip-changes)"
+if [[ -n "$new_version" ]]; then
+  git add "$MANIFEST_PATH"
+  echo "pre-commit: auto-bumped ZIP manifest version to $new_version"
+fi
+
+if [[ ! -x "$DISTRO_BUILD_SCRIPT" ]]; then
+  echo "pre-commit: missing distro build script: $DISTRO_BUILD_SCRIPT" >&2
+  exit 1
+fi
+
+bash "$DISTRO_BUILD_SCRIPT" "$DISTRO_PATH" >/dev/null
+git add "$DISTRO_PATH"
+
 ARCHIVE_GUARD_SCRIPT="$ROOT/scripts/scan_archives_for_secrets.sh"
 if [[ ! -f "$ARCHIVE_GUARD_SCRIPT" ]]; then
   echo "pre-commit: missing archive secret scan script: $ARCHIVE_GUARD_SCRIPT" >&2
@@ -17,16 +40,3 @@ if [[ ! -f "$SECRET_GUARD_SCRIPT" ]]; then
   exit 1
 fi
 bash "$SECRET_GUARD_SCRIPT"
-
-BUMP_SCRIPT="$ROOT/zip-chrome-extension/scripts/auto_bump_manifest_version.sh"
-if [[ ! -x "$BUMP_SCRIPT" ]]; then
-  exit 0
-fi
-
-MANIFEST_PATH="zip-chrome-extension/manifest.json"
-
-new_version="$($BUMP_SCRIPT --if-staged-zip-changes)"
-if [[ -n "$new_version" ]]; then
-  git add "$MANIFEST_PATH"
-  echo "pre-commit: auto-bumped ZIP manifest version to $new_version"
-fi

@@ -847,9 +847,9 @@ test("ZIP_CONTEXT_MENU_ACTION getLatest opens commit-pinned ZIP URL when latest 
   const downloadUrl = String(harness.calls.tabsCreate[0] && harness.calls.tabsCreate[0].url || "");
   assert.match(
     downloadUrl,
-    new RegExp("/" + latestSha + "/zip-chrome-extension\\.zip\\?cacheBust=\\d+$")
+    new RegExp("/" + latestSha + "/ziptool_distro\\.zip\\?cacheBust=\\d+$")
   );
-  assert.equal(downloadUrl.includes("/main/zip-chrome-extension.zip"), false, "download URL should not use branch-pinned path");
+  assert.equal(downloadUrl.includes("/main/ziptool_distro.zip"), false, "download URL should not use branch-pinned path");
   assert.equal(String(harness.calls.tabsCreate[1] && harness.calls.tabsCreate[1].url || ""), "chrome://extensions");
 });
 
@@ -864,7 +864,7 @@ test("ZIP_CONTEXT_MENU_ACTION getLatest falls back to main ZIP URL with cache bu
   const downloadUrl = String(harness.calls.tabsCreate[0] && harness.calls.tabsCreate[0].url || "");
   assert.match(
     downloadUrl,
-    /\/main\/zip-chrome-extension\.zip\?cacheBust=\d+$/
+    /\/main\/ziptool_distro\.zip\?cacheBust=\d+$/
   );
   assert.equal(String(harness.calls.tabsCreate[1] && harness.calls.tabsCreate[1].url || ""), "chrome://extensions");
 });

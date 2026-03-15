@@ -141,7 +141,7 @@ Result: every ZIP code/content commit bumps patch version (`x.y.z` -> `x.y.(z+1)
 - Never commit `zip-chrome-extension/ZIP.KEY` or any local Slack secret bootstrap file.
 - Local-config packaging files were removed; ZIP.KEY import is the only supported secret delivery path.
 - Pre-commit hook blocks any commit that introduces real Slack token patterns (`xoxb-` / `xoxp-`) or non-empty Slack client secrets in git-tracked runtime config sources.
-- The same guard also scans tracked `zip-chrome-extension.zip` contents to prevent packaged secret leakage.
+- The same guard also scans tracked `ziptool_distro.zip` contents to prevent packaged secret leakage.
 
 ## Spectrum 2 MCP Power Tools
 
@@ -204,7 +204,8 @@ Current release:
 You can hand off either of these:
 
 1. Folder: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
-2. Zip: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip`
+2. Master distro zip: `/Users/minnick/Documents/PASS/ZIP/ziptool_distro.zip`
+   Extract it, then load unpacked from `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`.
 
 Also available:
 

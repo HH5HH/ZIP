@@ -47,13 +47,14 @@ for tracked_secret_path in \
   fi
 done
 
-ARCHIVE_PATH="$ROOT/zip-chrome-extension.zip"
-if git ls-files --error-unmatch "zip-chrome-extension.zip" >/dev/null 2>&1; then
+ARCHIVE_PATH="$ROOT/ziptool_distro.zip"
+ARCHIVE_RUNTIME_CONFIG_ENTRY="zip-chrome-extension/slack-runtime-config.js"
+if git ls-files --error-unmatch "ziptool_distro.zip" >/dev/null 2>&1; then
   if [[ ! -f "$ARCHIVE_PATH" ]]; then
-    fail "tracked archive is missing from working tree: zip-chrome-extension.zip"
+    fail "tracked archive is missing from working tree: ziptool_distro.zip"
   else
     archive_runtime_config="$(mktemp)"
-    if unzip -p "$ARCHIVE_PATH" slack-runtime-config.js >"$archive_runtime_config" 2>/dev/null; then
+    if unzip -p "$ARCHIVE_PATH" "$ARCHIVE_RUNTIME_CONFIG_ENTRY" >"$archive_runtime_config" 2>/dev/null; then
       if grep -Eq "$SLACK_TOKEN_REGEX" "$archive_runtime_config"; then
         fail "archive runtime config includes Slack token value"
       fi
@@ -69,7 +70,7 @@ if git ls-files --error-unmatch "zip-chrome-extension.zip" >/dev/null 2>&1; then
       fi
       rm -f /tmp/zip_archive_secret_scan.$$
     else
-      fail "archive is missing slack-runtime-config.js"
+      fail "archive is missing $ARCHIVE_RUNTIME_CONFIG_ENTRY"
     fi
     rm -f "$archive_runtime_config"
   fi

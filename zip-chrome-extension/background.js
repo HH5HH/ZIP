@@ -85,7 +85,7 @@ const ZIP_LATEST_REF_API_URL = "https://api.github.com/repos/" + GITHUB_OWNER + 
 const ZIP_LATEST_COMMIT_API_URL = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/commits/main";
 const ZIP_LATEST_MANIFEST_URL = "https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/main/zip-chrome-extension/manifest.json";
 const ZIP_LATEST_MANIFEST_API_URL = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/zip-chrome-extension/manifest.json?ref=main";
-const ZIP_LATEST_PACKAGE_URL = "https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/main/zip-chrome-extension.zip";
+const ZIP_LATEST_PACKAGE_URL = "https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/main/ziptool_distro.zip";
 const CHROME_EXTENSIONS_URL = "chrome://extensions";
 const UPDATE_CHECK_TTL_MS = 10 * 60 * 1000;
 const CHROME_SIDEPANEL_SETTINGS_URL = "chrome://settings/?search=side%20panel";
@@ -1056,7 +1056,7 @@ function withCacheBust(url) {
 function buildLatestZipPackageUrl(commitSha) {
   const normalizedSha = normalizeCommitSha(commitSha);
   const baseUrl = normalizedSha
-    ? ("https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/" + normalizedSha + "/zip-chrome-extension.zip")
+    ? ("https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/" + normalizedSha + "/ziptool_distro.zip")
     : ZIP_LATEST_PACKAGE_URL;
   return withCacheBust(baseUrl);
 }

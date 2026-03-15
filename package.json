@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "build:distro": "bash scripts/build_ziptool_distro.sh",
     "test": "node --test zip-chrome-extension/tests/*.test.js",
     "test:smoke": "node --test zip-chrome-extension/tests/*playwright*.test.js"
   },

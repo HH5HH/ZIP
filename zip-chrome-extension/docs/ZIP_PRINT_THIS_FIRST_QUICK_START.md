@@ -33,4 +33,4 @@
 
 ## Install Paths
 - Unpacked folder: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension`
-- Handoff package: `/Users/minnick/Documents/PASS/ZIP/zip-chrome-extension.zip`
+- Handoff package: `/Users/minnick/Documents/PASS/ZIP/ziptool_distro.zip`
