@@ -43,6 +43,8 @@ const SLACK_API_SECONDARY_BOT_TOKEN = "";
 const SLACK_API_DEFAULT_USER_TOKEN = "";
 const SLACK_OPENID_DEFAULT_SCOPES = "openid profile email";
 const SLACK_OPENID_DEFAULT_REDIRECT_PATH = "slack-user";
+const ZIP_OFFICIAL_SLACK_OPENID_REDIRECT_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-openid";
+const ZIP_OFFICIAL_WORKSPACE_DEEPLINK_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-user";
 const SLACK_OPENID_STATUS_VERIFY_TTL_MS = 60 * 1000;
 const SLACK_TOKEN_FAILURE_BACKOFF_MS = 2 * 60 * 1000;
 const PASS_TRANSITION_RECIPIENT_LOOKUP_CONCURRENCY = 6;
@@ -2605,6 +2607,8 @@ function getZipWorkspaceDeeplinkRedirectOrigins() {
       origins.push(parsed.origin);
     } catch (_) {}
   };
+  pushOrigin(ZIP_OFFICIAL_WORKSPACE_DEEPLINK_URI);
+  pushOrigin(ZIP_OFFICIAL_SLACK_OPENID_REDIRECT_URI);
   try {
     if (chrome.identity && typeof chrome.identity.getRedirectURL === "function") {
       pushOrigin(chrome.identity.getRedirectURL(""));

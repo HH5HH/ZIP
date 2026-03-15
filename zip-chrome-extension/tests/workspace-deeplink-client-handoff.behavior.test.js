@@ -169,3 +169,51 @@ test("background queues targeted client handoff before falling back to workspace
   assert.match(source, /const queued = await queueZipWorkspaceDeeplinkForClient\(payload,\s*targetTabId\)\.catch\(\(\) => null\);/);
   assert.match(source, /const consumed = await waitForQueuedZipWorkspaceDeeplinkConsumption\(payload,\s*targetTabId,\s*1800\);/);
 });
+
+test("background accepts official ZipTool deeplink origin even when runtime redirect origin differs", () => {
+  const source = fs.readFileSync(BACKGROUND_JS_PATH, "utf8");
+  const encodedPayload = encodeZipWorkspacePayload({
+    v: 1,
+    sourceKind: "ticket",
+    sourceId: "12345",
+    statusFilter: "open"
+  });
+  const script = [
+    'const SLACK_OPENID_DEFAULT_REDIRECT_PATH = "slack-user";',
+    'const ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM = "zipdeeplink";',
+    'const ZIP_OFFICIAL_SLACK_OPENID_REDIRECT_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-openid";',
+    'const ZIP_OFFICIAL_WORKSPACE_DEEPLINK_URI = "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-user";',
+    'const chrome = globalThis.__seed.chrome;',
+    extractFunctionSource(source, "normalizeSlackOpenIdRedirectUri"),
+    extractFunctionSource(source, "getZipWorkspaceDeeplinkRedirectOrigins"),
+    extractFunctionSource(source, "parseZipWorkspaceDeeplinkUrl"),
+    "module.exports = { getZipWorkspaceDeeplinkRedirectOrigins, parseZipWorkspaceDeeplinkUrl };"
+  ].join("\n\n");
+  const context = {
+    module: { exports: {} },
+    exports: {},
+    URL,
+    __seed: {
+      chrome: {
+        identity: {
+          getRedirectURL(pathname) {
+            return "https://underpar-runtime.chromiumapp.org/" + String(pathname || "");
+          }
+        }
+      }
+    }
+  };
+  vm.runInNewContext(script, context, { filename: BACKGROUND_JS_PATH });
+
+  const parsed = context.module.exports.parseZipWorkspaceDeeplinkUrl(
+    "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org/slack-user?zipdeeplink=" + encodedPayload
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(parsed)), {
+    payload: encodedPayload,
+    origin: "https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org"
+  });
+  assert.ok(
+    context.module.exports.getZipWorkspaceDeeplinkRedirectOrigins().includes("https://ibijkkpjfgaocgmpafbcckhhdkpbldoc.chromiumapp.org")
+  );
+});
