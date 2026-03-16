@@ -5,6 +5,13 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 output_path="${1:-ziptool_distro.zip}"
 package_root="zip-chrome-extension"
+staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/ziptool-distro.XXXXXX")"
+
+cleanup() {
+  rm -rf "$staging_dir"
+}
+
+trap cleanup EXIT
 
 if [[ "$output_path" != /* ]]; then
   output_path="$repo_root/$output_path"
@@ -21,22 +28,34 @@ done < <(find "$repo_root" -maxdepth 1 -type f \( -name '*.zip' -o -name '*.ZIP'
 
 rm -f "$output_path"
 
-files=()
-while IFS= read -r -d '' file; do
-  case "$file" in
-    *.zip|*.ZIP|.DS_Store|*/.DS_Store)
-      continue
-      ;;
-  esac
-  [[ -e "$file" ]] || continue
-  files+=("${file#${package_root}/}")
-done < <(git ls-files -z -- "$package_root")
+git checkout-index --all --force --prefix="$staging_dir/"
 
-if [[ ${#files[@]} -eq 0 ]]; then
+if [[ ! -d "$staging_dir/$package_root" ]]; then
   echo "No extension files available to package." >&2
   exit 1
 fi
 
-cd "$repo_root/$package_root"
-zip -q "$output_path" "${files[@]}"
+rm -rf \
+  "$staging_dir/$package_root/docs" \
+  "$staging_dir/$package_root/scripts" \
+  "$staging_dir/$package_root/tests"
+rm -f "$staging_dir/$package_root/README.md"
+
+find "$staging_dir/$package_root" \( -name '*.zip' -o -name '*.ZIP' -o -name '.DS_Store' \) -delete
+
+entries=()
+while IFS= read -r -d '' entry; do
+  entries+=("${entry#"$staging_dir/$package_root/"}")
+done < <(find "$staging_dir/$package_root" -mindepth 1 -maxdepth 1 -print0 | sort -z)
+
+if [[ ${#entries[@]} -eq 0 ]]; then
+  echo "No extension files available to package." >&2
+  exit 1
+fi
+
+(
+  cd "$staging_dir/$package_root"
+  zip -q -r -9 "$output_path" "${entries[@]}"
+)
+
 printf '%s\n' "$output_path"
