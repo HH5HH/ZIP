@@ -5,6 +5,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 output_path="${1:-ziptool_distro.zip}"
 package_root="zip-chrome-extension"
+archive_root_name="ziptool_distro"
 staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/ziptool-distro.XXXXXX")"
 
 cleanup() {
@@ -43,19 +44,17 @@ rm -f "$staging_dir/$package_root/README.md"
 
 find "$staging_dir/$package_root" \( -name '*.zip' -o -name '*.ZIP' -o -name '.DS_Store' \) -delete
 
-entries=()
-while IFS= read -r -d '' entry; do
-  entries+=("${entry#"$staging_dir/$package_root/"}")
-done < <(find "$staging_dir/$package_root" -mindepth 1 -maxdepth 1 -print0 | sort -z)
+rm -rf "$staging_dir/$archive_root_name"
+mv "$staging_dir/$package_root" "$staging_dir/$archive_root_name"
 
-if [[ ${#entries[@]} -eq 0 ]]; then
+if [[ -z "$(find "$staging_dir/$archive_root_name" -mindepth 1 -print -quit)" ]]; then
   echo "No extension files available to package." >&2
   exit 1
 fi
 
 (
-  cd "$staging_dir/$package_root"
-  zip -q -r -9 "$output_path" "${entries[@]}"
+  cd "$staging_dir"
+  zip -q -r -9 "$output_path" "$archive_root_name"
 )
 
 printf '%s\n' "$output_path"

@@ -71,12 +71,16 @@ test("distribution build excludes docs tests scripts and README from the runtime
 
   assert.equal(fs.realpathSync(outputPath), fs.realpathSync(artifactPath));
   assert.equal(fs.existsSync(path.join(repoDir, "stale.zip")), false);
-  assert.ok(archiveEntries.includes("manifest.json"));
-  assert.ok(archiveEntries.includes("background.js"));
-  assert.ok(!archiveEntries.includes("README.md"));
-  assert.ok(!archiveEntries.includes("docs/guide.md"));
-  assert.ok(!archiveEntries.includes("tests/noop.test.js"));
-  assert.ok(!archiveEntries.includes("scripts/helper.sh"));
+  assert.ok(archiveEntries.length > 0);
+  assert.ok(
+    archiveEntries.every((entry) => entry === "ziptool_distro/" || entry.startsWith("ziptool_distro/"))
+  );
+  assert.ok(archiveEntries.includes("ziptool_distro/manifest.json"));
+  assert.ok(archiveEntries.includes("ziptool_distro/background.js"));
+  assert.ok(!archiveEntries.includes("ziptool_distro/README.md"));
+  assert.ok(!archiveEntries.includes("ziptool_distro/docs/guide.md"));
+  assert.ok(!archiveEntries.includes("ziptool_distro/tests/noop.test.js"));
+  assert.ok(!archiveEntries.includes("ziptool_distro/scripts/helper.sh"));
 });
 
 test("distribution build packages staged tracked files even when the worktree copy is missing", (t) => {
@@ -117,8 +121,8 @@ test("distribution build packages staged tracked files even when the worktree co
     .trim()
     .split(/\n+/)
     .filter(Boolean);
-  const backgroundSource = runCommand("unzip", ["-p", artifactPath, "background.js"], repoDir);
+  const backgroundSource = runCommand("unzip", ["-p", artifactPath, "ziptool_distro/background.js"], repoDir);
 
-  assert.ok(archiveEntries.includes("background.js"));
+  assert.ok(archiveEntries.includes("ziptool_distro/background.js"));
   assert.equal(backgroundSource, 'console.log("zip");\n');
 });

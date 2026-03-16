@@ -48,7 +48,7 @@ for tracked_secret_path in \
 done
 
 ARCHIVE_PATH="$ROOT/ziptool_distro.zip"
-ARCHIVE_RUNTIME_CONFIG_ENTRY="slack-runtime-config.js"
+ARCHIVE_RUNTIME_CONFIG_ENTRY="ziptool_distro/slack-runtime-config.js"
 if git ls-files --error-unmatch "ziptool_distro.zip" >/dev/null 2>&1; then
   if [[ ! -f "$ARCHIVE_PATH" ]]; then
     fail "tracked archive is missing from working tree: ziptool_distro.zip"
