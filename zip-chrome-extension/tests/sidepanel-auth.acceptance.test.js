@@ -75,6 +75,7 @@ function createChromeHarness(options) {
     tabsQuery: [],
     tabsUpdate: [],
     tabsCreate: [],
+    downloadsDownload: [],
     tabsSendMessage: [],
     scriptingExecuteScript: [],
     windowsUpdate: [],
@@ -109,6 +110,20 @@ function createChromeHarness(options) {
       },
       onInstalled: { addListener() {} },
       onStartup: { addListener() {} }
+    },
+    downloads: {
+      download(downloadInfo, callback) {
+        calls.downloadsDownload.push(downloadInfo);
+        if (options && options.downloadShouldFail) {
+          return Promise.reject(new Error("download failed"));
+        }
+        chrome.runtime.lastError = null;
+        if (typeof callback === "function") {
+          callback(73);
+          return;
+        }
+        return Promise.resolve(73);
+      }
     },
     tabs: {
       query(queryInfo, callback) {
@@ -843,14 +858,17 @@ test("ZIP_CONTEXT_MENU_ACTION getLatest opens commit-pinned ZIP URL when latest 
   const response = await harness.sendRuntimeMessage({ type: "ZIP_CONTEXT_MENU_ACTION", action: "getLatest" });
   assert.equal(response && response.ok, true);
   assert.equal(String(response && response.latestCommitSha || ""), latestSha);
-  assert.equal(harness.calls.tabsCreate.length, 2, "download and chrome extensions tabs should both be opened");
-  const downloadUrl = String(harness.calls.tabsCreate[0] && harness.calls.tabsCreate[0].url || "");
+  assert.equal(response && response.downloadStarted, true);
+  assert.equal(harness.calls.downloadsDownload.length, 1, "downloads API should start the ZIP package download");
+  assert.equal(harness.calls.tabsCreate.length, 1, "chrome extensions tab should still be opened");
+  const downloadUrl = String(harness.calls.downloadsDownload[0] && harness.calls.downloadsDownload[0].url || "");
   assert.match(
     downloadUrl,
     new RegExp("/" + latestSha + "/ziptool_distro\\.zip\\?cacheBust=\\d+$")
   );
   assert.equal(downloadUrl.includes("/main/ziptool_distro.zip"), false, "download URL should not use branch-pinned path");
-  assert.equal(String(harness.calls.tabsCreate[1] && harness.calls.tabsCreate[1].url || ""), "chrome://extensions");
+  assert.match(String(harness.calls.downloadsDownload[0] && harness.calls.downloadsDownload[0].filename || ""), /^ZIP-v99\.88\.77-0123456\.zip$/);
+  assert.equal(String(harness.calls.tabsCreate[0] && harness.calls.tabsCreate[0].url || ""), "chrome://extensions");
 });
 
 test("ZIP_CONTEXT_MENU_ACTION getLatest falls back to main ZIP URL with cache bust when SHA lookup fails", async () => {
@@ -860,11 +878,60 @@ test("ZIP_CONTEXT_MENU_ACTION getLatest falls back to main ZIP URL with cache bu
   const response = await harness.sendRuntimeMessage({ type: "ZIP_CONTEXT_MENU_ACTION", action: "getLatest" });
   assert.equal(response && response.ok, true);
   assert.equal(String(response && response.latestCommitSha || ""), "");
-  assert.equal(harness.calls.tabsCreate.length, 2, "download and chrome extensions tabs should both be opened");
-  const downloadUrl = String(harness.calls.tabsCreate[0] && harness.calls.tabsCreate[0].url || "");
+  assert.equal(response && response.downloadStarted, true);
+  assert.equal(harness.calls.downloadsDownload.length, 1, "downloads API should still be attempted");
+  assert.equal(harness.calls.tabsCreate.length, 1, "chrome extensions tab should still be opened");
+  const downloadUrl = String(harness.calls.downloadsDownload[0] && harness.calls.downloadsDownload[0].url || "");
   assert.match(
     downloadUrl,
     /\/main\/ziptool_distro\.zip\?cacheBust=\d+$/
+  );
+  assert.match(String(harness.calls.downloadsDownload[0] && harness.calls.downloadsDownload[0].filename || ""), /^ZIP-vlatest\.zip$/);
+  assert.equal(String(harness.calls.tabsCreate[0] && harness.calls.tabsCreate[0].url || ""), "chrome://extensions");
+});
+
+test("ZIP_CONTEXT_MENU_ACTION getLatest falls back to opening the package tab when downloads API fails", async () => {
+  const latestSha = "fedcba9876543210fedcba9876543210fedcba98";
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    downloadShouldFail: true,
+    fetch: ({ url }) => {
+      if (url.includes("/zip-chrome-extension/manifest.json")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ version: "8.8.8" }),
+          text: async () => ""
+        });
+      }
+      if (url.includes("/git/ref/heads/main")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ object: { sha: latestSha } }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+        text: async () => ""
+      });
+    }
+  });
+  harness.resetCalls();
+
+  const response = await harness.sendRuntimeMessage({ type: "ZIP_CONTEXT_MENU_ACTION", action: "getLatest" });
+  assert.equal(response && response.ok, true);
+  assert.equal(response && response.downloadStarted, false);
+  assert.equal(response && response.downloadTabOpened, true);
+  assert.equal(harness.calls.downloadsDownload.length, 1, "downloads API should still be attempted");
+  assert.equal(harness.calls.tabsCreate.length, 2, "package tab fallback and chrome extensions tab should both be opened");
+  const downloadUrl = String(harness.calls.tabsCreate[0] && harness.calls.tabsCreate[0].url || "");
+  assert.match(
+    downloadUrl,
+    new RegExp("/" + latestSha + "/ziptool_distro\\.zip\\?cacheBust=\\d+$")
   );
   assert.equal(String(harness.calls.tabsCreate[1] && harness.calls.tabsCreate[1].url || ""), "chrome://extensions");
 });

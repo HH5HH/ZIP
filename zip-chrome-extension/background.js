@@ -1063,6 +1063,61 @@ function buildLatestZipPackageUrl(commitSha) {
   return withCacheBust(baseUrl);
 }
 
+function sanitizeLatestPackageFileSegment(value, fallback) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || fallback;
+}
+
+function buildLatestZipPackageFileName(latestVersion, commitSha) {
+  const versionSegment = sanitizeLatestPackageFileSegment(latestVersion, "latest");
+  const shaSegment = normalizeCommitSha(commitSha).slice(0, 7);
+  return shaSegment
+    ? ("ZIP-v" + versionSegment + "-" + shaSegment + ".zip")
+    : ("ZIP-v" + versionSegment + ".zip");
+}
+
+function startLatestPackageDownload(downloadOptions) {
+  if (!chrome.downloads || typeof chrome.downloads.download !== "function") {
+    return Promise.reject(new Error("Chrome downloads API unavailable"));
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finishResolve = (value) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+    const finishReject = (error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+      }
+    };
+
+    try {
+      const maybePromise = chrome.downloads.download(downloadOptions, (downloadId) => {
+        const runtimeError = chrome.runtime && chrome.runtime.lastError;
+        if (runtimeError) {
+          finishReject(new Error(runtimeError.message || "Chrome downloads API failed"));
+          return;
+        }
+        finishResolve(downloadId);
+      });
+      if (maybePromise && typeof maybePromise.then === "function") {
+        maybePromise.then(finishResolve, finishReject);
+      }
+    } catch (error) {
+      finishReject(error instanceof Error ? error : new Error(String(error || "Chrome downloads API failed")));
+    }
+  });
+}
+
 function getUpdateStatePayload() {
   return {
     currentVersion: updateState.currentVersion || getZipBuildVersion(),
@@ -1103,9 +1158,9 @@ async function refreshUpdateState(options = {}) {
       updateState.updateAvailable = compareVersions(currentVersion, latestVersion) < 0;
       updateState.checkError = "";
     } catch (err) {
-      updateState.latestVersion = "";
-      updateState.latestCommitSha = "";
-      updateState.updateAvailable = false;
+      updateState.latestVersion = prevLatestVersion || "";
+      updateState.latestCommitSha = prevLatestCommitSha || "";
+      updateState.updateAvailable = prevUpdateAvailable;
       updateState.checkError = err && err.message ? err.message : "Version check failed";
     } finally {
       updateState.lastCheckedAt = Date.now();
@@ -6035,24 +6090,41 @@ async function openAskTeamEmail(tab) {
 
 async function openGetLatestFlow() {
   await refreshUpdateState({ force: true }).catch(() => {});
-  const downloadUrl = buildLatestZipPackageUrl(updateState.latestCommitSha);
+  const latestVersion = updateState.latestVersion || "";
+  const latestCommitSha = updateState.latestCommitSha || "";
+  const downloadUrl = buildLatestZipPackageUrl(latestCommitSha);
+  const downloadFileName = buildLatestZipPackageFileName(latestVersion, latestCommitSha);
   const result = {
     ok: false,
     downloadUrl,
-    latestVersion: updateState.latestVersion || "",
-    latestCommitSha: updateState.latestCommitSha || "",
-    downloadOpened: false,
+    downloadFileName,
+    latestVersion: latestVersion,
+    latestCommitSha: latestCommitSha,
+    downloadId: 0,
+    downloadStarted: false,
+    downloadTabOpened: false,
     extensionsOpened: false
   };
   try {
-    await chrome.tabs.create({ url: downloadUrl });
-    result.downloadOpened = true;
-  } catch (_) {}
+    const createdDownloadId = await startLatestPackageDownload({
+      url: downloadUrl,
+      filename: downloadFileName,
+      conflictAction: "uniquify",
+      saveAs: false
+    });
+    result.downloadId = Number(createdDownloadId || 0);
+    result.downloadStarted = true;
+  } catch (_) {
+    try {
+      await chrome.tabs.create({ url: downloadUrl });
+      result.downloadTabOpened = true;
+    } catch (_) {}
+  }
   try {
     await chrome.tabs.create({ url: CHROME_EXTENSIONS_URL });
     result.extensionsOpened = true;
   } catch (_) {}
-  result.ok = result.downloadOpened || result.extensionsOpened;
+  result.ok = result.downloadStarted || result.downloadTabOpened || result.extensionsOpened;
   if (!result.ok) {
     result.error = "Unable to open update links";
   }

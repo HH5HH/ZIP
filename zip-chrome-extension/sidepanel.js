@@ -3284,8 +3284,14 @@
 
   function applyContextMenuUpdateState(updateInfo) {
     if (!els.contextMenuGetLatest) return;
-    const showGetLatest = !!(updateInfo && updateInfo.updateAvailable);
-    els.contextMenuGetLatest.classList.toggle("hidden", !showGetLatest);
+    const latestVersion = String(updateInfo && updateInfo.latestVersion || "").trim();
+    const currentVersion = String(chrome && chrome.runtime && chrome.runtime.getManifest ? chrome.runtime.getManifest().version || "" : "").trim();
+    els.contextMenuGetLatest.classList.remove("hidden");
+    const title = latestVersion
+      ? ("Download ZIP v" + latestVersion + " and open chrome://extensions" + (currentVersion ? " (current v" + currentVersion + ")" : ""))
+      : ("Download the latest ZIP package and open chrome://extensions" + (currentVersion ? " (current v" + currentVersion + ")" : ""));
+    els.contextMenuGetLatest.title = title;
+    els.contextMenuGetLatest.setAttribute("aria-label", title);
   }
 
   function loadContextMenuUpdateState(force) {
@@ -3392,7 +3398,28 @@
           setStatus("Get Latest failed: " + (response.error || "Unknown error"), true);
           return;
         }
-        setStatus("Opening latest ZIP package and chrome://extensions…", false);
+        const downloadLabel = String(response && response.downloadFileName || "").trim() || "latest ZIP package";
+        if (response && response.downloadStarted === true && response.extensionsOpened === true) {
+          setStatus("Started " + downloadLabel + " download and opened chrome://extensions.", false);
+          return;
+        }
+        if (response && response.downloadStarted === true) {
+          setStatus("Started " + downloadLabel + " download. Open chrome://extensions to finish the update.", false);
+          return;
+        }
+        if (response && response.downloadTabOpened === true && response.extensionsOpened === true) {
+          setStatus("Opened latest ZIP package tab and chrome://extensions.", false);
+          return;
+        }
+        if (response && response.downloadTabOpened === true) {
+          setStatus("Opened latest ZIP package tab. Open chrome://extensions to finish the update.", false);
+          return;
+        }
+        if (response && response.extensionsOpened === true) {
+          setStatus("Opened chrome://extensions. Start the latest ZIP download to finish the update.", false);
+          return;
+        }
+        setStatus("Starting latest ZIP download and opening chrome://extensions...", false);
         return;
       }
       if (action === "clearZipKey") {
