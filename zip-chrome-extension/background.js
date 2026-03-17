@@ -991,7 +991,7 @@ async function fetchLatestZipVersionFromGithubApi() {
 
 async function fetchLatestZipVersion() {
   let lastError = null;
-  const resolvers = [fetchLatestZipVersionFromRaw, fetchLatestZipVersionFromGithubApi];
+  const resolvers = [fetchLatestZipVersionFromGithubApi, fetchLatestZipVersionFromRaw];
   for (const resolveVersion of resolvers) {
     try {
       return await resolveVersion();

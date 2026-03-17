@@ -285,6 +285,12 @@ function createChromeHarness(options) {
     URLSearchParams,
     TextEncoder,
     TextDecoder,
+    atob(value) {
+      return Buffer.from(String(value || ""), "base64").toString("binary");
+    },
+    btoa(value) {
+      return Buffer.from(String(value || ""), "binary").toString("base64");
+    },
     crypto: { randomUUID: () => "00000000-0000-0000-0000-000000000000" },
     setTimeout(fn, delay) {
       calls.setTimeout.push({ fn, delay });
@@ -1037,6 +1043,57 @@ test("ZIP_CONTEXT_MENU_ACTION getLatest opens commit-pinned ZIP URL when latest 
   assert.equal(downloadUrl.includes("/main/ziptool_distro.zip"), false, "download URL should not use branch-pinned path");
   assert.match(String(harness.calls.downloadsDownload[0] && harness.calls.downloadsDownload[0].filename || ""), /^ZIP-v99\.88\.77-0123456\.zip$/);
   assert.equal(String(harness.calls.tabsCreate[0] && harness.calls.tabsCreate[0].url || ""), "chrome://extensions");
+});
+
+test("ZIP_CONTEXT_MENU_ACTION getLatest prefers GitHub manifest API version over stale raw main manifest cache", async () => {
+  const latestSha = "89abcdef0123456789abcdef0123456789abcdef";
+  const encodedManifest = Buffer.from(JSON.stringify({ version: "1.6.74" }), "utf8").toString("base64");
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    fetch: ({ url }) => {
+      if (url.includes("/contents/zip-chrome-extension/manifest.json?ref=main")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ content: encodedManifest }),
+          text: async () => ""
+        });
+      }
+      if (url.includes("/main/zip-chrome-extension/manifest.json")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ version: "1.6.72" }),
+          text: async () => ""
+        });
+      }
+      if (url.includes("/git/ref/heads/main")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ object: { sha: latestSha } }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+        text: async () => ""
+      });
+    }
+  });
+  harness.resetCalls();
+
+  const response = await harness.sendRuntimeMessage({ type: "ZIP_CONTEXT_MENU_ACTION", action: "getLatest" });
+  assert.equal(response && response.ok, true);
+  assert.equal(String(response && response.latestVersion || ""), "1.6.74");
+  assert.equal(String(response && response.latestCommitSha || ""), latestSha);
+  assert.equal(harness.calls.downloadsDownload.length, 1, "downloads API should start the ZIP package download");
+  assert.match(
+    String(harness.calls.downloadsDownload[0] && harness.calls.downloadsDownload[0].filename || ""),
+    /^ZIP-v1\.6\.74-89abcde\.zip$/
+  );
 });
 
 test("ZIP_CONTEXT_MENU_ACTION getLatest falls back to main ZIP URL with cache bust when SHA lookup fails", async () => {
