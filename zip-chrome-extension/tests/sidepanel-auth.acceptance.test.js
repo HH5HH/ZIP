@@ -1037,6 +1037,33 @@ test("PASS-TRANSITION recipient refresh captures a live Slack session token from
   assert.equal(String(stored.zip_slack_oauth_token || ""), liveSessionToken);
 });
 
+test("force PASS-TRANSITION recipient refresh does not open a Slack tab during Shift+Click hydration", async () => {
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    storageSeed: {
+      zip_pass_transition_channel_id: "C09NHJCMFC1",
+      zip_pass_transition_channel_name: "#pass-transition",
+      zip_pass_transition_member_ids: "UALICE123,UBOB45678",
+      zip_pass_transition_members_synced_at: "2026-03-17T00:00:00.000Z",
+      "zip.slack.openid.session.v1": {
+        userId: "UALICE123",
+        userName: "Alice Example",
+        avatarUrl: "https://example.com/alice.png"
+      }
+    }
+  });
+
+  harness.resetCalls();
+  const recipients = await harness.sendRuntimeMessage({
+    type: "ZIP_GET_PASS_TRANSITION_RECIPIENTS",
+    force: true,
+    allowCreateTab: false
+  });
+  assert.equal(recipients && recipients.ok, false);
+  assert.equal(String(recipients && recipients.code || ""), "slack_workspace_tab_missing");
+  assert.equal(harness.calls.tabsCreate.length, 0, "force recipient refresh should not create a Slack tab during Shift+Click hydration");
+});
+
 test("ZIP_SLACK_API_AUTH_TEST rejects a stored token when it belongs to a different Slack user", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],

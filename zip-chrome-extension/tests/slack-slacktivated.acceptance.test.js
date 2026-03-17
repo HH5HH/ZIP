@@ -188,7 +188,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /function sendSlackMeNoteFromDialog\(\)/);
   assert.match(js, /openSlackMeDialog\(\{ mode: "self" \}\)/);
   assert.match(js, /els\.slackMeRecipientSelect\.addEventListener\("change"/);
-  assert.match(js, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition", forceRecipients: true \}\)/);
+  assert.match(js, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{[\s\S]*mode: "transition"[\s\S]*forceRecipients: true[\s\S]*preserveExisting: true[\s\S]*allowCreateTab: false[\s\S]*\}\)/);
   assert.match(js, /let shouldCloseSlackMeDialog = false;/);
   assert.match(js, /shouldCloseSlackMeDialog = true;/);
   assert.match(js, /if \(shouldCloseSlackMeDialog\) \{\s*hideSlackMeDialog\(\);/);
@@ -202,6 +202,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /setSlackMeDialogStatus\("@SLACK ME failed: " \+ message, true\);/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
   assert.match(js, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS"/);
+  assert.match(js, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: true\s*\}\)/);
   assert.match(js, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS"/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER"/);
   assert.doesNotMatch(js, /sendBackgroundRequest\("ZIP_SLACK_API_QAI_SEND"/);

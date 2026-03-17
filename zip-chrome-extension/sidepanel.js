@@ -2532,7 +2532,8 @@
     const requestToken = passTransitionRecipientsRequestToken;
     passTransitionRecipientsRequestInFlight = (async () => {
       const response = await sendBackgroundRequest("ZIP_GET_PASS_TRANSITION_RECIPIENTS", {
-        force: opts.force === true
+        force: opts.force === true,
+        allowCreateTab: opts.allowCreateTab === true
       });
       if (!response || response.ok !== true) {
         throw new Error(normalizePassAiCommentBody(response && (response.error || response.message)) || "Unable to load PASS-TRANSITION members.");
@@ -2609,13 +2610,20 @@
     const opts = options && typeof options === "object" ? options : {};
     if (state.slackMePassTransitionLoading) {
       return passTransitionRecipientsRequestInFlight
-        ? passTransitionRecipientsRequestInFlight.catch(() => [])
+        ? passTransitionRecipientsRequestInFlight.catch(() => (
+          opts.preserveExisting === true
+            ? getSlackMePassTransitionRecipients()
+            : []
+        ))
         : getSlackMePassTransitionRecipients();
     }
     state.slackMePassTransitionLoading = true;
     syncSlackMeDialogUi();
     try {
-      const recipients = await refreshPassTransitionRecipients({ force: opts.force === true });
+      const recipients = await refreshPassTransitionRecipients({
+        force: opts.force === true,
+        allowCreateTab: opts.allowCreateTab === true
+      });
       if (!recipients.length) {
         throw new Error("No PASS-TRANSITION members are available to receive a handoff.");
       }
@@ -2623,6 +2631,15 @@
       return recipients;
     } catch (err) {
       const message = normalizePassAiCommentBody(err && err.message) || "Unable to load PASS-TRANSITION members.";
+      const existingRecipients = getSlackMePassTransitionRecipients();
+      if (opts.preserveExisting === true && existingRecipients.length) {
+        const activeRecipient = existingRecipients.find((entry) => entry.userId === normalizePassAiSlackUserId(state.slackMeSelectedRecipientId || ""));
+        if (!activeRecipient) {
+          setSelectedPassTransitionRecipient(existingRecipients[0] && existingRecipients[0].userId);
+        }
+        setSlackMeDialogStatus("PASS-TRANSITION refresh failed; showing cached members: " + message, true);
+        return existingRecipients;
+      }
       setSelectedPassTransitionRecipient("");
       state.slackMePassTransitionRecipients = [];
       setSlackMeDialogStatus("PASS-TRANSITION recipients unavailable: " + message, true);
@@ -3099,12 +3116,16 @@
     if (mode !== "transition") {
       setSelectedPassTransitionRecipient("");
     }
-    if (mode === "transition") {
-      await loadPassTransitionRecipients({ force: opts.forceRecipients === true });
-    }
     els.slackMeDialogBackdrop.classList.remove("hidden");
     els.slackMeDialogBackdrop.setAttribute("aria-hidden", "false");
     syncSlackMeDialogUi();
+    if (mode === "transition") {
+      loadPassTransitionRecipients({
+        force: opts.forceRecipients === true,
+        preserveExisting: opts.preserveExisting === true,
+        allowCreateTab: opts.allowCreateTab === true
+      }).catch(() => {});
+    }
     const focusTarget = (
       mode === "transition"
       && els.slackMeRecipientSelect
@@ -3413,7 +3434,10 @@
       : null;
     const hasPassTransitionChannel = !!normalizePassAiSlackChannelId(passTransition && passTransition.channelId || "");
     if (hasPassTransitionChannel) {
-      const members = await sendBackgroundRequest("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", { force: true });
+      const members = await sendBackgroundRequest("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", {
+        force: true,
+        allowCreateTab: true
+      });
       if (!members || members.ok !== true) {
         throw new Error(
           normalizePassAiCommentBody(members && (members.error || members.message))
@@ -3422,7 +3446,7 @@
       }
       await refreshZipSecretConfigFromStorage().catch(() => {});
       applyZipConfigAfterStorageRefresh({ reportStatus: false });
-      const recipients = await refreshPassTransitionRecipients({ force: true });
+      const recipients = await refreshPassTransitionRecipients({ force: true, allowCreateTab: true });
       recipientCount = Array.isArray(recipients) ? recipients.length : getSlackMePassTransitionRecipients().length;
       syncSlackMeDialogUi();
     }
@@ -13285,7 +13309,12 @@
         e.preventDefault();
         if (state.slackItToMeButtonState === "ack") return;
         if (e.shiftKey) {
-          openSlackMeDialog({ mode: "transition", forceRecipients: true }).catch((err) => {
+          openSlackMeDialog({
+            mode: "transition",
+            forceRecipients: true,
+            preserveExisting: true,
+            allowCreateTab: false
+          }).catch((err) => {
             const message = normalizePassAiCommentBody(err && err.message) || "PASS-TRANSITION share dialog failed.";
             setStatus("PASS-TRANSITION share dialog failed: " + message, true);
           });

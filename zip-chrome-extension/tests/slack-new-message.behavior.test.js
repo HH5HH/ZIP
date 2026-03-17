@@ -85,7 +85,7 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
 
 test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
-  assert.match(source, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition", forceRecipients: true \}\)/);
+  assert.match(source, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{[\s\S]*mode: "transition"[\s\S]*forceRecipients: true[\s\S]*preserveExisting: true[\s\S]*allowCreateTab: false[\s\S]*\}\)/);
   assert.match(source, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS"/);
   assert.match(
     source,
@@ -96,7 +96,7 @@ test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", 
 test("sidepanel exposes a re-hydrate action for Slack session and PASS-TRANSITION refresh", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   assert.match(source, /async function rehydrateZipRuntime\(\)/);
-  assert.match(source, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{ force: true \}\)/);
+  assert.match(source, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: true\s*\}\)/);
   assert.match(source, /runContextMenuAction\("rehydrateZip"\)/);
 });
 

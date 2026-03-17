@@ -3447,6 +3447,7 @@ async function fetchSlackConversationMembersViaApi(workspaceOrigin, token, chann
 async function getPassTransitionMembers(options) {
   const opts = options && typeof options === "object" ? options : {};
   const force = opts.force === true;
+  const allowCreateTab = opts.allowCreateTab === true;
   const stored = await readStorageLocal([
     ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
     ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY,
@@ -3478,7 +3479,7 @@ async function getPassTransitionMembers(options) {
     workspaceSessionCapture = await captureSlackRuntimeUserTokenFromWorkspaceSession({
       workspaceOrigin: SLACK_WORKSPACE_ORIGIN,
       expectedUserId: resolveExpectedSlackAuthorUserId({}, openIdSession),
-      allowCreateTab: true
+      allowCreateTab
     }).catch((err) => ({
       ok: false,
       code: "slack_workspace_session_unavailable",
@@ -3559,7 +3560,11 @@ async function getPassTransitionMembers(options) {
 
 async function getPassTransitionRecipients(options) {
   const opts = options && typeof options === "object" ? options : {};
-  const membersResult = await getPassTransitionMembers({ force: opts.force === true });
+  const allowCreateTab = opts.allowCreateTab === true;
+  const membersResult = await getPassTransitionMembers({
+    force: opts.force === true,
+    allowCreateTab
+  });
   if (!membersResult || membersResult.ok !== true) {
     return membersResult || {
       ok: false,
@@ -3584,7 +3589,7 @@ async function getPassTransitionRecipients(options) {
     workspaceSessionCapture = await captureSlackRuntimeUserTokenFromWorkspaceSession({
       workspaceOrigin: SLACK_WORKSPACE_ORIGIN,
       expectedUserId: resolveExpectedSlackAuthorUserId({}, openIdSession),
-      allowCreateTab: true
+      allowCreateTab
     }).catch((err) => ({
       ok: false,
       code: "slack_workspace_session_unavailable",
@@ -6704,7 +6709,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     || msg.type === "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS"
   ) {
     getPassTransitionMembers({
-      force: msg.force === true || msg.type === "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS"
+      force: msg.force === true || msg.type === "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS",
+      allowCreateTab: msg.allowCreateTab === true || msg.type === "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS"
     })
       .then((result) => sendResponse(result || {
         ok: false,
@@ -6720,7 +6726,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === "ZIP_GET_PASS_TRANSITION_RECIPIENTS") {
     getPassTransitionRecipients({
-      force: msg.force === true
+      force: msg.force === true,
+      allowCreateTab: msg.allowCreateTab === true
     })
       .then((result) => sendResponse(result || {
         ok: false,
