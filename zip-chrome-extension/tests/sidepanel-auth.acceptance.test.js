@@ -474,9 +474,6 @@ test("ZIP_CHECK_SECRETS reports missing state until ZIP_IMPORT_KEY_PAYLOAD succe
         scope: "openid profile email",
         redirectPath: "slack-user"
       },
-      api: {
-        userToken: "SLK_TEST_USER_TOKEN"
-      },
       singularity: {
         channelId: "C123456789A",
         mention: "@Singularity"
@@ -491,6 +488,8 @@ test("ZIP_CHECK_SECRETS reports missing state until ZIP_IMPORT_KEY_PAYLOAD succe
   assert.equal(String(stored.zip_slack_client_id || ""), "zip-client-id");
   assert.equal(String(stored.zip_slack_client_secret || ""), "zip-client-secret");
   assert.equal(stored.zip_slack_key_loaded, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(stored, "zip_slack_oauth_token"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(stored, "zip_slack_user_token"), false);
 
   const cleared = await harness.sendRuntimeMessage({ type: "ZIP_CLEAR_KEY" });
   assert.equal(cleared && cleared.ok, true);
@@ -499,6 +498,36 @@ test("ZIP_CHECK_SECRETS reports missing state until ZIP_IMPORT_KEY_PAYLOAD succe
   const afterClear = harness.storageDump();
   assert.equal(Object.prototype.hasOwnProperty.call(afterClear, "zip_slack_client_id"), false);
   assert.equal(afterClear.zip_slack_key_loaded, false);
+});
+
+test("ZIP_IMPORT_KEY_PAYLOAD strips user-scoped Slack tokens from ZIP.KEY config", async () => {
+  const harness = createChromeHarness({ zendeskTabs: [] });
+
+  const imported = await harness.sendRuntimeMessage({
+    type: "ZIP_IMPORT_KEY_PAYLOAD",
+    config: {
+      oidc: {
+        clientId: "zip-client-id",
+        clientSecret: "zip-client-secret",
+        scope: "openid profile email",
+        redirectPath: "slack-user"
+      },
+      api: {
+        userToken: "SLK_TEST_LEGACY_ZIP_KEY_TOKEN",
+        botToken: "SLK_TEST_ZIP_BOT_TOKEN"
+      },
+      singularity: {
+        channelId: "C123456789A",
+        mention: "@Singularity"
+      }
+    }
+  });
+
+  assert.equal(imported && imported.ok, true);
+  const stored = harness.storageDump();
+  assert.equal(String(stored.zip_slack_bot_token || ""), "SLK_TEST_ZIP_BOT_TOKEN");
+  assert.equal(Object.prototype.hasOwnProperty.call(stored, "zip_slack_oauth_token"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(stored, "zip_slack_user_token"), false);
 });
 
 test("ZIP_IMPORT_KEY_PAYLOAD preserves PASS-TRANSITION cache for load-once member hydration", async () => {
@@ -512,9 +541,6 @@ test("ZIP_IMPORT_KEY_PAYLOAD preserves PASS-TRANSITION cache for load-once membe
         clientSecret: "pass-transition-client-secret",
         scope: "openid profile email",
         redirectPath: "slack-user"
-      },
-      api: {
-        userToken: "SLK_TEST_PASS_TRANSITION_USER_TOKEN"
       },
       singularity: {
         channelId: "C123456789A",
@@ -553,6 +579,19 @@ test("ZIP_IMPORT_KEY_PAYLOAD preserves PASS-TRANSITION cache for load-once membe
 test("PASS-TRANSITION hydration falls back to bot token after channel_not_found on user token", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],
+    storageSeed: {
+      zip_slack_client_id: "pass-transition-client-id",
+      zip_slack_client_secret: "pass-transition-client-secret",
+      zip_slack_scope: "openid profile email",
+      zip_slack_redirect_path: "slack-user",
+      zip_slack_key_loaded: true,
+      zip_slack_oauth_token: "SLK_TEST_PASS_TRANSITION_USER_TOKEN",
+      zip_slack_bot_token: "SLK_TEST_PASS_TRANSITION_BOT_TOKEN",
+      zip_singularity_channel_id: "C123456789A",
+      zip_singularity_mention: "@Singularity",
+      zip_pass_transition_channel_id: "C09NHJCMFC1",
+      zip_pass_transition_channel_name: "#pass-transition"
+    },
     fetch: ({ init }) => {
       const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
       const authorization = String(headers.Authorization || headers.authorization || "");
@@ -581,31 +620,6 @@ test("PASS-TRANSITION hydration falls back to bot token after channel_not_found 
     }
   });
 
-  const imported = await harness.sendRuntimeMessage({
-    type: "ZIP_IMPORT_KEY_PAYLOAD",
-    config: {
-      oidc: {
-        clientId: "pass-transition-client-id",
-        clientSecret: "pass-transition-client-secret",
-        scope: "openid profile email",
-        redirectPath: "slack-user"
-      },
-      api: {
-        userToken: "SLK_TEST_PASS_TRANSITION_USER_TOKEN",
-        botToken: "SLK_TEST_PASS_TRANSITION_BOT_TOKEN"
-      },
-      singularity: {
-        channelId: "C123456789A",
-        mention: "@Singularity"
-      },
-      passTransition: {
-        channelId: "C09NHJCMFC1",
-        channelName: "#pass-transition"
-      }
-    }
-  });
-  assert.equal(imported && imported.ok, true);
-
   harness.resetCalls();
   const members = await harness.sendRuntimeMessage({ type: "ZIP_GET_PASS_TRANSITION_MEMBERS" });
   assert.equal(members && members.ok, true);
@@ -624,6 +638,25 @@ test("PASS-TRANSITION hydration falls back to bot token after channel_not_found 
 test("PASS-TRANSITION recipients include the current Slack user and filter deleted and bot accounts", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],
+    storageSeed: {
+      zip_slack_client_id: "pass-transition-client-id",
+      zip_slack_client_secret: "pass-transition-client-secret",
+      zip_slack_scope: "openid profile email",
+      zip_slack_redirect_path: "slack-user",
+      zip_slack_key_loaded: true,
+      zip_slack_oauth_token: "SLK_TEST_PASS_TRANSITION_USER_TOKEN",
+      zip_singularity_channel_id: "C123456789A",
+      zip_singularity_mention: "@Singularity",
+      zip_pass_transition_channel_id: "C09NHJCMFC1",
+      zip_pass_transition_channel_name: "#pass-transition",
+      zip_pass_transition_member_ids: "U999999999,U222222222,U111111111,U333333333,U444444444",
+      zip_pass_transition_members_synced_at: "2026-03-14T00:00:00.000Z",
+      "zip.slack.openid.session.v1": {
+        userId: "U999999999",
+        userName: "Minnick Example",
+        avatarUrl: "https://example.com/minnick.png"
+      }
+    },
     fetch: ({ url, init }) => {
       const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
       const authorization = String(headers.Authorization || headers.authorization || "");
@@ -748,32 +781,6 @@ test("PASS-TRANSITION recipients include the current Slack user and filter delet
     }
   });
 
-  const imported = await harness.sendRuntimeMessage({
-    type: "ZIP_IMPORT_KEY_PAYLOAD",
-    config: {
-      oidc: {
-        clientId: "pass-transition-client-id",
-        clientSecret: "pass-transition-client-secret",
-        scope: "openid profile email",
-        redirectPath: "slack-user"
-      },
-      api: {
-        userToken: "SLK_TEST_PASS_TRANSITION_USER_TOKEN"
-      },
-      singularity: {
-        channelId: "C123456789A",
-        mention: "@Singularity"
-      },
-      passTransition: {
-        channelId: "C09NHJCMFC1",
-        channelName: "#pass-transition",
-        memberIds: ["U999999999", "U222222222", "U111111111", "U333333333", "U444444444"],
-        membersSyncedAt: "2026-03-14T00:00:00.000Z"
-      }
-    }
-  });
-  assert.equal(imported && imported.ok, true);
-
   harness.resetCalls();
   const recipients = await harness.sendRuntimeMessage({ type: "ZIP_GET_PASS_TRANSITION_RECIPIENTS" });
   assert.equal(recipients && recipients.ok, true);
@@ -793,6 +800,116 @@ test("PASS-TRANSITION recipients include the current Slack user and filter delet
   );
 });
 
+test("ZIP_SLACK_API_AUTH_TEST rejects a stored token when it belongs to a different Slack user", async () => {
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    storageSeed: {
+      zip_slack_oauth_token: "SLK_TEST_SHARED_USER_TOKEN",
+      "zip.slack.openid.session.v1": {
+        userId: "UALICE123",
+        userName: "Alice Example",
+        avatarUrl: "https://example.com/alice.png"
+      }
+    },
+    fetch: ({ url, init }) => {
+      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+      const authorization = String(headers.Authorization || headers.authorization || "");
+      if (url.endsWith("/api/auth.test") && authorization === "Bearer SLK_TEST_SHARED_USER_TOKEN") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "UMINNICK1", user: "minnick" }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  harness.resetCalls();
+  const response = await harness.sendRuntimeMessage({
+    type: "ZIP_SLACK_API_AUTH_TEST",
+    workspaceOrigin: "https://adobedx.slack.com",
+    expectedUserId: "UALICE123"
+  });
+
+  assert.equal(response && response.ok, false);
+  assert.equal(String(response && response.code || ""), "slack_identity_mismatch");
+  assert.match(String(response && response.error || ""), /active Slack user/i);
+  assert.equal(
+    harness.calls.fetch.filter((requestUrl) => String(requestUrl).includes("/api/auth.test")).length,
+    1
+  );
+});
+
+test("ZIP_SLACK_API_SEND_TO_USER refuses to post when the token author mismatches the active Slack user", async () => {
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    fetch: ({ url, init }) => {
+      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+      const authorization = String(headers.Authorization || headers.authorization || "");
+      if (url.endsWith("/api/auth.test") && authorization === "Bearer SLK_TEST_SHARED_USER_TOKEN") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "UMINNICK1", user: "minnick" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/conversations.open") || url.endsWith("/api/chat.postMessage")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  harness.resetCalls();
+  const response = await harness.sendRuntimeMessage({
+    type: "ZIP_SLACK_API_SEND_TO_USER",
+    workspaceOrigin: "https://adobedx.slack.com",
+    userId: "UBOBUSER1",
+    authorUserId: "UALICE123",
+    markdownText: "handoff note",
+    userToken: "SLK_TEST_SHARED_USER_TOKEN",
+    botToken: "",
+    autoBootstrapSlackTab: false,
+    preferApiFirst: true,
+    preferBotDmDelivery: false,
+    requireBotDelivery: false,
+    allowBotDelivery: false,
+    skipUnreadMark: true,
+    forceNewMessage: true
+  });
+
+  assert.equal(response && response.ok, false);
+  assert.equal(String(response && response.code || ""), "slack_identity_mismatch");
+  assert.equal(
+    harness.calls.fetch.some((requestUrl) => String(requestUrl).includes("/api/conversations.open")),
+    false,
+    "mismatched token must not open a DM for the wrong author"
+  );
+  assert.equal(
+    harness.calls.fetch.some((requestUrl) => String(requestUrl).includes("/api/chat.postMessage")),
+    false,
+    "mismatched token must not post a Slack message"
+  );
+});
+
 test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", async () => {
   const harness = createChromeHarness({ zendeskTabs: [] });
   harness.resetCalls();
@@ -805,9 +922,6 @@ test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", 
         clientSecret: "menu-client-secret",
         scope: "openid profile email",
         redirectPath: "slack-user"
-      },
-      api: {
-        userToken: "SLK_TEST_MENU_USER_TOKEN"
       },
       singularity: {
         channelId: "C123456789A",
@@ -936,14 +1050,14 @@ test("ZIP_CONTEXT_MENU_ACTION getLatest falls back to opening the package tab wh
   assert.equal(String(harness.calls.tabsCreate[1] && harness.calls.tabsCreate[1].url || ""), "chrome://extensions");
 });
 
-test("automatic Slack token invalidation does not remove canonical ZIP.KEY token storage keys", () => {
+test("automatic Slack token invalidation does not remove persisted Slack session token storage keys", () => {
   const source = fs.readFileSync(BACKGROUND_PATH, "utf8");
   const fnMatch = source.match(/async function invalidateStoredSlackToken\(token\)\s*\{[\s\S]*?\n\}/);
   assert.ok(fnMatch, "invalidateStoredSlackToken function not found");
   const body = fnMatch[0];
-  assert.match(body, /ZIP\.KEY values are never auto-removed/);
+  assert.match(body, /Persisted Slack session tokens are never auto-removed/);
   assert.doesNotMatch(body, /zip\.passAi/);
-  assert.doesNotMatch(body, /ZIP_SLACK_USER_TOKEN_STORAGE_KEY/);
+  assert.doesNotMatch(body, /ZIP_SLACK_LEGACY_USER_TOKEN_STORAGE_KEY/);
   assert.doesNotMatch(body, /ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY/);
 });
 
@@ -968,13 +1082,15 @@ test("sidepanel login wiring uses LOGIN_CLICKED with no ZIP local sign-out path"
 
 test("sidepanel requires ZIP.KEY gate before Zendesk login", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
+  const optionsSource = fs.readFileSync(OPTIONS_PATH, "utf8");
   const html = fs.readFileSync(path.join(ROOT, "sidepanel.html"), "utf8");
   assert.match(source, /const ZIP_KEY_FILE_PREFIX = "ZIPKEY1:";/);
   assert.match(source, /const ZIP_CONFIG_META_STORAGE_KEY = "zip\.config\.meta\.v1";/);
   assert.match(source, /const ZIP_SLACKTIVATION_SERVICE_KEY = "slacktivation";/);
   assert.match(source, /"slacktivation\.client_id"/);
   assert.match(source, /"slacktivation\.client_secret"/);
-  assert.match(source, /"slacktivation\.user_token"/);
+  assert.doesNotMatch(source, /"slacktivation\.user_token"/);
+  assert.doesNotMatch(optionsSource, /"slacktivation\.user_token"/);
   assert.match(source, /"slacktivation\.singularity_channel_id"/);
   assert.match(source, /"slacktivation\.singularity_mention"/);
   assert.match(source, /function parseZipKeyPayload\(rawText\)/);
@@ -991,12 +1107,11 @@ test("sidepanel requires ZIP.KEY gate before Zendesk login", () => {
   assert.doesNotMatch(html, /Supports ZIPKEY1 files\./);
 });
 
-test("sidepanel ZIP.KEY persistence forwards bot token alongside user token", () => {
+test("sidepanel ZIP.KEY persistence keeps optional bot config and strips user-scoped auth", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
-  assert.match(source, /const normalizedUserToken = normalizePassAiSlackApiToken\(normalized\.api && normalized\.api\.userToken\);/);
   assert.match(source, /const normalizedBotToken = normalizePassAiSlackApiToken\(normalized\.api && normalized\.api\.botToken\);/);
-  assert.match(source, /const resolvedBotToken = normalizedBotToken/);
-  assert.match(source, /api:\s*\{[\s\S]*userToken:\s*normalizedUserToken,[\s\S]*botToken:\s*resolvedBotToken[\s\S]*\}/);
+  assert.doesNotMatch(source, /const normalizedUserToken = normalizePassAiSlackApiToken\(normalized\.api && normalized\.api\.userToken\);/);
+  assert.match(source, /api:\s*\{[\s\S]*botToken:\s*normalizedBotToken[\s\S]*\}/);
 });
 
 test("sidepanel Clear ZIP.KEY action requires explicit user confirmation", () => {

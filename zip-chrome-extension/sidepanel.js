@@ -26,7 +26,6 @@
   const ZIP_REQUIRED_CONFIG_FIELDS = Object.freeze([
     "slacktivation.client_id",
     "slacktivation.client_secret",
-    "slacktivation.user_token",
     "slacktivation.singularity_channel_id",
     "slacktivation.singularity_mention"
   ]);
@@ -36,7 +35,7 @@
   const ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY = "zip_slack_redirect_path";
   const ZIP_SLACK_REDIRECT_URI_STORAGE_KEY = "zip_slack_redirect_uri";
   const ZIP_SLACK_BOT_TOKEN_STORAGE_KEY = "zip_slack_bot_token";
-  const ZIP_SLACK_USER_TOKEN_STORAGE_KEY = "zip_slack_user_token";
+  const ZIP_SLACK_LEGACY_USER_TOKEN_STORAGE_KEY = "zip_slack_user_token";
   const ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY = "zip_slack_oauth_token";
   const ZIP_SLACK_KEY_LOADED_STORAGE_KEY = "zip_slack_key_loaded";
   const ZIP_SLACK_KEY_META_STORAGE_KEY = "zip_slack_key_meta";
@@ -3165,6 +3164,9 @@
         userId: recipient.userId,
         userName: recipient.userName || recipient.label || recipient.userId,
         avatarUrl: recipient.avatarUrl || "",
+        authorUserId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+        authorUserName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+        authorAvatarUrl: state.passAiSlackAvatarUrl || "",
         directChannelId: "",
         markdownText: buildPassTransitionShareMarkdown(rows, noteText, recipient),
         botToken: "",
@@ -3243,6 +3245,9 @@
         userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
         userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
         avatarUrl: state.passAiSlackAvatarUrl || "",
+        authorUserId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+        authorUserName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+        authorAvatarUrl: state.passAiSlackAvatarUrl || "",
         directChannelId: "",
         markdownText: buildSlackMeNoteMarkdown(noteText),
         botToken: "",
@@ -5814,29 +5819,25 @@
     try {
       const markdownText = buildSlackItToMeMarkdown(rows);
       const slackApiTokens = getPassAiSlackApiTokenConfig();
-      const botDeliveryToken = isPassAiSlackBotApiToken(slackApiTokens.botToken || "")
-        ? (slackApiTokens.botToken || "")
-        : (
-          isPassAiSlackBotApiToken(slackApiTokens.userToken || "")
-            ? (slackApiTokens.userToken || "")
-            : ""
-        );
       await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
       const sendPayload = {
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
         userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
         userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
         avatarUrl: state.passAiSlackAvatarUrl || "",
+        authorUserId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+        authorUserName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+        authorAvatarUrl: state.passAiSlackAvatarUrl || "",
         directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
         markdownText,
-        botToken: botDeliveryToken,
+        botToken: "",
         userToken: slackApiTokens.userToken || "",
         autoBootstrapSlackTab: true,
         preferApiFirst: true,
-        preferBotDmDelivery: true,
+        preferBotDmDelivery: false,
         requireNativeNewMessage: false,
-        requireBotDelivery: true,
-        allowBotDelivery: true,
+        requireBotDelivery: false,
+        allowBotDelivery: false,
         skipUnreadMark: true,
         forceNewMessage: true
       };
@@ -7827,19 +7828,6 @@
       "bot_token",
       "botToken"
     ]));
-    const userToken = normalizePassAiSlackApiToken(readZipKeyValue(payload, [
-      "services.slacktivation.user_token",
-      "services.slacktivation.userToken",
-      "services.slacktivation.api.user_token",
-      "services.slacktivation.api.userToken",
-      "slacktivation.user_token",
-      "slacktivation.userToken",
-      "slacktivation.api.user_token",
-      "slacktivation.api.userToken",
-      "oauth_token",
-      "user_token",
-      "userToken"
-    ]));
     const singularityChannelId = normalizePassAiSlackChannelId(readZipKeyValue(payload, [
       "services.slacktivation.singularity_channel_id",
       "services.slacktivation.singularityChannelId",
@@ -7929,7 +7917,6 @@
     const missingFields = [];
     if (!clientId) missingFields.push("slacktivation.client_id");
     if (!clientSecret) missingFields.push("slacktivation.client_secret");
-    if (!userToken) missingFields.push("slacktivation.user_token");
     if (!singularityChannelId) missingFields.push("slacktivation.singularity_channel_id");
     if (!singularityMention) missingFields.push("slacktivation.singularity_mention");
     if (missingFields.length) {
@@ -7949,8 +7936,7 @@
         redirectUri
       },
       api: {
-        botToken,
-        userToken
+        botToken
       },
       singularity: {
         channelId: singularityChannelId,
@@ -7968,7 +7954,6 @@
       ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY,
       ZIP_SLACK_REDIRECT_URI_STORAGE_KEY,
       ZIP_SLACK_BOT_TOKEN_STORAGE_KEY,
-      ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
       ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
       ZIP_SLACK_KEY_LOADED_STORAGE_KEY,
       ZIP_SLACK_KEY_META_STORAGE_KEY,
@@ -7999,10 +7984,8 @@
       || ""
     );
     const botToken = normalizePassAiSlackApiToken(stored[ZIP_SLACK_BOT_TOKEN_STORAGE_KEY] || "");
-    const userToken = normalizePassAiSlackApiToken(stored[ZIP_SLACK_USER_TOKEN_STORAGE_KEY] || "");
     const oauthToken = normalizePassAiSlackApiToken(
       stored[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY]
-      || userToken
       || ""
     );
     const singularityChannelId = normalizePassAiSlackChannelId(
@@ -8025,7 +8008,7 @@
       memberIds: stored[ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY] || "",
       membersSyncedAt: stored[ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY] || ""
     });
-    const hasRequired = !!(clientId && clientSecret && oauthToken && singularityChannelId && singularityMention);
+    const hasRequired = !!(clientId && clientSecret && singularityChannelId && singularityMention);
     const keyLoaded = stored[ZIP_SLACK_KEY_LOADED_STORAGE_KEY] === true
       || (
         stored[ZIP_SLACK_KEY_LOADED_STORAGE_KEY] == null
@@ -8053,7 +8036,7 @@
       redirectPath,
       redirectUri,
       botToken,
-      userToken,
+      userToken: "",
       oauthToken,
       singularityChannelId,
       singularityMention,
@@ -8165,6 +8148,11 @@
     const cached = await readPassAiSlacktivatedSessionCache().catch(() => null);
     slackSessionCacheHydrated = true;
     if (!cached) return false;
+    const cachedMode = String(cached.mode || "").trim().toLowerCase();
+    if (cachedMode !== "openid" && cachedMode !== "web") {
+      clearPassAiSlacktivatedSessionCache().catch(() => {});
+      return false;
+    }
     setPassAiSlackAuthState({
       ready: true,
       mode: cached.mode || "cached",
@@ -8197,10 +8185,7 @@
   async function persistZipKeyConfig(config) {
     const normalized = config && typeof config === "object" ? config : null;
     if (!normalized) throw new Error("ZIP.KEY configuration payload is invalid.");
-    const normalizedUserToken = normalizePassAiSlackApiToken(normalized.api && normalized.api.userToken);
     const normalizedBotToken = normalizePassAiSlackApiToken(normalized.api && normalized.api.botToken);
-    const resolvedBotToken = normalizedBotToken
-      || (isPassAiSlackBotApiToken(normalizedUserToken) ? normalizedUserToken : "");
 
     const services = normalizeZipConfigServices(
       normalized.services || (normalized.meta && normalized.meta.services) || null
@@ -8221,8 +8206,7 @@
         redirectUri: normalizeZipKeyRedirectUri(normalized.oidc && normalized.oidc.redirectUri)
       },
       api: {
-        userToken: normalizedUserToken,
-        botToken: resolvedBotToken
+        botToken: normalizedBotToken
       },
       singularity: {
         channelId: normalizePassAiSlackChannelId(normalized.singularity && normalized.singularity.channelId),
@@ -8250,7 +8234,6 @@
     const requiredFieldState = {
       "slacktivation.client_id": !!String(openIdConfig.clientId || "").trim(),
       "slacktivation.client_secret": !!String(openIdConfig.clientSecret || "").trim(),
-      "slacktivation.user_token": !!String(getPassAiSlackApiTokenConfig().userToken || "").trim(),
       "slacktivation.singularity_channel_id": !!String(secretConfig && secretConfig.singularityChannelId || "").trim(),
       "slacktivation.singularity_mention": !!String(secretConfig && secretConfig.singularityMention || "").trim()
     };
@@ -8484,7 +8467,7 @@
       (secretConfig && secretConfig.botToken) || ""
     );
     const userToken = normalizePassAiSlackApiToken(
-      (secretConfig && (secretConfig.userToken || secretConfig.oauthToken)) || ""
+      (secretConfig && secretConfig.oauthToken) || ""
     );
     return { botToken, userToken };
   }
@@ -8506,12 +8489,11 @@
       removals.push(ZIP_SLACK_BOT_TOKEN_STORAGE_KEY);
     }
     if (userToken) {
-      updates[ZIP_SLACK_USER_TOKEN_STORAGE_KEY] = userToken;
       updates[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY] = userToken;
     } else {
-      removals.push(ZIP_SLACK_USER_TOKEN_STORAGE_KEY);
       removals.push(ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY);
     }
+    removals.push(ZIP_SLACK_LEGACY_USER_TOKEN_STORAGE_KEY);
     return Promise.all([
       setChromeStorageLocal(updates),
       removeChromeStorageLocal(removals)
@@ -8729,6 +8711,7 @@
     const requestedMode = String(nextState && nextState.mode || "").trim().toLowerCase();
     const skipPersist = !!(nextState && nextState.skipPersist);
     const clearPersisted = !!(nextState && nextState.clearPersisted);
+    const persistableMode = requestedMode === "openid" || requestedMode === "web";
     const requestedSessionOnly = !!(
       nextState
       && (
@@ -8857,7 +8840,7 @@
       clearPassAiSlacktivatedSessionCache().catch(() => {});
       return;
     }
-    if (!state.passAiSlackReady || !state.passAiSlackWebReady || skipPersist) return;
+    if (!state.passAiSlackReady || !state.passAiSlackWebReady || skipPersist || !persistableMode) return;
 
     slackSessionCacheHydrated = true;
     writePassAiSlacktivatedSessionCache({
@@ -8923,165 +8906,171 @@
     // API-level token validation supports auto-SLACKTIVATION without requiring an open Slack tab.
     let apiFailureCode = "";
     let apiFailureMessage = "";
-    try {
-      const configuredTokens = getPassAiSlackApiTokenConfig();
-      const configuredUserToken = configuredTokens.userToken || "";
-      const configuredBotToken = configuredTokens.botToken || "";
-      const apiStatus = await sendBackgroundRequest("ZIP_SLACK_API_AUTH_TEST", {
-        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
-        userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
-        userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
-        directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
-        // Avoid feeding back stale/non-Slack avatar URLs; let background resolve Slack profile avatar.
-        avatarUrl: "",
-        botToken: isPassAiSlackBotApiToken(configuredBotToken) ? configuredBotToken : "",
-        userToken: isPassAiSlackUserApiToken(configuredUserToken) ? configuredUserToken : ""
-      });
-      if (apiStatus && apiStatus.ok === true) {
-        let apiUserId = normalizePassAiSlackUserId(
-          apiStatus.user_id || apiStatus.userId || state.passAiSlackUserId || ""
-        );
-        let apiUserName = normalizePassAiSlackDisplayName(
-          apiStatus.user_name || apiStatus.userName || state.passAiSlackUserName || ""
-        );
-        let apiAvatarUrl = normalizePassAiSlackAvatarUrl(
-          apiStatus.avatar_url || apiStatus.avatarUrl || state.passAiSlackAvatarUrl || ""
-        );
-        let apiDirectChannelId = normalizePassAiSlackDirectChannelId(
-          apiStatus.direct_channel_id
-          || apiStatus.directChannelId
-          || state.passAiSlackDirectChannelId
-          || ""
-        );
-        let apiStatusIcon = normalizePassAiSlackStatusIcon(
-          apiStatus.status_icon
-          || apiStatus.statusIcon
-          || state.passAiSlackStatusIcon
-          || ""
-        );
-        let apiStatusIconUrl = normalizePassAiSlackStatusIconUrl(
-          apiStatus.status_icon_url
-          || apiStatus.statusIconUrl
-          || state.passAiSlackStatusIconUrl
-          || ""
-        );
-        let apiStatusMessage = normalizePassAiSlackStatusMessage(
-          apiStatus.status_message
-          || apiStatus.statusMessage
-          || state.passAiSlackStatusMessage
-          || ""
-        );
-        let apiAvatarErrorCode = String(
-          apiStatus.avatar_error_code
-          || apiStatus.avatarErrorCode
-          || ""
-        ).trim().toLowerCase();
-        let apiAvatarErrorMessage = normalizePassAiCommentBody(
-          apiStatus.avatar_error
-          || apiStatus.avatarError
-          || apiStatus.avatar_error_message
-          || apiStatus.avatarErrorMessage
-          || ""
-        );
-        let apiTeamId = String(apiStatus.team_id || apiStatus.teamId || "").trim();
-        let apiEnterpriseId = String(apiStatus.enterprise_id || apiStatus.enterpriseId || "").trim();
+    const expectedApiUserId = normalizePassAiSlackUserId(
+      state.passAiSlackWebReady ? (state.passAiSlackUserId || "") : ""
+    );
+    if (expectedApiUserId) {
+      try {
+        const configuredTokens = getPassAiSlackApiTokenConfig();
+        const configuredUserToken = configuredTokens.userToken || "";
+        const configuredBotToken = configuredTokens.botToken || "";
+        const apiStatus = await sendBackgroundRequest("ZIP_SLACK_API_AUTH_TEST", {
+          workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+          userId: expectedApiUserId,
+          expectedUserId: expectedApiUserId,
+          userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+          directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
+          // Avoid feeding back stale/non-Slack avatar URLs; let background resolve Slack profile avatar.
+          avatarUrl: "",
+          botToken: isPassAiSlackBotApiToken(configuredBotToken) ? configuredBotToken : "",
+          userToken: isPassAiSlackUserApiToken(configuredUserToken) ? configuredUserToken : ""
+        });
+        if (apiStatus && apiStatus.ok === true) {
+          let apiUserId = normalizePassAiSlackUserId(
+            apiStatus.user_id || apiStatus.userId || state.passAiSlackUserId || ""
+          );
+          let apiUserName = normalizePassAiSlackDisplayName(
+            apiStatus.user_name || apiStatus.userName || state.passAiSlackUserName || ""
+          );
+          let apiAvatarUrl = normalizePassAiSlackAvatarUrl(
+            apiStatus.avatar_url || apiStatus.avatarUrl || state.passAiSlackAvatarUrl || ""
+          );
+          let apiDirectChannelId = normalizePassAiSlackDirectChannelId(
+            apiStatus.direct_channel_id
+            || apiStatus.directChannelId
+            || state.passAiSlackDirectChannelId
+            || ""
+          );
+          let apiStatusIcon = normalizePassAiSlackStatusIcon(
+            apiStatus.status_icon
+            || apiStatus.statusIcon
+            || state.passAiSlackStatusIcon
+            || ""
+          );
+          let apiStatusIconUrl = normalizePassAiSlackStatusIconUrl(
+            apiStatus.status_icon_url
+            || apiStatus.statusIconUrl
+            || state.passAiSlackStatusIconUrl
+            || ""
+          );
+          let apiStatusMessage = normalizePassAiSlackStatusMessage(
+            apiStatus.status_message
+            || apiStatus.statusMessage
+            || state.passAiSlackStatusMessage
+            || ""
+          );
+          let apiAvatarErrorCode = String(
+            apiStatus.avatar_error_code
+            || apiStatus.avatarErrorCode
+            || ""
+          ).trim().toLowerCase();
+          let apiAvatarErrorMessage = normalizePassAiCommentBody(
+            apiStatus.avatar_error
+            || apiStatus.avatarError
+            || apiStatus.avatar_error_message
+            || apiStatus.avatarErrorMessage
+            || ""
+          );
+          let apiTeamId = String(apiStatus.team_id || apiStatus.teamId || "").trim();
+          let apiEnterpriseId = String(apiStatus.enterprise_id || apiStatus.enterpriseId || "").trim();
 
-        if (!apiAvatarUrl || !apiUserName) {
-          const identityFromTab = await enrichPassAiSlackIdentityFromExistingTab({ force: false });
-          if (identityFromTab) {
-            if (!apiUserId) apiUserId = normalizePassAiSlackUserId(identityFromTab.userId || "");
-            if (!apiUserName) apiUserName = normalizePassAiSlackDisplayName(identityFromTab.userName || "");
-            if (!apiAvatarUrl) apiAvatarUrl = normalizePassAiSlackAvatarUrl(identityFromTab.avatarUrl || "");
-            if (!apiTeamId) apiTeamId = String(identityFromTab.teamId || "").trim();
-            if (!apiEnterpriseId) apiEnterpriseId = String(identityFromTab.enterpriseId || "").trim();
-            if (isPassAiSlackUserApiToken(identityFromTab.userToken || "")) {
-              await persistPassAiSlackApiTokenConfig({
-                userToken: identityFromTab.userToken
-              }).catch(() => {});
+          if (!apiAvatarUrl || !apiUserName) {
+            const identityFromTab = await enrichPassAiSlackIdentityFromExistingTab({ force: false });
+            if (identityFromTab) {
+              if (!apiUserId) apiUserId = normalizePassAiSlackUserId(identityFromTab.userId || "");
+              if (!apiUserName) apiUserName = normalizePassAiSlackDisplayName(identityFromTab.userName || "");
+              if (!apiAvatarUrl) apiAvatarUrl = normalizePassAiSlackAvatarUrl(identityFromTab.avatarUrl || "");
+              if (!apiTeamId) apiTeamId = String(identityFromTab.teamId || "").trim();
+              if (!apiEnterpriseId) apiEnterpriseId = String(identityFromTab.enterpriseId || "").trim();
+              if (isPassAiSlackUserApiToken(identityFromTab.userToken || "")) {
+                await persistPassAiSlackApiTokenConfig({
+                  userToken: identityFromTab.userToken
+                }).catch(() => {});
+              }
             }
           }
-        }
-        if (!apiAvatarUrl) {
-          const transientIdentity = await enrichPassAiSlackIdentityViaTransientTab({ force: false });
-          if (transientIdentity) {
-            if (!apiUserId) apiUserId = normalizePassAiSlackUserId(transientIdentity.userId || "");
-            if (!apiUserName) apiUserName = normalizePassAiSlackDisplayName(transientIdentity.userName || "");
-            if (!apiAvatarUrl) apiAvatarUrl = normalizePassAiSlackAvatarUrl(transientIdentity.avatarUrl || "");
-            if (!apiTeamId) apiTeamId = String(transientIdentity.teamId || "").trim();
-            if (!apiEnterpriseId) apiEnterpriseId = String(transientIdentity.enterpriseId || "").trim();
-            if (isPassAiSlackUserApiToken(transientIdentity.userToken || "")) {
-              await persistPassAiSlackApiTokenConfig({
-                userToken: transientIdentity.userToken
-              }).catch(() => {});
+          if (!apiAvatarUrl) {
+            const transientIdentity = await enrichPassAiSlackIdentityViaTransientTab({ force: false });
+            if (transientIdentity) {
+              if (!apiUserId) apiUserId = normalizePassAiSlackUserId(transientIdentity.userId || "");
+              if (!apiUserName) apiUserName = normalizePassAiSlackDisplayName(transientIdentity.userName || "");
+              if (!apiAvatarUrl) apiAvatarUrl = normalizePassAiSlackAvatarUrl(transientIdentity.avatarUrl || "");
+              if (!apiTeamId) apiTeamId = String(transientIdentity.teamId || "").trim();
+              if (!apiEnterpriseId) apiEnterpriseId = String(transientIdentity.enterpriseId || "").trim();
+              if (isPassAiSlackUserApiToken(transientIdentity.userToken || "")) {
+                await persistPassAiSlackApiTokenConfig({
+                  userToken: transientIdentity.userToken
+                }).catch(() => {});
+              }
             }
           }
-        }
-        if (apiAvatarUrl) {
-          apiAvatarErrorCode = "";
-          apiAvatarErrorMessage = "";
-        }
-        setPassAiSlackAuthState({
-          ready: true,
-          mode: "api",
-          webReady: true,
-          api_validated: true,
-          verified: true,
-          userId: apiUserId,
-          userName: apiUserName,
-          avatarUrl: apiAvatarUrl,
-          directChannelId: apiDirectChannelId,
-          statusIcon: apiStatusIcon,
-          statusIconUrl: apiStatusIconUrl,
-          statusMessage: apiStatusMessage,
-          teamId: apiTeamId,
-          enterpriseId: apiEnterpriseId
-        });
-        recordSlackProbeEvent("slack_probe_api_auth_ok", {
-          userId: apiUserId,
-          teamId: apiTeamId,
-          hasAvatar: !!apiAvatarUrl,
-          hasDirectChannel: !!apiDirectChannelId,
-          hasStatus: !!(apiStatusIcon || apiStatusMessage || apiStatusIconUrl)
-        });
-        if (!silent) {
-          const avatarDiagnostic = !apiAvatarUrl
-            ? formatSlackAvatarDiagnostic(apiAvatarErrorCode, apiAvatarErrorMessage)
-            : "";
-          if (avatarDiagnostic) {
-            setStatus(
-              "ZIP is now SLACKTIVATED. Slack avatar lookup failed (" + avatarDiagnostic + "). Check Slack scopes users.profile:read and users:read.",
-              false
-            );
-          } else {
-            setStatus("ZIP is now SLACKTIVATED.", false);
+          if (apiAvatarUrl) {
+            apiAvatarErrorCode = "";
+            apiAvatarErrorMessage = "";
           }
+          setPassAiSlackAuthState({
+            ready: true,
+            mode: "api",
+            webReady: true,
+            api_validated: true,
+            verified: true,
+            userId: apiUserId,
+            userName: apiUserName,
+            avatarUrl: apiAvatarUrl,
+            directChannelId: apiDirectChannelId,
+            statusIcon: apiStatusIcon,
+            statusIconUrl: apiStatusIconUrl,
+            statusMessage: apiStatusMessage,
+            teamId: apiTeamId,
+            enterpriseId: apiEnterpriseId
+          });
+          recordSlackProbeEvent("slack_probe_api_auth_ok", {
+            userId: apiUserId,
+            teamId: apiTeamId,
+            hasAvatar: !!apiAvatarUrl,
+            hasDirectChannel: !!apiDirectChannelId,
+            hasStatus: !!(apiStatusIcon || apiStatusMessage || apiStatusIconUrl)
+          });
+          if (!silent) {
+            const avatarDiagnostic = !apiAvatarUrl
+              ? formatSlackAvatarDiagnostic(apiAvatarErrorCode, apiAvatarErrorMessage)
+              : "";
+            if (avatarDiagnostic) {
+              setStatus(
+                "ZIP is now SLACKTIVATED. Slack avatar lookup failed (" + avatarDiagnostic + "). Check Slack scopes users.profile:read and users:read.",
+                false
+              );
+            } else {
+              setStatus("ZIP is now SLACKTIVATED.", false);
+            }
+          }
+          await maybeCloseZipOpenedSlackLoginTab("api_auth_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
+          scheduleSlackWorkerTabClose("api_auth_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS);
+          return true;
         }
-        await maybeCloseZipOpenedSlackLoginTab("api_auth_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
-        scheduleSlackWorkerTabClose("api_auth_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS);
-        return true;
+        apiFailureCode = String(apiStatus && apiStatus.code || "").trim().toLowerCase();
+        apiFailureMessage = normalizePassAiCommentBody(apiStatus && (apiStatus.error || apiStatus.message));
+        recordSlackProbeEvent("slack_probe_api_auth_failed", {
+          code: apiFailureCode || "unknown",
+          message: apiFailureMessage || ""
+        });
+      } catch (apiErr) {
+        recordSlackProbeEvent("slack_probe_api_auth_failed", {
+          code: "exception",
+          message: normalizePassAiCommentBody(apiErr && apiErr.message) || ""
+        });
       }
-      apiFailureCode = String(apiStatus && apiStatus.code || "").trim().toLowerCase();
-      apiFailureMessage = normalizePassAiCommentBody(apiStatus && (apiStatus.error || apiStatus.message));
-      recordSlackProbeEvent("slack_probe_api_auth_failed", {
-        code: apiFailureCode || "unknown",
-        message: apiFailureMessage || ""
-      });
-    } catch (apiErr) {
-      recordSlackProbeEvent("slack_probe_api_auth_failed", {
-        code: "exception",
-        message: normalizePassAiCommentBody(apiErr && apiErr.message) || ""
-      });
-    }
-    if (isSlackApiTokenInvalidationCode(apiFailureCode)) {
-      setPassAiSlackAuthState({
-        ready: false,
-        error: apiFailureMessage || "Slack session expired. Click the Slack indicator to sign in again.",
-        clearPersisted: true
-      });
-      recordSlackProbeEvent("slack_probe_api_token_invalid", {
-        code: apiFailureCode,
-        message: apiFailureMessage || ""
-      });
+      if (isSlackApiTokenInvalidationCode(apiFailureCode)) {
+        setPassAiSlackAuthState({
+          ready: false,
+          error: apiFailureMessage || "Slack session expired. Click the Slack indicator to sign in again.",
+          clearPersisted: true
+        });
+        recordSlackProbeEvent("slack_probe_api_token_invalid", {
+          code: apiFailureCode,
+          message: apiFailureMessage || ""
+        });
+      }
     }
 
     const requestSlackAuthTest = async () => {

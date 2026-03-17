@@ -210,7 +210,6 @@ function buildSidepanelHarnessBootstrap(options) {
       Object.assign(storage, {
         zip_slack_client_id: "mock.client.id",
         zip_slack_client_secret: "mock.client.secret",
-        zip_slack_user_token: "SLK_TEST_MOCK_USER_TOKEN",
         zip_slack_oauth_token: "SLK_TEST_MOCK_USER_TOKEN",
         zip_slack_scope: "openid profile email",
         zip_slack_redirect_path: "slack-user",

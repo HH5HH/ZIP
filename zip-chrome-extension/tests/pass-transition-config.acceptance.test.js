@@ -12,6 +12,8 @@ const ZIP_KEY_TEMPLATE_PATH = path.join(ROOT, "ZIP.KEY.template");
 test("ZIP.KEY template documents optional PASS-TRANSITION hydration fields", () => {
   const template = fs.readFileSync(ZIP_KEY_TEMPLATE_PATH, "utf8");
 
+  assert.match(template, /User-scoped Slack auth never belongs in ZIP\.KEY/);
+  assert.doesNotMatch(template, /slacktivation\.user_token=/);
   assert.match(template, /slacktivation\.bot_token=/);
   assert.match(template, /PASS-TRANSITION \/ Blondie support \(required for Shift\+Click handoff testing\):/);
   assert.match(template, /slacktivation\.pass_transition_channel_id=/);

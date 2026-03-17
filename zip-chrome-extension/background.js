@@ -25,7 +25,7 @@ const ZIP_SLACK_SCOPE_STORAGE_KEY = "zip_slack_scope";
 const ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY = "zip_slack_redirect_path";
 const ZIP_SLACK_REDIRECT_URI_STORAGE_KEY = "zip_slack_redirect_uri";
 const ZIP_SLACK_BOT_TOKEN_STORAGE_KEY = "zip_slack_bot_token";
-const ZIP_SLACK_USER_TOKEN_STORAGE_KEY = "zip_slack_user_token";
+const ZIP_SLACK_LEGACY_USER_TOKEN_STORAGE_KEY = "zip_slack_user_token";
 const ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY = "zip_slack_oauth_token";
 const ZIP_SLACK_KEY_LOADED_STORAGE_KEY = "zip_slack_key_loaded";
 const ZIP_SLACK_KEY_META_STORAGE_KEY = "zip_slack_key_meta";
@@ -99,7 +99,6 @@ const THEME_STORAGE_KEY = "zip.ui.theme.v1";
 const ZIP_REQUIRED_SECRET_KEYS = [
   ZIP_SLACK_CLIENT_ID_STORAGE_KEY,
   ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY,
-  ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
   ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY,
   ZIP_SINGULARITY_MENTION_STORAGE_KEY
 ];
@@ -110,7 +109,7 @@ const ZIP_SLACK_STORAGE_KEYS = [
   ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY,
   ZIP_SLACK_REDIRECT_URI_STORAGE_KEY,
   ZIP_SLACK_BOT_TOKEN_STORAGE_KEY,
-  ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
+  ZIP_SLACK_LEGACY_USER_TOKEN_STORAGE_KEY,
   ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
   ZIP_SLACK_KEY_LOADED_STORAGE_KEY,
   ZIP_SLACK_KEY_META_STORAGE_KEY,
@@ -1711,6 +1710,17 @@ function normalizeSlackUserId(value) {
   return /^[UW][A-Z0-9]{8,}$/.test(id) ? id : "";
 }
 
+function resolveExpectedSlackAuthorUserId(input, openIdSession) {
+  const source = input && typeof input === "object" ? input : {};
+  const session = openIdSession && typeof openIdSession === "object" ? openIdSession : null;
+  return firstNonEmptySlackText([
+    normalizeSlackUserId(source.authorUserId || source.author_user_id || ""),
+    normalizeSlackUserId(source.senderUserId || source.sender_user_id || ""),
+    normalizeSlackUserId(source.expectedUserId || source.expected_user_id || ""),
+    normalizeSlackUserId(session && session.userId || "")
+  ]);
+}
+
 function decodeSlackEntityText(value) {
   return String(value == null ? "" : value)
     .replace(/&amp;/gi, "&")
@@ -2991,32 +3001,9 @@ function normalizeZipSecretConfig(input) {
     || source.bot_token
     || ""
   );
-  const userToken = normalizeSlackApiToken(
-    source.userToken
-    || slacktivationSource.user_token
-    || slacktivationSource.userToken
-    || slacktivationApiSource.user_token
-    || slacktivationApiSource.userToken
-    || apiSource.userToken
-    || source[ZIP_SLACK_USER_TOKEN_STORAGE_KEY]
-    || source.user_token
-    || ""
-  );
-  const oauthToken = normalizeSlackApiToken(
-    source.oauthToken
-    || slacktivationSource.oauth_token
-    || slacktivationSource.oauthToken
-    || slacktivationApiSource.oauth_token
-    || slacktivationApiSource.oauthToken
-    || slacktivationApiSource.user_token
-    || slacktivationApiSource.userToken
-    || apiSource.oauthToken
-    || apiSource.userToken
-    || source[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY]
-    || source.oauth_token
-    || userToken
-    || ""
-  );
+  // ZIP.KEY only carries bridge configuration. User-scoped Slack auth is persisted from live Slack sessions.
+  const userToken = "";
+  const oauthToken = "";
   const singularityChannelId = normalizeSlackChannelId(
     source.singularityChannelId
     || slacktivationSource.singularity_channel_id
@@ -3080,7 +3067,7 @@ function normalizeZipSecretConfig(input) {
       || source.pass_transition_members_synced_at
       || ""
   });
-  const hasRequired = !!(clientId && clientSecret && oauthToken && singularityChannelId && singularityMention);
+  const hasRequired = !!(clientId && clientSecret && singularityChannelId && singularityMention);
 
   return {
     clientId,
@@ -3161,7 +3148,6 @@ async function storeZipSecrets(input, options) {
   const missingFields = [];
   if (!normalized.clientId) missingFields.push("slacktivation.client_id");
   if (!normalized.clientSecret) missingFields.push("slacktivation.client_secret");
-  if (!(normalized.userToken || normalized.oauthToken)) missingFields.push("slacktivation.user_token");
   if (!normalized.singularityChannelId) missingFields.push("slacktivation.singularity_channel_id");
   if (!normalized.singularityMention) missingFields.push("slacktivation.singularity_mention");
   if (missingFields.length) {
@@ -3182,7 +3168,7 @@ async function storeZipSecrets(input, options) {
   setOrRemove(ZIP_SLACK_REDIRECT_PATH_STORAGE_KEY, normalized.redirectPath);
   setOrRemove(ZIP_SLACK_REDIRECT_URI_STORAGE_KEY, normalized.redirectUri);
   setOrRemove(ZIP_SLACK_BOT_TOKEN_STORAGE_KEY, normalized.botToken);
-  setOrRemove(ZIP_SLACK_USER_TOKEN_STORAGE_KEY, normalized.userToken);
+  setOrRemove(ZIP_SLACK_LEGACY_USER_TOKEN_STORAGE_KEY, normalized.userToken);
   setOrRemove(ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY, normalized.oauthToken);
   setOrRemove(ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY, normalized.singularityChannelId);
   setOrRemove(ZIP_SINGULARITY_MENTION_STORAGE_KEY, normalized.singularityMention);
@@ -3603,7 +3589,6 @@ async function readStoredSlackApiTokens() {
   try {
     const stored = await chrome.storage.local.get([
       ZIP_SLACK_BOT_TOKEN_STORAGE_KEY,
-      ZIP_SLACK_USER_TOKEN_STORAGE_KEY,
       ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY
     ]);
     const botCandidates = uniq([
@@ -3612,7 +3597,6 @@ async function readStoredSlackApiTokens() {
       SLACK_API_SECONDARY_BOT_TOKEN
     ]);
     const userCandidates = uniq([
-      stored && stored[ZIP_SLACK_USER_TOKEN_STORAGE_KEY],
       stored && stored[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY],
       SLACK_API_DEFAULT_USER_TOKEN
     ]);
@@ -3663,7 +3647,7 @@ async function resolveSlackApiTokens(input) {
       Array.isArray(stored && stored.userCandidates) ? stored.userCandidates : [stored && stored.userToken]
     ));
   }
-  // Classify tokens by prefix so ZIP.KEY values still work if bot/user tokens land in the wrong slot.
+  // Classify tokens by prefix so runtime-captured session tokens and optional bot config survive slot mixups.
   const botResolved = uniq(botCandidates.concat(userCandidates)).filter((token) => isSlackBotApiToken(token));
   const userResolved = uniq(userCandidates.concat(botCandidates)).filter((token) => isSlackUserOAuthToken(token));
   return {
@@ -3685,7 +3669,7 @@ function isSlackTokenInvalidationCode(code) {
 
 async function invalidateStoredSlackToken(token) {
   void token;
-  // ZIP.KEY values are never auto-removed from storage by token invalidation paths.
+  // Persisted Slack session tokens are never auto-removed by token invalidation paths.
 }
 
 async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
@@ -4120,6 +4104,7 @@ async function slackSendMarkdownToSelfViaApi(input) {
 
   const openIdSession = await readSlackOpenIdSession();
   const requestedUserId = normalizeSlackUserId(body.userId || body.user_id);
+  const expectedAuthorUserId = resolveExpectedSlackAuthorUserId(body, openIdSession);
   if (requireRequestedUser && !requestedUserId) {
     return {
       ok: false,
@@ -4130,10 +4115,17 @@ async function slackSendMarkdownToSelfViaApi(input) {
   const openIdUserId = normalizeSlackUserId(openIdSession && openIdSession.userId);
 
   let resolvedUserName = normalizeSlackDisplayName(
-    body.userName || body.user_name || (openIdSession && openIdSession.userName) || ""
+    body.authorUserName
+    || body.author_user_name
+    || body.userName
+    || body.user_name
+    || (openIdSession && openIdSession.userName)
+    || ""
   );
   let resolvedAvatarUrl = normalizeSlackAvatarUrl(
-    body.avatarUrl
+    body.authorAvatarUrl
+    || body.author_avatar_url
+    || body.avatarUrl
     || body.avatar_url
     || (openIdSession && openIdSession.avatarUrl)
     || ""
@@ -4170,8 +4162,17 @@ async function slackSendMarkdownToSelfViaApi(input) {
     const authPayload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
     const teamId = normalizeSlackTeamId(authPayload.team_id || authPayload.team);
     const authFallbackName = normalizeSlackDisplayName(authPayload.user || "");
-
     const authUserId = normalizeSlackUserId(authPayload.user_id || authPayload.user);
+    if (expectedAuthorUserId && authUserId && authUserId !== expectedAuthorUserId) {
+      lastFailureCode = "slack_identity_mismatch";
+      lastFailureError = "Slack API token does not match the active Slack user.";
+      continue;
+    }
+    if (expectedAuthorUserId && !authUserId) {
+      lastFailureCode = "slack_identity_mismatch";
+      lastFailureError = "Slack API token identity could not be verified for the active Slack user.";
+      continue;
+    }
     if (!resolvedUserName) {
       resolvedUserName = authFallbackName;
     }
@@ -5062,6 +5063,7 @@ async function slackAuthTestViaApi(input) {
   }
 
   const openIdSession = await readSlackOpenIdSession();
+  const expectedUserId = resolveExpectedSlackAuthorUserId(body, openIdSession);
   let lastFailureCode = "slack_auth_failed";
   let lastFailureError = "Unable to validate Slack API credentials.";
   let backedOffTokenCount = 0;
@@ -5090,7 +5092,18 @@ async function slackAuthTestViaApi(input) {
     clearSlackTokenBackoff(attemptToken);
 
     const payload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
-    const userId = normalizeSlackUserId(payload.user_id || payload.user || body.userId || body.user_id);
+    const authUserId = normalizeSlackUserId(payload.user_id || payload.user || "");
+    if (expectedUserId && authUserId && authUserId !== expectedUserId) {
+      lastFailureCode = "slack_identity_mismatch";
+      lastFailureError = "Slack API token does not match the active Slack user.";
+      continue;
+    }
+    if (expectedUserId && !authUserId) {
+      lastFailureCode = "slack_identity_mismatch";
+      lastFailureError = "Slack API token identity could not be verified for the active Slack user.";
+      continue;
+    }
+    const userId = normalizeSlackUserId(authUserId || body.userId || body.user_id || expectedUserId);
     const teamId = normalizeSlackTeamId(payload.team_id || payload.team);
     let userName = normalizeSlackDisplayName(
       body.userName

@@ -56,13 +56,15 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   assert.match(source, /const sendPayload = \{[\s\S]*forceNewMessage:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*requireNativeNewMessage:\s*false[\s\S]*\};/);
-  assert.match(source, /const sendPayload = \{[\s\S]*preferBotDmDelivery:\s*true[\s\S]*\};/);
-  assert.match(source, /const botDeliveryToken = isPassAiSlackBotApiToken\(slackApiTokens\.botToken \|\| ""\)/);
-  assert.match(source, /const sendPayload = \{[\s\S]*requireBotDelivery:\s*true[\s\S]*\};/);
-  assert.match(source, /const sendPayload = \{[\s\S]*allowBotDelivery:\s*true[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*authorUserId:\s*normalizePassAiSlackUserId\(state\.passAiSlackUserId \|\| ""\)[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*authorUserName:\s*normalizePassAiSlackDisplayName\(state\.passAiSlackUserName \|\| ""\)[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*authorAvatarUrl:\s*state\.passAiSlackAvatarUrl \|\| ""[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*preferBotDmDelivery:\s*false[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*requireBotDelivery:\s*false[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*allowBotDelivery:\s*false[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*skipUnreadMark:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*directChannelId:\s*normalizePassAiSlackDirectChannelId\(state\.passAiSlackDirectChannelId \|\| ""\)[\s\S]*\};/);
-  assert.match(source, /const sendPayload = \{[\s\S]*botToken:\s*botDeliveryToken[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*botToken:\s*""[\s\S]*\};/);
 });
 
 test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", () => {
