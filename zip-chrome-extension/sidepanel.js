@@ -61,6 +61,7 @@
   });
   const PASS_TRANSITION_SECTION_DIVIDER = "----------------------------------------";
   const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP.KEY and reset ZIP now? This signs you out, clears SLACKTIVATION, and requires re-importing ZIP.KEY.";
+  const ZIP_REHYDRATE_TOOLTIP = "Refresh Slack session and PASS-TRANSITION members without clearing ZIP.KEY.";
   const PASS_AI_POLL_INTERVAL_MS = 1500;
   const PASS_AI_POLL_MAX_ATTEMPTS = 48;
   const PASS_AI_INACTIVITY_FINAL_MS = 6000;
@@ -234,6 +235,7 @@
   let slackBootstrapLastAt = 0;
   let slackWorkerCloseTimerId = null;
   let slackItToMeAckResetTimerId = null;
+  let slackItToMeRequestInFlight = null;
   let slackLoginFlowOpenedTabId = null;
   let slackLoginFlowOpenedByZip = false;
   let passTransitionRecipientsRequestInFlight = null;
@@ -834,6 +836,7 @@
     contextMenuSlackMe: $("zipContextMenuSlackMe"),
     contextMenuClearKey: $("zipContextMenuClearKey"),
     contextMenuGetLatest: $("zipContextMenuGetLatest"),
+    contextMenuRehydrateZip: $("zipContextMenuRehydrateZip"),
     contextMenuAppearanceRow: $("zipContextMenuAppearanceRow"),
     contextMenuThemeStopToggle: $("zipContextMenuThemeStopToggle"),
     contextMenuThemeColorToggle: $("zipContextMenuThemeColorToggle"),
@@ -1469,15 +1472,31 @@
   function syncContextMenuAuthVisibility() {
     const loggedIn = !!state.user;
     const slackReady = isPassAiSlacktivated();
-    if (!els.contextMenuToggleZdApi) return;
-    els.contextMenuToggleZdApi.classList.toggle("hidden", !loggedIn);
-    els.contextMenuToggleZdApi.disabled = !loggedIn;
-    els.contextMenuToggleZdApi.setAttribute("aria-hidden", loggedIn ? "false" : "true");
-    if (!els.contextMenuSlackMe) return;
-    els.contextMenuSlackMe.classList.toggle("hidden", !loggedIn);
-    els.contextMenuSlackMe.disabled = !(loggedIn && slackReady && !state.slackMeNoteLoading);
-    els.contextMenuSlackMe.title = slackReady ? "@SLACK ME" : SLACKTIVATED_LOGIN_TOOLTIP;
-    els.contextMenuSlackMe.setAttribute("aria-hidden", loggedIn ? "false" : "true");
+    if (els.contextMenuToggleZdApi) {
+      els.contextMenuToggleZdApi.classList.toggle("hidden", !loggedIn);
+      els.contextMenuToggleZdApi.disabled = !loggedIn;
+      els.contextMenuToggleZdApi.setAttribute("aria-hidden", loggedIn ? "false" : "true");
+    }
+    if (els.contextMenuSlackMe) {
+      els.contextMenuSlackMe.classList.toggle("hidden", !loggedIn);
+      els.contextMenuSlackMe.disabled = !(loggedIn && slackReady && !state.slackMeNoteLoading);
+      els.contextMenuSlackMe.title = slackReady ? "@SLACK ME" : SLACKTIVATED_LOGIN_TOOLTIP;
+      els.contextMenuSlackMe.setAttribute("aria-hidden", loggedIn ? "false" : "true");
+    }
+    if (els.contextMenuRehydrateZip) {
+      const canRehydrate = !!(
+        loggedIn
+        && state.zipConfigReady
+        && !state.passAiSlackAuthPolling
+        && !state.slackItToMeLoading
+        && !slackItToMeRequestInFlight
+        && !state.slackMeNoteLoading
+      );
+      els.contextMenuRehydrateZip.classList.toggle("hidden", !loggedIn);
+      els.contextMenuRehydrateZip.disabled = !canRehydrate;
+      els.contextMenuRehydrateZip.title = loggedIn ? ZIP_REHYDRATE_TOOLTIP : "Login with Zendesk to use ZIP actions.";
+      els.contextMenuRehydrateZip.setAttribute("aria-hidden", loggedIn ? "false" : "true");
+    }
   }
 
   function applyZdApiContainerVisibility(show, persist) {
@@ -3365,6 +3384,60 @@
     });
   }
 
+  async function rehydrateZipRuntime() {
+    await refreshZipSecretConfigFromStorage().catch(() => {});
+    const gateStatus = applyZipConfigAfterStorageRefresh({ reportStatus: false });
+    if (!gateStatus.ready) {
+      throw new Error("ZIP.KEY must be loaded before ZIP can re-hydrate.");
+    }
+
+    invalidatePassTransitionRecipientState();
+    clearSlackItToMeAckReset();
+    state.slackItToMeButtonState = "";
+    updateTicketActionButtons();
+    syncContextMenuAuthVisibility();
+    syncSlackMeDialogUi();
+
+    setStatus("Re-hydrating ZIP from Slack…", false);
+    const slackReady = await refreshSlacktivatedState({
+      force: true,
+      silent: true,
+      allowOpenIdSilentProbe: true,
+      allowSlackTabBootstrap: true,
+      allowSlackTabBootstrapCreate: false
+    }).catch(() => false);
+
+    let recipientCount = 0;
+    const passTransition = state.zipSecretConfig && state.zipSecretConfig.passTransition
+      ? state.zipSecretConfig.passTransition
+      : null;
+    const hasPassTransitionChannel = !!normalizePassAiSlackChannelId(passTransition && passTransition.channelId || "");
+    if (hasPassTransitionChannel) {
+      const members = await sendBackgroundRequest("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", { force: true });
+      if (!members || members.ok !== true) {
+        throw new Error(
+          normalizePassAiCommentBody(members && (members.error || members.message))
+            || "Unable to refresh PASS-TRANSITION members."
+        );
+      }
+      const recipients = await refreshPassTransitionRecipients({ force: true });
+      recipientCount = Array.isArray(recipients) ? recipients.length : getSlackMePassTransitionRecipients().length;
+      syncSlackMeDialogUi();
+    }
+
+    const summary = ["ZIP re-hydrated."];
+    if (slackReady) summary.push("Slack session refreshed.");
+    if (hasPassTransitionChannel) {
+      summary.push("PASS-TRANSITION members: " + recipientCount + ".");
+    }
+    setStatus(summary.join(" "), false);
+    return {
+      ok: true,
+      slackReady,
+      recipientCount
+    };
+  }
+
   async function runContextMenuAction(action) {
     hideContextMenu();
     if (action === "clearZipKey" && !requestZipKeyClearConfirmation()) {
@@ -3372,6 +3445,10 @@
       return;
     }
     try {
+      if (action === "rehydrateZip") {
+        await rehydrateZipRuntime();
+        return;
+      }
       const response = await sendContextMenuAction(action);
       if (action === "toggleSide") {
         await loadSidePanelContext();
@@ -5789,116 +5866,127 @@
   }
 
   async function slackVisibleTicketsToMe() {
-    if (state.slackItToMeLoading || state.slackItToMeButtonState === "ack") return;
-    const exportData = buildVisibleTicketsCsvExportData();
-    const rows = exportData.rows;
-    if (!rows.length) {
-      setStatus("No tickets are currently visible to send.", false);
-      return;
+    if (state.slackItToMeLoading || state.slackItToMeButtonState === "ack" || slackItToMeRequestInFlight) {
+      return slackItToMeRequestInFlight || null;
     }
-
-    const ready = await refreshSlacktivatedState({
-      force: true,
-      silent: true,
-      allowOpenIdSilentProbe: true,
-      allowSlackTabBootstrap: true,
-      allowSlackTabBootstrapCreate: false
-    }).catch(() => false);
-    if (!ready || !isPassAiSlacktivated()) {
-      setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
-      updateTicketActionButtons();
-      return;
-    }
-
-    state.slackItToMeLoading = true;
-    state.slackItToMeButtonState = "";
-    applyGlobalBusyUi();
-    updateTicketActionButtons();
-    setStatus("Sending visible ticket list to ZipTool panel in Slack…", false);
-    let delivered = false;
-    try {
-      const markdownText = buildSlackItToMeMarkdown(rows);
-      const slackApiTokens = getPassAiSlackApiTokenConfig();
-      await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
-      const sendPayload = {
-        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
-        userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
-        userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
-        avatarUrl: state.passAiSlackAvatarUrl || "",
-        authorUserId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
-        authorUserName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
-        authorAvatarUrl: state.passAiSlackAvatarUrl || "",
-        directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
-        markdownText,
-        botToken: "",
-        userToken: slackApiTokens.userToken || "",
-        autoBootstrapSlackTab: true,
-        preferApiFirst: true,
-        preferBotDmDelivery: false,
-        requireNativeNewMessage: false,
-        requireBotDelivery: false,
-        allowBotDelivery: false,
-        skipUnreadMark: true,
-        forceNewMessage: true
-      };
-
-      setStatus("Sending visible ticket list to ZipTool panel via Slack API…", false);
-      let response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", sendPayload);
-
-      if (!response || response.ok !== true) {
-        const responseCode = String(response && response.code || "").trim().toLowerCase();
-        if (responseCode === "slack_unread_marker_unconfirmed") {
-          response = {
-            ...(response && typeof response === "object" ? response : {}),
-            ok: true,
-            unread_marked: false,
-            unread_unconfirmed: true
-          };
-        } else {
-        const responseMessage = normalizePassAiCommentBody(response && (response.error || response.message)) || "Slack send failed.";
-        const responseCodeLabel = responseCode ? ("[" + responseCode + "] ") : "";
-        throw new Error(responseCodeLabel + responseMessage);
-        }
+    slackItToMeRequestInFlight = (async () => {
+      const exportData = buildVisibleTicketsCsvExportData();
+      const rows = exportData.rows;
+      if (!rows.length) {
+        setStatus("No tickets are currently visible to send.", false);
+        return;
       }
 
-      setPassAiSlackAuthState({
-        ready: true,
-        mode: "api",
-        webReady: true,
-        userId: response.user_id || response.userId || state.passAiSlackUserId || "",
-        userName: response.user_name || response.userName || state.passAiSlackUserName || "",
-        avatarUrl: response.avatar_url || response.avatarUrl || state.passAiSlackAvatarUrl || "",
-        directChannelId: response.direct_channel_id || response.directChannelId || state.passAiSlackDirectChannelId || "",
-        teamId: response.team_id || response.teamId || "",
-        enterpriseId: response.enterprise_id || response.enterpriseId || ""
-      });
-
-      const sentRows = Math.min(rows.length, SLACK_IT_TO_ME_MAX_ROWS);
-      const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
-      const unreadSuffix = response.unread_marked === true
-        ? " Delivered as a new unread Slack message."
-        : "";
-      const unconfirmedSuffix = response.unread_unconfirmed === true
-        ? " Slack unread confirmation is delayed; message delivery succeeded."
-        : "";
-      const deliveryMode = String(response && response.delivery_mode || "").trim();
-      const deliverySuffix = deliveryMode ? (" Delivery mode: " + deliveryMode + ".") : "";
-      delivered = true;
-      state.slackItToMeButtonState = "ack";
-      setStatus("SLACK_TO_ZIPTOOL delivered to your ZipTool panel" + summarySuffix + "." + unreadSuffix + unconfirmedSuffix + deliverySuffix, false);
-    } catch (err) {
-      const message = normalizePassAiCommentBody(err && err.message) || "Unable to send visible ticket list.";
-      setStatus("SLACK_IT_TO_ME failed: " + message, true);
-    } finally {
-      state.slackItToMeLoading = false;
-      if (!delivered) {
-        state.slackItToMeButtonState = "";
+      const ready = await refreshSlacktivatedState({
+        force: true,
+        silent: true,
+        allowOpenIdSilentProbe: true,
+        allowSlackTabBootstrap: true,
+        allowSlackTabBootstrapCreate: false
+      }).catch(() => false);
+      if (!ready || !isPassAiSlacktivated()) {
+        setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+        updateTicketActionButtons();
+        return;
       }
+
+      state.slackItToMeLoading = true;
+      state.slackItToMeButtonState = "";
       applyGlobalBusyUi();
       updateTicketActionButtons();
-      if (delivered) {
-        queueSlackItToMeAckReset();
+      syncContextMenuAuthVisibility();
+      setStatus("Sending visible ticket list to ZipTool panel in Slack…", false);
+      let delivered = false;
+      try {
+        const markdownText = buildSlackItToMeMarkdown(rows);
+        const slackApiTokens = getPassAiSlackApiTokenConfig();
+        await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
+        const sendPayload = {
+          workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+          userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+          userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+          avatarUrl: state.passAiSlackAvatarUrl || "",
+          authorUserId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+          authorUserName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+          authorAvatarUrl: state.passAiSlackAvatarUrl || "",
+          directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
+          markdownText,
+          botToken: "",
+          userToken: slackApiTokens.userToken || "",
+          autoBootstrapSlackTab: true,
+          preferApiFirst: true,
+          preferBotDmDelivery: false,
+          requireNativeNewMessage: false,
+          requireBotDelivery: false,
+          allowBotDelivery: false,
+          skipUnreadMark: true,
+          forceNewMessage: true
+        };
+
+        setStatus("Sending visible ticket list to ZipTool panel via Slack API…", false);
+        let response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", sendPayload);
+
+        if (!response || response.ok !== true) {
+          const responseCode = String(response && response.code || "").trim().toLowerCase();
+          if (responseCode === "slack_unread_marker_unconfirmed") {
+            response = {
+              ...(response && typeof response === "object" ? response : {}),
+              ok: true,
+              unread_marked: false,
+              unread_unconfirmed: true
+            };
+          } else {
+            const responseMessage = normalizePassAiCommentBody(response && (response.error || response.message)) || "Slack send failed.";
+            const responseCodeLabel = responseCode ? ("[" + responseCode + "] ") : "";
+            throw new Error(responseCodeLabel + responseMessage);
+          }
+        }
+
+        setPassAiSlackAuthState({
+          ready: true,
+          mode: "api",
+          webReady: true,
+          userId: response.user_id || response.userId || state.passAiSlackUserId || "",
+          userName: response.user_name || response.userName || state.passAiSlackUserName || "",
+          avatarUrl: response.avatar_url || response.avatarUrl || state.passAiSlackAvatarUrl || "",
+          directChannelId: response.direct_channel_id || response.directChannelId || state.passAiSlackDirectChannelId || "",
+          teamId: response.team_id || response.teamId || "",
+          enterpriseId: response.enterprise_id || response.enterpriseId || ""
+        });
+
+        const sentRows = Math.min(rows.length, SLACK_IT_TO_ME_MAX_ROWS);
+        const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
+        const unreadSuffix = response.unread_marked === true
+          ? " Delivered as a new unread Slack message."
+          : "";
+        const unconfirmedSuffix = response.unread_unconfirmed === true
+          ? " Slack unread confirmation is delayed; message delivery succeeded."
+          : "";
+        const deliveryMode = String(response && response.delivery_mode || "").trim();
+        const deliverySuffix = deliveryMode ? (" Delivery mode: " + deliveryMode + ".") : "";
+        delivered = true;
+        state.slackItToMeButtonState = "ack";
+        setStatus("SLACK_TO_ZIPTOOL delivered to your ZipTool panel" + summarySuffix + "." + unreadSuffix + unconfirmedSuffix + deliverySuffix, false);
+      } catch (err) {
+        const message = normalizePassAiCommentBody(err && err.message) || "Unable to send visible ticket list.";
+        setStatus("SLACK_IT_TO_ME failed: " + message, true);
+      } finally {
+        state.slackItToMeLoading = false;
+        if (!delivered) {
+          state.slackItToMeButtonState = "";
+        }
+        applyGlobalBusyUi();
+        updateTicketActionButtons();
+        syncContextMenuAuthVisibility();
+        if (delivered) {
+          queueSlackItToMeAckReset();
+        }
       }
+    })();
+    try {
+      return await slackItToMeRequestInFlight;
+    } finally {
+      slackItToMeRequestInFlight = null;
     }
   }
 
@@ -12897,6 +12985,11 @@
         runContextMenuAction("getLatest");
       });
     }
+    if (els.contextMenuRehydrateZip) {
+      els.contextMenuRehydrateZip.addEventListener("click", () => {
+        runContextMenuAction("rehydrateZip");
+      });
+    }
     if (els.contextMenuClearKey) {
       els.contextMenuClearKey.addEventListener("click", () => {
         runContextMenuAction("clearZipKey");
@@ -13144,7 +13237,7 @@
         e.preventDefault();
         if (state.slackItToMeButtonState === "ack") return;
         if (e.shiftKey) {
-          openSlackMeDialog({ mode: "transition" }).catch((err) => {
+          openSlackMeDialog({ mode: "transition", forceRecipients: true }).catch((err) => {
             const message = normalizePassAiCommentBody(err && err.message) || "PASS-TRANSITION share dialog failed.";
             setStatus("PASS-TRANSITION share dialog failed: " + message, true);
           });

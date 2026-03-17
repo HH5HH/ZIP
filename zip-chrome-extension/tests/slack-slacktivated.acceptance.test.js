@@ -29,6 +29,8 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.doesNotMatch(html, /id="zipContextMenuAskEric"/);
   assert.match(html, /Ask the Team/);
   assert.match(html, /id="zipContextMenuSlackMe"/);
+  assert.match(html, /id="zipContextMenuRehydrateZip"/);
+  assert.match(html, /Re-Hydrate ZIP/);
   assert.match(html, /id="zipContextMenuClearKey"[^>]*class="[^"]*\bzip-context-menu-item-danger\b[^"]*"/);
   assert.match(html, /id="zipContextMenuToggleZdApi"[\s\S]*zip-context-menu-divider[\s\S]*id="zipContextMenuClearKey"/);
   assert.match(html, /id="zipContextMenuClearKey"[\s\S]*<\/button>\s*<\/div>\s*<div id="zipContextMenuThemeFlyout"/);
@@ -76,6 +78,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /slacktivatedStatusWrap:\s*\$\("zipSlacktivatedStatusWrap"\)/);
   assert.match(js, /contextMenuClearKey:\s*\$\("zipContextMenuClearKey"\)/);
   assert.match(js, /contextMenuSlackMe:\s*\$\("zipContextMenuSlackMe"\)/);
+  assert.match(js, /contextMenuRehydrateZip:\s*\$\("zipContextMenuRehydrateZip"\)/);
   assert.match(js, /slackMeDialogBackdrop:\s*\$\("zipSlackMeDialogBackdrop"\)/);
   assert.match(js, /slackMeInput:\s*\$\("zipSlackMeInput"\)/);
   assert.match(js, /slackMeRecipientAvatar:\s*\$\("zipSlackMeRecipientAvatar"\)/);
@@ -172,12 +175,14 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /recordSlackProbeEvent\("slack_probe_session_only"/);
   assert.match(js, /allowSlackTabBootstrapCreate:\s*false/);
   assert.match(js, /function getPassAiSlackApiTokenConfig\(\)/);
+  assert.match(js, /async function rehydrateZipRuntime\(\)/);
   assert.match(js, /runContextMenuAction\("clearZipKey"\)/);
+  assert.match(js, /runContextMenuAction\("rehydrateZip"\)/);
   assert.match(js, /async function openSlackMeDialog\(options\)/);
   assert.match(js, /function sendSlackMeNoteFromDialog\(\)/);
   assert.match(js, /openSlackMeDialog\(\{ mode: "self" \}\)/);
   assert.match(js, /els\.slackMeRecipientSelect\.addEventListener\("change"/);
-  assert.match(js, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition" \}\)/);
+  assert.match(js, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition", forceRecipients: true \}\)/);
   assert.match(js, /let shouldCloseSlackMeDialog = false;/);
   assert.match(js, /shouldCloseSlackMeDialog = true;/);
   assert.match(js, /if \(shouldCloseSlackMeDialog\) \{\s*hideSlackMeDialog\(\);/);
@@ -190,6 +195,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /function clearSlackMeDialogStatus\(\)/);
   assert.match(js, /setSlackMeDialogStatus\("@SLACK ME failed: " \+ message, true\);/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
+  assert.match(js, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS"/);
   assert.match(js, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS"/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER"/);
   assert.doesNotMatch(js, /sendBackgroundRequest\("ZIP_SLACK_API_QAI_SEND"/);

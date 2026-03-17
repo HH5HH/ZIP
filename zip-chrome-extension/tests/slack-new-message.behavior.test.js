@@ -54,6 +54,9 @@ test("content self-DM action strips thread fields before chat.postMessage", () =
 
 test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
+  assert.match(source, /let slackItToMeRequestInFlight = null;/);
+  assert.match(source, /if \(state\.slackItToMeLoading \|\| state\.slackItToMeButtonState === "ack" \|\| slackItToMeRequestInFlight\) \{/);
+  assert.match(source, /slackItToMeRequestInFlight = \(async \(\) => \{/);
   assert.match(source, /const sendPayload = \{[\s\S]*forceNewMessage:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*requireNativeNewMessage:\s*false[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*authorUserId:\s*normalizePassAiSlackUserId\(state\.passAiSlackUserId \|\| ""\)[\s\S]*\};/);
@@ -69,12 +72,19 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
 
 test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
-  assert.match(source, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition" \}\)/);
+  assert.match(source, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition", forceRecipients: true \}\)/);
   assert.match(source, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS"/);
   assert.match(
     source,
     /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER",\s*\{[\s\S]*botToken:\s*""[\s\S]*preferBotDmDelivery:\s*false[\s\S]*allowBotDelivery:\s*false[\s\S]*\}\);/
   );
+});
+
+test("sidepanel exposes a re-hydrate action for Slack session and PASS-TRANSITION refresh", () => {
+  const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
+  assert.match(source, /async function rehydrateZipRuntime\(\)/);
+  assert.match(source, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{ force: true \}\)/);
+  assert.match(source, /runContextMenuAction\("rehydrateZip"\)/);
 });
 
 test("workspace deeplinks route through the redirect URL into ZIP workspace mode", () => {
