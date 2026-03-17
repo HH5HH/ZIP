@@ -4577,7 +4577,7 @@
         || els.slacktivatedIcon.getAttribute("src")
         || SLACKTIVATED_PENDING_ICON_URL
       ).trim() || SLACKTIVATED_PENDING_ICON_URL;
-      const avatar = normalizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "");
+      const avatar = sanitizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "", status.iconUrl);
       const useAvatar = !!(state.passAiSlackReady && avatar);
       els.slacktivatedIcon.src = useAvatar ? avatar : defaultSrc;
       els.slacktivatedIcon.alt = useAvatar
@@ -7199,6 +7199,44 @@
     return "";
   }
 
+  function isPassAiSlackStatusAssetUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return false;
+    try {
+      const parsed = new URL(raw);
+      if (String(parsed.protocol || "").toLowerCase() !== "https:") return false;
+      const host = String(parsed.hostname || "").toLowerCase();
+      const pathname = String(parsed.pathname || "").toLowerCase();
+      if (host === "emoji.slack-edge.com" || host.endsWith(".emoji.slack-edge.com")) {
+        return true;
+      }
+      if (
+        host !== "slack-edge.com"
+        && !host.endsWith(".slack-edge.com")
+        && host !== "slack.com"
+        && !host.endsWith(".slack.com")
+      ) {
+        return false;
+      }
+      return (
+        pathname.includes("/emoji")
+        || pathname.includes("emoji-assets")
+        || pathname.includes("custom_emoji")
+        || pathname.includes("status_emoji")
+      );
+    } catch (_) {}
+    return false;
+  }
+
+  function sanitizePassAiSlackAvatarUrl(value, statusIconUrl) {
+    const avatarUrl = normalizePassAiSlackAvatarUrl(value);
+    if (!avatarUrl) return "";
+    const normalizedStatusIconUrl = normalizePassAiSlackStatusIconUrl(statusIconUrl);
+    if (normalizedStatusIconUrl && avatarUrl === normalizedStatusIconUrl) return "";
+    if (isPassAiSlackStatusAssetUrl(avatarUrl)) return "";
+    return avatarUrl;
+  }
+
   function normalizePassAiSlackStatusIconName(value) {
     const name = String(value || "").trim().toLowerCase();
     if (!name) return "";
@@ -8101,6 +8139,7 @@
     if (!isAllowedSlackWorkspaceHost(host, workspaceHost)) return null;
 
     const verifiedAtMs = Number(raw.verifiedAtMs || raw.verifiedAt || raw.cachedAtMs || 0);
+    const statusIconUrl = normalizePassAiSlackStatusIconUrl(raw.statusIconUrl || raw.status_icon_url || "");
     return {
       version: Number(raw.version || SLACKTIVATED_SESSION_CACHE_VERSION),
       mode: String(raw.mode || "").trim().toLowerCase() || "cached",
@@ -8108,10 +8147,10 @@
       webReady: raw.webReady !== false,
       userId: normalizePassAiSlackUserId(raw.userId || raw.user_id || ""),
       userName: normalizePassAiSlackDisplayName(raw.userName || raw.user_name || ""),
-      avatarUrl: normalizePassAiSlackAvatarUrl(raw.avatarUrl || raw.avatar_url || ""),
+      avatarUrl: sanitizePassAiSlackAvatarUrl(raw.avatarUrl || raw.avatar_url || "", statusIconUrl),
       directChannelId: normalizePassAiSlackDirectChannelId(raw.directChannelId || raw.direct_channel_id || ""),
       statusIcon: normalizePassAiSlackStatusIcon(raw.statusIcon || raw.status_icon || ""),
-      statusIconUrl: normalizePassAiSlackStatusIconUrl(raw.statusIconUrl || raw.status_icon_url || ""),
+      statusIconUrl,
       statusMessage: normalizePassAiSlackStatusMessage(raw.statusMessage || raw.status_message || ""),
       teamId: String(raw.teamId || raw.team_id || "").trim().toUpperCase(),
       enterpriseId: String(raw.enterpriseId || raw.enterprise_id || "").trim().toUpperCase(),
@@ -8735,12 +8774,12 @@
     );
     const priorUserId = normalizePassAiSlackUserId(state.passAiSlackUserId || "");
     const priorUserName = normalizePassAiSlackDisplayName(state.passAiSlackUserName || "");
-    const priorAvatarUrl = normalizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "");
     const priorTeamId = normalizePassAiSlackTeamId(state.passAiSlackTeamId || "");
     const priorDirectChannelId = normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || "");
     const priorStatusIcon = normalizePassAiSlackStatusIcon(state.passAiSlackStatusIcon || "");
     const priorStatusIconUrl = normalizePassAiSlackStatusIconUrl(state.passAiSlackStatusIconUrl || "");
     const priorStatusMessage = normalizePassAiSlackStatusMessage(state.passAiSlackStatusMessage || "");
+    const priorAvatarUrl = sanitizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "", priorStatusIconUrl);
     const zendeskAvatarUrl = getCurrentZendeskAvatarUrl();
     const priorAvatarIsZendesk = !!(
       priorAvatarUrl
@@ -8754,7 +8793,6 @@
       (nextState && (nextState.userName || nextState.user_name || nextState.displayName || nextState.display_name))
       || ""
     );
-    const requestedAvatarUrl = normalizePassAiSlackAvatarUrl(nextState && (nextState.avatarUrl || nextState.avatar_url || ""));
     const requestedTeamId = normalizePassAiSlackTeamId(
       nextState && (nextState.teamId || nextState.team_id || "")
     );
@@ -8769,6 +8807,10 @@
     );
     const requestedStatusMessage = normalizePassAiSlackStatusMessage(
       nextState && (nextState.statusMessage || nextState.status_message || "")
+    );
+    const requestedAvatarUrl = sanitizePassAiSlackAvatarUrl(
+      nextState && (nextState.avatarUrl || nextState.avatar_url || ""),
+      requestedStatusIconUrl
     );
     const shouldResetPassTransitionRecipients = !ready || !!(
       requestedUserId

@@ -137,7 +137,10 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /const ZIP_SLACK_REDIRECT_URI_STORAGE_KEY = "zip_slack_redirect_uri";/);
   assert.match(js, /function isAllowedSlackWorkspaceHost\(host, workspaceHost\)/);
   assert.match(js, /function normalizePassAiSlackAvatarUrl\(value\)/);
+  assert.match(js, /function sanitizePassAiSlackAvatarUrl\(value,\s*statusIconUrl\)/);
   assert.match(js, /function normalizePassAiSlackStatusMessage\(value\)/);
+  assert.match(js, /const avatar = sanitizePassAiSlackAvatarUrl\(state\.passAiSlackAvatarUrl \|\| "", status\.iconUrl\);/);
+  assert.match(js, /avatarUrl:\s*sanitizePassAiSlackAvatarUrl\(raw\.avatarUrl \|\| raw\.avatar_url \|\| "", statusIconUrl\)/);
   assert.match(js, /parsed\.protocol/);
   assert.doesNotMatch(js, /hostname === "slack-edge\.com"/);
   assert.match(js, /function isTransientSlackAuthProbeFailureMessage\(message\)/);
@@ -271,6 +274,9 @@ test("sidepanel styles avoid custom Slack header spinner overlay", () => {
 test("content script supports Slack auth identity details and @ME markdown DM action", () => {
   const source = fs.readFileSync(CONTENT_PATH, "utf8");
   assert.match(source, /async function slackAuthTestAction\(inner\)/);
+  assert.match(source, /function isSlackStatusAssetUrl\(value\)/);
+  assert.match(source, /function sanitizeSlackAvatarCandidate\(value,\s*statusIconUrl\)/);
+  assert.match(source, /function pickSlackSessionStatusIconUrl\(candidate\)/);
   assert.match(source, /user_name:/);
   assert.match(source, /avatar_url:/);
   assert.match(source, /status_icon:/);
@@ -288,6 +294,9 @@ test("content script supports Slack auth identity details and @ME markdown DM ac
   assert.match(source, /code === "not_in_channel"/);
   assert.match(source, /code === "workspace_mismatch"/);
   assert.match(source, /function isSlackWebSessionToken\(value\)/);
+  assert.match(source, /const profileAvatarUrl = sanitizeSlackAvatarCandidate\(profile\.avatarUrl \|\| "", statusIconUrl \|\| profile\.statusIconUrl \|\| ""\);/);
+  assert.match(source, /if \(profileAvatarUrl\) avatarUrl = profileAvatarUrl;/);
+  assert.match(source, /avatarUrl = sanitizeSlackAvatarCandidate\(avatarUrl,\s*statusIconUrl\);/);
   assert.match(source, /async function resolveSlackUserIdFromChannelHistory\(workspaceOrigin,\s*channelId,\s*mention\)/);
   assert.match(source, /const postToChannel = \(targetChannelId,\s*reasonTag\) => postSlackApi\(workspaceOrigin,\s*"\/api\/chat\.postMessage"/);
   assert.match(source, /shouldRecoverWithDmOpen/);

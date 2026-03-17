@@ -2911,6 +2911,44 @@
     return "";
   }
 
+  function isSlackStatusAssetUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return false;
+    try {
+      const parsed = new URL(raw, String(window.location && window.location.origin || ""));
+      if (String(parsed.protocol || "").toLowerCase() !== "https:") return false;
+      const host = String(parsed.hostname || "").toLowerCase();
+      const pathname = String(parsed.pathname || "").toLowerCase();
+      if (host === "emoji.slack-edge.com" || host.endsWith(".emoji.slack-edge.com")) {
+        return true;
+      }
+      if (
+        host !== "slack-edge.com"
+        && !host.endsWith(".slack-edge.com")
+        && host !== "slack.com"
+        && !host.endsWith(".slack.com")
+      ) {
+        return false;
+      }
+      return (
+        pathname.includes("/emoji")
+        || pathname.includes("emoji-assets")
+        || pathname.includes("custom_emoji")
+        || pathname.includes("status_emoji")
+      );
+    } catch (_) {}
+    return false;
+  }
+
+  function sanitizeSlackAvatarCandidate(value, statusIconUrl) {
+    const avatarUrl = normalizeSlackAvatarUrl(value);
+    if (!avatarUrl) return "";
+    const normalizedStatusIconUrl = normalizeSlackStatusIconUrl(statusIconUrl);
+    if (normalizedStatusIconUrl && avatarUrl === normalizedStatusIconUrl) return "";
+    if (isSlackStatusAssetUrl(avatarUrl)) return "";
+    return avatarUrl;
+  }
+
   function normalizeSlackStatusIconName(value) {
     const name = String(value || "").trim().toLowerCase();
     if (!name) return "";
@@ -3015,6 +3053,7 @@
     const user = candidate.user && typeof candidate.user === "object" ? candidate.user : null;
     const profile = user && user.profile && typeof user.profile === "object" ? user.profile : null;
     const directProfile = candidate.profile && typeof candidate.profile === "object" ? candidate.profile : null;
+    const statusIconUrl = pickSlackSessionStatusIconUrl(candidate);
     const values = [
       allowDirectFields ? candidate.avatar_url : "",
       allowDirectFields ? candidate.image_192 : "",
@@ -3029,7 +3068,31 @@
       directProfile && directProfile.image_48
     ];
     for (let i = 0; i < values.length; i += 1) {
-      const url = normalizeSlackAvatarUrl(values[i]);
+      const url = sanitizeSlackAvatarCandidate(values[i], statusIconUrl);
+      if (url) return url;
+    }
+    return "";
+  }
+
+  function pickSlackSessionStatusIconUrl(candidate) {
+    if (!candidate || typeof candidate !== "object") return "";
+    const user = candidate.user && typeof candidate.user === "object" ? candidate.user : null;
+    const profile = user && user.profile && typeof user.profile === "object" ? user.profile : null;
+    const directProfile = candidate.profile && typeof candidate.profile === "object" ? candidate.profile : null;
+    const profileDisplayInfo = pickSlackStatusFromDisplayInfo(profile && profile.status_emoji_display_info || null);
+    const directProfileDisplayInfo = pickSlackStatusFromDisplayInfo(
+      directProfile && directProfile.status_emoji_display_info || null
+    );
+    const values = [
+      candidate.status_icon_url,
+      candidate.statusIconUrl,
+      profile && profile.status_emoji_url,
+      profileDisplayInfo.statusIconUrl,
+      directProfile && directProfile.status_emoji_url,
+      directProfileDisplayInfo.statusIconUrl
+    ];
+    for (let i = 0; i < values.length; i += 1) {
+      const url = normalizeSlackStatusIconUrl(values[i]);
       if (url) return url;
     }
     return "";
@@ -3074,12 +3137,13 @@
       for (let j = 0; j < nodes.length; j += 1) {
         const img = nodes[j];
         if (!img) continue;
-        const avatarUrl = normalizeSlackAvatarUrl(
+        const avatarUrl = sanitizeSlackAvatarCandidate(
           img.currentSrc
           || img.src
           || img.getAttribute("src")
           || img.getAttribute("data-src")
-          || ""
+          || "",
+          ""
         );
         if (!avatarUrl) continue;
         const owner = img.closest("button, [role='button'], a, [aria-label], [title]");
@@ -3283,7 +3347,7 @@
     const status = getSlackUserStatus({ profile });
     return {
       userName: getSlackUserDisplayName({ profile }),
-      avatarUrl: getSlackUserAvatar({ profile }),
+      avatarUrl: sanitizeSlackAvatarCandidate(getSlackUserAvatar({ profile }), status.statusIconUrl),
       statusIcon: status.statusIcon,
       statusIconUrl: status.statusIconUrl,
       statusMessage: status.statusMessage
@@ -3299,7 +3363,7 @@
     const status = getSlackUserStatus(user);
     return {
       userName: getSlackUserDisplayName(user),
-      avatarUrl: getSlackUserAvatar(user),
+      avatarUrl: sanitizeSlackAvatarCandidate(getSlackUserAvatar(user), status.statusIconUrl),
       statusIcon: status.statusIcon,
       statusIconUrl: status.statusIconUrl,
       statusMessage: status.statusMessage
@@ -3320,7 +3384,9 @@
       const candidate = nextIdentity && typeof nextIdentity === "object" ? nextIdentity : null;
       if (!candidate) return;
       if (!identity.userName) identity.userName = normalizeSlackDisplayName(candidate.userName || "");
-      if (!identity.avatarUrl) identity.avatarUrl = normalizeSlackAvatarUrl(candidate.avatarUrl || "");
+      if (!identity.avatarUrl) {
+        identity.avatarUrl = sanitizeSlackAvatarCandidate(candidate.avatarUrl || "", candidate.statusIconUrl || "");
+      }
       if (!identity.statusIcon) identity.statusIcon = normalizeSlackStatusIcon(candidate.statusIcon || "");
       if (!identity.statusIconUrl) identity.statusIconUrl = normalizeSlackStatusIconUrl(candidate.statusIconUrl || "");
       if (!identity.statusMessage) identity.statusMessage = normalizeSlackStatusMessage(candidate.statusMessage || "");
@@ -3463,7 +3529,7 @@
     const userId = String(payload.user_id || payload.user || session.userId || "").trim();
     const teamId = String(payload.team_id || payload.team || session.teamId || "").trim();
     let userName = normalizeSlackDisplayName(session.userName || "");
-    let avatarUrl = String(session.avatarUrl || "").trim();
+    let avatarUrl = sanitizeSlackAvatarCandidate(session.avatarUrl || "", "");
     let statusIcon = "";
     let statusIconUrl = "";
     let statusMessage = "";
@@ -3472,10 +3538,12 @@
     const profile = await getSlackUserProfile(workspaceOrigin, userId).catch(() => null);
     if (profile) {
       if (!userName) userName = normalizeSlackDisplayName(profile.userName || "");
-      if (!avatarUrl) avatarUrl = String(profile.avatarUrl || "").trim();
       if (!statusIcon) statusIcon = normalizeSlackStatusIcon(profile.statusIcon || "");
       if (!statusIconUrl) statusIconUrl = normalizeSlackStatusIconUrl(profile.statusIconUrl || "");
       if (!statusMessage) statusMessage = normalizeSlackStatusMessage(profile.statusMessage || "");
+      const profileAvatarUrl = sanitizeSlackAvatarCandidate(profile.avatarUrl || "", statusIconUrl || profile.statusIconUrl || "");
+      if (profileAvatarUrl) avatarUrl = profileAvatarUrl;
+      avatarUrl = sanitizeSlackAvatarCandidate(avatarUrl, statusIconUrl);
       if (!avatarUrl) {
         avatarErrorCode = String(profile.avatarErrorCode || "").trim().toLowerCase();
         avatarErrorMessage = String(profile.avatarErrorMessage || "").trim();
@@ -3484,8 +3552,9 @@
     if (!userName || !avatarUrl) {
       const domIdentity = extractSlackIdentityFromDom();
       if (!userName) userName = normalizeSlackDisplayName(domIdentity.userName || "");
-      if (!avatarUrl) avatarUrl = String(domIdentity.avatarUrl || "").trim();
+      if (!avatarUrl) avatarUrl = sanitizeSlackAvatarCandidate(domIdentity.avatarUrl || "", statusIconUrl);
     }
+    avatarUrl = sanitizeSlackAvatarCandidate(avatarUrl, statusIconUrl);
     if (avatarUrl) {
       avatarErrorCode = "";
       avatarErrorMessage = "";
@@ -3522,7 +3591,7 @@
     let userId = normalizeSlackUserId((inner && (inner.userId || inner.user_id)) || session.userId);
     let teamId = normalizeSlackTeamId(session.teamId);
     let userName = normalizeSlackDisplayName(session.userName || "");
-    let avatarUrl = String(session.avatarUrl || "").trim();
+    let avatarUrl = sanitizeSlackAvatarCandidate(session.avatarUrl || "", "");
 
     const auth = await postSlackApi(workspaceOrigin, "/api/auth.test", {
       _x_reason: "zip-slack-it-to-me-auth"
@@ -3547,12 +3616,16 @@
     const profile = await getSlackUserProfile(workspaceOrigin, userId).catch(() => null);
     if (profile) {
       if (!userName) userName = normalizeSlackDisplayName(profile.userName || "");
-      if (!avatarUrl) avatarUrl = String(profile.avatarUrl || "").trim();
+      const profileAvatarUrl = sanitizeSlackAvatarCandidate(
+        profile.avatarUrl || "",
+        profile.statusIconUrl || ""
+      );
+      if (profileAvatarUrl) avatarUrl = profileAvatarUrl;
     }
     if (!userName || !avatarUrl) {
       const domIdentity = extractSlackIdentityFromDom();
       if (!userName) userName = normalizeSlackDisplayName(domIdentity.userName || "");
-      if (!avatarUrl) avatarUrl = String(domIdentity.avatarUrl || "").trim();
+      if (!avatarUrl) avatarUrl = sanitizeSlackAvatarCandidate(domIdentity.avatarUrl || "", "");
     }
 
     const dmOpen = await postSlackApi(workspaceOrigin, "/api/conversations.open", {

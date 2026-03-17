@@ -30,8 +30,10 @@ function stripScriptTags(html) {
 function buildSidepanelHarnessBootstrap(options) {
   const defaults = {
     openIdStatusOk: true,
+    openIdStatusPayload: null,
     silentAuthOk: false,
     interactiveAuthOk: false,
+    storageSeed: null,
     slackTabs: [],
     activeTabSlack: false
   };
@@ -90,7 +92,7 @@ function buildSidepanelHarnessBootstrap(options) {
       mutable.slackTabs = mutable.slackTabs.map((tab, idx) => normalizeSlackTab(tab, idx));
 
       function openIdPayload() {
-        return {
+        const base = {
           ok: true,
           mode: "openid",
           user_id: "U123TEST",
@@ -98,6 +100,9 @@ function buildSidepanelHarnessBootstrap(options) {
           avatar_url: "https://avatars.slack-edge.com/2024-01-01/123_abc_192.png",
           team_id: "TMOCKZIP"
         };
+        return scenario.openIdStatusPayload && typeof scenario.openIdStatusPayload === "object"
+          ? { ...base, ...scenario.openIdStatusPayload }
+          : base;
       }
 
       function zendeskMeResult() {
@@ -219,6 +224,9 @@ function buildSidepanelHarnessBootstrap(options) {
         zip_singularity_mention: "@zip-bot",
         zip_slack_key_meta: seededMeta
       });
+      if (scenario.storageSeed && typeof scenario.storageSeed === "object") {
+        Object.assign(storage, clone(scenario.storageSeed));
+      }
 
       window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_ID = "mock.client.id";
       window.ZIP_PASS_AI_SLACK_OIDC_CLIENT_SECRET = "mock.client.secret";
@@ -469,6 +477,9 @@ async function readSlackUiReport(page) {
     const messageTypes = harness ? harness.getMessageTypes() : [];
     const openIdAuthCalls = harness ? harness.getOpenIdAuthCalls() : [];
     const slackBtn = document.getElementById("zipSlacktivatedBtn");
+    const slackAvatar = document.getElementById("zipSlacktivatedIcon");
+    const slackStatusImg = document.getElementById("zipSlacktivatedStatusIconImg");
+    const slackStatusMessage = document.getElementById("zipSlacktivatedStatusMessage");
     const slackToMe = document.getElementById("zipSlackItToMeBtn");
     return {
       calls,
@@ -476,6 +487,9 @@ async function readSlackUiReport(page) {
       openIdAuthCalls,
       slackTitle: slackBtn ? String(slackBtn.getAttribute("title") || "") : "",
       slackClass: slackBtn ? String(slackBtn.className || "") : "",
+      slackAvatarSrc: slackAvatar ? String(slackAvatar.getAttribute("src") || slackAvatar.src || "") : "",
+      slackStatusImgSrc: slackStatusImg ? String(slackStatusImg.getAttribute("src") || slackStatusImg.src || "") : "",
+      slackStatusMessage: slackStatusMessage ? String(slackStatusMessage.textContent || "").trim() : "",
       slackToMeDisabled: !!(slackToMe && slackToMe.disabled)
     };
   });
@@ -534,6 +548,62 @@ test("Playwright smoke: existing Slack session SLACKTIVATES sidepanel without op
   assert.equal(report.slackToMeDisabled, false, "@ME should be enabled when SLACKTIVATED");
   assert.match(report.slackClass, /\bis-slacktivated\b/);
   assert.match(report.slackTitle, /SLACKTIVATED/i);
+});
+
+test("Playwright smoke: Slack header never duplicates a status asset into the avatar slot", async (t) => {
+  const playwright = await loadPlaywrightOrSkip(t);
+  if (!playwright) return;
+
+  let browser;
+  try {
+    browser = await playwright.chromium.launch({ headless: true });
+  } catch (err) {
+    t.skip("Chromium failed to launch for Playwright smoke test: " + (err && err.message ? err.message : "unknown error"));
+    return;
+  }
+
+  t.after(async () => {
+    try {
+      await browser.close();
+    } catch (_) {}
+  });
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const duplicatedStatusIconUrl = "https://emoji.slack-edge.com/TMOCKZIP/accelerating-success/123.png";
+
+  await bootSidepanelForScenario(page, {
+    openIdStatusOk: false,
+    storageSeed: {
+      zip_slack_session_cache_v1: {
+        version: 1,
+        mode: "web",
+        workspaceOrigin: "https://adobedx.slack.com",
+        webReady: true,
+        userId: "U123TEST",
+        userName: "Eric Minnick",
+        avatarUrl: duplicatedStatusIconUrl,
+        statusIconUrl: duplicatedStatusIconUrl,
+        statusMessage: "Accelerating Success",
+        teamId: "TMOCKZIP",
+        verifiedAtMs: Date.now()
+      }
+    },
+    silentAuthOk: false,
+    interactiveAuthOk: false
+  });
+
+  await page.waitForFunction(() => {
+    const slackBtn = document.getElementById("zipSlacktivatedBtn");
+    return !!(slackBtn && slackBtn.classList.contains("is-slacktivated"));
+  }, { timeout: 10000 });
+
+  const report = await readSlackUiReport(page);
+  assert.match(report.slackClass, /\bis-slacktivated\b/);
+  assert.equal(report.slackStatusImgSrc, duplicatedStatusIconUrl);
+  assert.equal(report.slackStatusMessage, "Accelerating Success");
+  assert.equal(report.slackAvatarSrc, "assets/brand/icons/icon128.png");
+  assert.notEqual(report.slackAvatarSrc, report.slackStatusImgSrc);
 });
 
 test("Playwright smoke: no Slack session triggers interactive OpenID auth and SLACKTIVATES with no Slack tabs", async (t) => {
