@@ -1153,6 +1153,160 @@ test("PASS-TRANSITION rehydrate refreshes the cached roster from the live Slack 
   );
 });
 
+test("PASS-TRANSITION rehydrate falls back to live Slack tab hydration after invalid_auth on background token calls", async () => {
+  const liveSessionToken = "SLK_TEST_PASS_TRANSITION_INVALID_SESSION";
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    slackTabs: [{
+      id: 79,
+      windowId: 9,
+      url: "https://adobedx.slack.com/client/TALICE123/C09NHJCMFC1"
+    }],
+    storageSeed: {
+      zip_slack_client_id: "pass-transition-client-id",
+      zip_slack_client_secret: "pass-transition-client-secret",
+      zip_slack_scope: "openid profile email",
+      zip_slack_redirect_path: "slack-user",
+      zip_slack_key_loaded: true,
+      zip_singularity_channel_id: "C123456789A",
+      zip_singularity_mention: "@Singularity",
+      zip_pass_transition_channel_id: "C09NHJCMFC1",
+      zip_pass_transition_channel_name: "#pass-transition",
+      "zip.slack.openid.session.v1": {
+        userId: "UALICE123",
+        userName: "Alice Example",
+        avatarUrl: "https://example.com/alice.png"
+      }
+    },
+    tabsSendMessage: ({ message }) => {
+      if (!message || message.type !== "ZIP_FROM_BACKGROUND") {
+        return { response: { ok: false, status: 0, payload: null } };
+      }
+      if (message.inner && message.inner.action === "slackAuthTest") {
+        return {
+          response: {
+            type: "ZIP_RESPONSE",
+            requestId: message.requestId,
+            result: {
+              ok: true,
+              ready: true,
+              api_validated: true,
+              user_id: "UALICE123",
+              user_name: "Alice Example",
+              team_id: "TALICE123",
+              session_token: liveSessionToken
+            }
+          }
+        };
+      }
+      if (message.inner && message.inner.action === "slackApiProxy") {
+        const apiPath = String(message.inner.apiPath || "").trim();
+        const fields = message.inner.fields && typeof message.inner.fields === "object" ? message.inner.fields : {};
+        if (apiPath === "/api/auth.test") {
+          return {
+            response: {
+              type: "ZIP_RESPONSE",
+              requestId: message.requestId,
+              result: {
+                ok: true,
+                payload: { ok: true, user_id: "UALICE123", user: "alice" }
+              }
+            }
+          };
+        }
+        if (apiPath === "/api/conversations.members") {
+          return {
+            response: {
+              type: "ZIP_RESPONSE",
+              requestId: message.requestId,
+              result: {
+                ok: true,
+                payload: { ok: true, members: ["UALICE123", "UBOB45678"] }
+              }
+            }
+          };
+        }
+        if (apiPath === "/api/users.info") {
+          const userId = String(fields.user || "").trim().toUpperCase();
+          const payloadByUserId = {
+            UALICE123: {
+              ok: true,
+              user: {
+                id: "UALICE123",
+                name: "alice",
+                real_name: "Alice Example",
+                deleted: false,
+                is_bot: false,
+                is_app_user: false,
+                profile: {
+                  display_name: "Alice Example",
+                  real_name: "Alice Example",
+                  email: "alice@example.com",
+                  image_72: "https://example.com/alice.png"
+                }
+              }
+            },
+            UBOB45678: {
+              ok: true,
+              user: {
+                id: "UBOB45678",
+                name: "bob",
+                real_name: "Bob Example",
+                deleted: false,
+                is_bot: false,
+                is_app_user: false,
+                profile: {
+                  display_name: "Bob Example",
+                  real_name: "Bob Example",
+                  email: "bob@example.com",
+                  image_72: "https://example.com/bob.png"
+                }
+              }
+            }
+          };
+          return {
+            response: {
+              type: "ZIP_RESPONSE",
+              requestId: message.requestId,
+              result: {
+                ok: true,
+                payload: payloadByUserId[userId] || { ok: false, error: "user_not_found" }
+              }
+            }
+          };
+        }
+      }
+      return { runtimeError: "unexpected_slack_tab_action" };
+    },
+    fetch: () => Promise.resolve({
+      ok: false,
+      status: 401,
+      json: async () => ({ ok: false, error: "invalid_auth" }),
+      text: async () => ""
+    })
+  });
+
+  harness.resetCalls();
+  const recipients = await harness.sendRuntimeMessage({ type: "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", force: true, allowCreateTab: true });
+  assert.equal(recipients && recipients.ok, true);
+  assert.equal(String(recipients && recipients.tokenKind || ""), "workspace_session");
+  assert.equal(String(recipients && recipients.selfUserId || ""), "UALICE123");
+  assert.deepEqual(
+    Array.from(recipients && recipients.members || []).map((entry) => entry.userId),
+    ["UALICE123", "UBOB45678"]
+  );
+  assert.equal(
+    harness.calls.tabsSendMessage.some((entry) => entry && entry.message && entry.message.inner && entry.message.inner.action === "slackApiProxy"),
+    true,
+    "rehydrate should fall back to Slack-tab session API proxy after invalid_auth"
+  );
+  const stored = harness.storageDump();
+  assert.deepEqual(
+    Array.from(stored.zip_pass_transition_recipients || []).map((entry) => entry.userId),
+    ["UALICE123", "UBOB45678"]
+  );
+});
+
 test("cached PASS-TRANSITION recipient reads never open Slack tabs during Shift+Click", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],

@@ -1870,6 +1870,82 @@ async function slackMarkUnreadViaWorkspaceSession(input, reasonCode) {
   }
 }
 
+async function postSlackApiViaWorkspaceSession(input) {
+  const body = input && typeof input === "object" ? input : {};
+  const workspaceOrigin = normalizeSlackWorkspaceOrigin(body.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
+  const apiPath = String(body.apiPath || body.api_path || "").trim();
+  if (!apiPath) {
+    return {
+      ok: false,
+      code: "slack_api_path_missing",
+      error: "Slack API path is required."
+    };
+  }
+  const shouldBootstrapTab = body.allowCreateTab === true;
+  let bootstrapTabId = null;
+  try {
+    let tabs = await queryInjectableSlackTabs(workspaceOrigin);
+    if (!tabs.length && shouldBootstrapTab) {
+      const bootstrapTab = await openSlackWorkspaceBootstrapTab(workspaceOrigin);
+      if (bootstrapTab && bootstrapTab.id != null) {
+        bootstrapTabId = Number(bootstrapTab.id);
+        await waitForTabComplete(bootstrapTabId, 7000);
+        await sleepMs(800);
+        tabs = await queryInjectableSlackTabs(workspaceOrigin);
+      }
+    }
+
+    const preferred = pickPreferredSlackTab(tabs);
+    const orderedTabs = preferred
+      ? [preferred].concat(tabs.filter((tab) => tab && preferred && tab.id !== preferred.id))
+      : tabs.slice();
+    if (!orderedTabs.length) {
+      return {
+        ok: false,
+        code: "slack_workspace_tab_missing",
+        error: "No active Slack workspace tab is available for session API access."
+      };
+    }
+
+    let lastFailureCode = "slack_workspace_session_unavailable";
+    let lastFailureError = "Slack workspace session request failed.";
+    for (let i = 0; i < orderedTabs.length; i += 1) {
+      const tab = orderedTabs[i];
+      if (!tab || tab.id == null) continue;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const result = await sendSlackInnerRequestToTab(tab.id, {
+            action: "slackApiProxy",
+            workspaceOrigin,
+            apiPath,
+            fields: body.fields && typeof body.fields === "object" ? body.fields : {}
+          });
+          if (result && result.ok === true) {
+            return result;
+          }
+          lastFailureCode = String(result && result.code || "slack_workspace_session_unavailable").trim().toLowerCase() || "slack_workspace_session_unavailable";
+          lastFailureError = String((result && result.error) || "Slack workspace session request failed.").trim();
+        } catch (err) {
+          lastFailureCode = "slack_workspace_session_unavailable";
+          lastFailureError = err && err.message ? err.message : "Slack workspace session request failed.";
+        }
+        if (!isRetryableSlackWorkspaceSessionErrorMessage(lastFailureError) || attempt >= 2) break;
+        await sleepMs(700);
+      }
+    }
+
+    return {
+      ok: false,
+      code: lastFailureCode,
+      error: lastFailureError
+    };
+  } finally {
+    if (bootstrapTabId != null && body.keepBootstrapTab !== true) {
+      await closeTabSilently(bootstrapTabId);
+    }
+  }
+}
+
 function normalizeSlackTeamId(value) {
   const id = String(value || "").trim().toUpperCase();
   return /^T[A-Z0-9]{8,}$/.test(id) ? id : "";
@@ -2453,6 +2529,171 @@ async function fetchPassTransitionRecipientViaApi(workspaceOrigin, token, userId
     };
   }
   return lastFailure;
+}
+
+async function hydratePassTransitionRecipientsViaWorkspaceSession(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const channelId = normalizeSlackChannelId(opts.channelId || opts.channel_id || "");
+  const channelName = String(opts.channelName || opts.channel_name || "").trim();
+  if (!channelId) {
+    return {
+      ok: false,
+      code: "pass_transition_channel_missing",
+      error: "PASS-TRANSITION channel ID is not configured in ZIP.KEY."
+    };
+  }
+  let bootstrapTabId = null;
+  try {
+    let tabs = await queryInjectableSlackTabs(SLACK_WORKSPACE_ORIGIN);
+    if (!tabs.length && opts.allowCreateTab === true) {
+      const bootstrapTab = await openSlackWorkspaceBootstrapTab(SLACK_WORKSPACE_ORIGIN);
+      if (bootstrapTab && bootstrapTab.id != null) {
+        bootstrapTabId = Number(bootstrapTab.id);
+        await waitForTabComplete(bootstrapTabId, 7000);
+        await sleepMs(800);
+        tabs = await queryInjectableSlackTabs(SLACK_WORKSPACE_ORIGIN);
+      }
+    }
+
+    const preferred = pickPreferredSlackTab(tabs);
+    const orderedTabs = preferred
+      ? [preferred].concat(tabs.filter((tab) => tab && preferred && tab.id !== preferred.id))
+      : tabs.slice();
+    if (!orderedTabs.length) {
+      return {
+        ok: false,
+        code: "slack_workspace_tab_missing",
+        error: "No active Slack workspace tab is available for PASS-TRANSITION hydration."
+      };
+    }
+
+    const callSlackApiProxy = async (tabId, apiPath, fields) => sendSlackInnerRequestToTab(tabId, {
+      action: "slackApiProxy",
+      workspaceOrigin: SLACK_WORKSPACE_ORIGIN,
+      apiPath,
+      fields
+    });
+
+    let lastFailureCode = "slack_workspace_session_unavailable";
+    let lastFailureError = "Slack workspace session request failed.";
+    for (let tabIndex = 0; tabIndex < orderedTabs.length; tabIndex += 1) {
+      const tab = orderedTabs[tabIndex];
+      if (!tab || tab.id == null) continue;
+      const tabId = Number(tab.id);
+      try {
+        const authResult = await callSlackApiProxy(tabId, "/api/auth.test", {
+          _x_reason: "zip-pass-transition-session-auth-bg"
+        });
+        if (!authResult || authResult.ok !== true) {
+          lastFailureCode = String(authResult && authResult.code || "invalid_auth").trim().toLowerCase() || "invalid_auth";
+          lastFailureError = String(authResult && authResult.error || "Slack session unavailable.").trim();
+          continue;
+        }
+
+        const rosterResult = await callSlackApiProxy(tabId, "/api/conversations.members", {
+          channel: channelId,
+          limit: 1000,
+          _x_reason: "zip-pass-transition-session-members-bg"
+        });
+        if (!rosterResult || rosterResult.ok !== true) {
+          lastFailureCode = String(rosterResult && rosterResult.code || "slack_user_info_unavailable").trim().toLowerCase() || "slack_user_info_unavailable";
+          lastFailureError = String(rosterResult && rosterResult.error || "Unable to load PASS-TRANSITION members from the active Slack session.").trim();
+          continue;
+        }
+
+        const authPayload = authResult.payload && typeof authResult.payload === "object" ? authResult.payload : {};
+        const rosterPayload = rosterResult.payload && typeof rosterResult.payload === "object" ? rosterResult.payload : {};
+        const selfUserId = normalizeSlackUserId(authPayload.user_id || authPayload.user || "");
+        const memberIds = normalizeSlackUserIdList(rosterPayload.members);
+        const recipients = [];
+        const seenRecipients = new Set();
+        let lastLookupFailureCode = "";
+        let lastLookupFailureError = "";
+        for (let i = 0; i < memberIds.length; i += 1) {
+          const memberId = normalizeSlackUserId(memberIds[i]);
+          if (!memberId || seenRecipients.has(memberId)) continue;
+          const userInfo = await callSlackApiProxy(tabId, "/api/users.info", {
+            user: memberId,
+            include_locale: "false",
+            _x_reason: "zip-pass-transition-session-user-info-bg"
+          });
+          if (!userInfo || userInfo.ok !== true) {
+            lastLookupFailureCode = String(userInfo && userInfo.code || "slack_user_info_unavailable").trim().toLowerCase() || "slack_user_info_unavailable";
+            lastLookupFailureError = String(userInfo && userInfo.error || "Unable to load PASS-TRANSITION recipient details from Slack.").trim();
+            continue;
+          }
+          const recipient = extractPassTransitionRecipientFromUsersInfoPayload(userInfo.payload, memberId);
+          if (!recipient || !recipient.userId || recipient.deleted === true || recipient.bot === true) continue;
+          seenRecipients.add(recipient.userId);
+          recipients.push({
+            userId: recipient.userId,
+            isSelf: !!(selfUserId && recipient.userId === selfUserId),
+            userName: normalizeSlackDisplayName(recipient.userName || ""),
+            displayName: normalizeSlackDisplayName(recipient.displayName || recipient.userName || recipient.realName || ""),
+            realName: normalizeSlackDisplayName(recipient.realName || ""),
+            handle: normalizeSlackHandleLoose(recipient.handle || ""),
+            email: normalizeSlackEmailAddress(recipient.email || ""),
+            avatarUrl: normalizeSlackAvatarUrl(recipient.avatarUrl || ""),
+            statusIcon: normalizeSlackStatusIcon(recipient.statusIcon || ""),
+            statusIconUrl: normalizeSlackStatusIconUrl(recipient.statusIconUrl || ""),
+            statusMessage: normalizeSlackStatusMessage(recipient.statusMessage || ""),
+            label: normalizeSlackDisplayName(recipient.label || "") || ("@" + recipient.userId)
+          });
+        }
+        if (memberIds.length > 0 && recipients.length === 0) {
+          lastFailureCode = lastLookupFailureCode || "slack_user_info_unavailable";
+          lastFailureError = lastLookupFailureError || "Unable to load PASS-TRANSITION recipient details from Slack.";
+          continue;
+        }
+
+        recipients.sort((left, right) => {
+          const leftIsSelf = !!(left && left.isSelf);
+          const rightIsSelf = !!(right && right.isSelf);
+          if (leftIsSelf !== rightIsSelf) return leftIsSelf ? -1 : 1;
+          return String(left && left.label || "").localeCompare(String(right && right.label || ""), undefined, {
+            sensitivity: "base"
+          });
+        });
+
+        const membersSyncedAt = nowIso();
+        await setStorageLocal({
+          [ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY]: channelId,
+          [ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY]: channelName,
+          [ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY]: normalizeSlackUserIdCsv(memberIds),
+          [ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY]: recipients,
+          [ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY]: membersSyncedAt
+        });
+
+        return {
+          ok: true,
+          cached: false,
+          hydrated: true,
+          channelId,
+          channelName,
+          memberIds,
+          memberCount: memberIds.length,
+          membersSyncedAt,
+          synced: memberIds.length > 0,
+          selfUserId,
+          members: recipients,
+          tokenKind: "workspace_session"
+        };
+      } catch (err) {
+        lastFailureCode = "slack_workspace_session_unavailable";
+        lastFailureError = err && err.message ? err.message : "Slack workspace session request failed.";
+      }
+    }
+
+    return {
+      ok: false,
+      code: lastFailureCode,
+      error: lastFailureError
+    };
+  } finally {
+    if (bootstrapTabId != null) {
+      await closeTabSilently(bootstrapTabId);
+    }
+  }
 }
 
 async function fetchSlackIdentityViaApi(workspaceOrigin, token, userId) {
@@ -3655,11 +3896,30 @@ async function getPassTransitionMembers(options) {
 async function hydratePassTransitionRecipients(options) {
   const opts = options && typeof options === "object" ? options : {};
   const allowCreateTab = opts.allowCreateTab === true;
+  const storedSnapshot = await readStorageLocal([
+    ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY
+  ]);
+  const snapshot = buildPassTransitionSnapshot(storedSnapshot);
+  const hydrateViaWorkspaceSession = async () => hydratePassTransitionRecipientsViaWorkspaceSession({
+    channelId: snapshot.channelId,
+    channelName: snapshot.channelName,
+    allowCreateTab
+  });
   const membersResult = await getPassTransitionMembers({
     force: true,
     allowCreateTab
   });
   if (!membersResult || membersResult.ok !== true) {
+    if (allowCreateTab && snapshot.channelId) {
+      const sessionResult = await hydrateViaWorkspaceSession().catch(() => null);
+      if (sessionResult && sessionResult.ok === true) {
+        return sessionResult;
+      }
+    }
     return membersResult || {
       ok: false,
       code: "pass_transition_unavailable",
@@ -3756,6 +4016,12 @@ async function hydratePassTransitionRecipients(options) {
   }
 
   if (!resolvedToken || !resolvedApiOrigin) {
+    if (allowCreateTab && snapshot.channelId) {
+      const sessionResult = await hydrateViaWorkspaceSession().catch(() => null);
+      if (sessionResult && sessionResult.ok === true) {
+        return sessionResult;
+      }
+    }
     return {
       ok: false,
       code: lastFailureCode,
@@ -3812,6 +4078,12 @@ async function hydratePassTransitionRecipients(options) {
     });
   }
   if (lookupAttemptCount > 0 && lookupSuccessCount === 0 && lookupFailureCount === lookupAttemptCount) {
+    if (allowCreateTab && snapshot.channelId) {
+      const sessionResult = await hydrateViaWorkspaceSession().catch(() => null);
+      if (sessionResult && sessionResult.ok === true) {
+        return sessionResult;
+      }
+    }
     return {
       ok: false,
       code: lastLookupFailureCode || "slack_user_info_unavailable",

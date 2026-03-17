@@ -81,6 +81,7 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
   assert.match(source, /const sendPayload = \{[\s\S]*skipUnreadMark:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*directChannelId:\s*normalizePassAiSlackDirectChannelId\(state\.passAiSlackDirectChannelId \|\| ""\)[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*botToken:\s*""[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*autoBootstrapSlackTab:\s*false[\s\S]*\};/);
 });
 
 test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", () => {
@@ -98,6 +99,15 @@ test("sidepanel exposes a re-hydrate action for Slack session and PASS-TRANSITIO
   assert.match(source, /async function rehydrateZipRuntime\(\)/);
   assert.match(source, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: true\s*\}\)/);
   assert.match(source, /runContextMenuAction\("rehydrateZip"\)/);
+});
+
+test("background can fall back to the live Slack tab session for PASS-TRANSITION hydration", () => {
+  const source = fs.readFileSync(BACKGROUND_JS_PATH, "utf8");
+  assert.match(source, /async function postSlackApiViaWorkspaceSession\(input\)/);
+  assert.match(source, /action:\s*"slackApiProxy"/);
+  assert.match(source, /async function hydratePassTransitionRecipientsViaWorkspaceSession\(options\)/);
+  assert.match(source, /callSlackApiProxy\(tabId,\s*"\/api\/conversations\.members"/);
+  assert.match(source, /callSlackApiProxy\(tabId,\s*"\/api\/users\.info"/);
 });
 
 test("workspace deeplinks route through the redirect URL into ZIP workspace mode", () => {

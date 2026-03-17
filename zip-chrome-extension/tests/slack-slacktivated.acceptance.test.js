@@ -246,7 +246,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /preferBotDmDelivery:\s*false/);
   assert.match(js, /requireNativeNewMessage:\s*false/);
   assert.match(js, /requireBotDelivery:\s*false/);
-  assert.match(js, /autoBootstrapSlackTab:\s*true/);
+  assert.match(js, /autoBootstrapSlackTab:\s*false/);
   assert.match(js, /allowBotDelivery:\s*false/);
   assert.match(js, /skipUnreadMark:\s*true/);
   assert.doesNotMatch(js, /csvFilename:/);
@@ -398,7 +398,9 @@ test("background removes legacy Slack OAuth and popup-login handlers", () => {
   assert.match(source, /parse:\s*effectiveSingularityUserId \? "none" : "full"/);
   assert.match(source, /async function slackPollSingularityThreadViaApi\(input\)/);
   assert.match(source, /async function slackMarkUnreadViaWorkspaceSession\(input, reasonCode\)/);
+  assert.match(source, /async function postSlackApiViaWorkspaceSession\(input\)/);
   assert.match(source, /action:\s*"slackMarkUnread"/);
+  assert.match(source, /action:\s*"slackApiProxy"/);
   assert.match(source, /async function markSlackMessageUnreadViaApiToken\(workspaceOrigin,\s*token,\s*channelId,\s*messageTs,\s*readCursorTs\)/);
   assert.match(source, /async function slackSendMarkdownToSelfViaApi\(input\)/);
   assert.match(source, /const allowWorkspaceTabBootstrap = body\.autoBootstrapSlackTab !== false;/);
@@ -438,6 +440,7 @@ test("background removes legacy Slack OAuth and popup-login handlers", () => {
   assert.match(source, /function isSlackBotApiToken\(value\)/);
   assert.match(source, /function isSlackTokenInvalidationCode\(code\)/);
   assert.match(source, /async function invalidateStoredSlackToken\(token\)/);
+  assert.match(source, /async function hydratePassTransitionRecipientsViaWorkspaceSession\(options\)/);
   assert.match(source, /const SLACK_TOKEN_FAILURE_BACKOFF_MS = 2 \* 60 \* 1000;/);
   assert.match(source, /const slackTokenBackoffUntilByToken = new Map\(\);/);
   assert.match(source, /function markSlackTokenBackoff\(token\)/);
