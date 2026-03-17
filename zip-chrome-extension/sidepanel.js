@@ -3420,6 +3420,8 @@
             || "Unable to refresh PASS-TRANSITION members."
         );
       }
+      await refreshZipSecretConfigFromStorage().catch(() => {});
+      applyZipConfigAfterStorageRefresh({ reportStatus: false });
       const recipients = await refreshPassTransitionRecipients({ force: true });
       recipientCount = Array.isArray(recipients) ? recipients.length : getSlackMePassTransitionRecipients().length;
       syncSlackMeDialogUi();

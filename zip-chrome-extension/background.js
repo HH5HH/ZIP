@@ -1511,6 +1511,174 @@ function closeTabSilently(tabId) {
   });
 }
 
+function isRetryableSlackWorkspaceSessionErrorMessage(message) {
+  const lower = String(message || "").trim().toLowerCase();
+  if (!lower) return false;
+  return lower.includes("token not found")
+    || lower.includes("session token")
+    || lower.includes("waiting for web token capture")
+    || lower.includes("complete login first")
+    || lower.includes("slack session unavailable")
+    || lower.includes("not a slack tab");
+}
+
+function extractSlackSessionTokenFromAuthResult(result) {
+  if (!result || typeof result !== "object") return "";
+  return normalizeSlackApiToken(
+    result.session_token
+    || result.sessionToken
+    || result.web_token
+    || result.webToken
+    || result.user_token
+    || result.userToken
+    || result.token
+    || ""
+  );
+}
+
+async function persistSlackRuntimeUserToken(token) {
+  const normalizedToken = normalizeSlackApiToken(token);
+  if (!normalizedToken || !isSlackUserOAuthToken(normalizedToken)) return "";
+  await Promise.all([
+    setStorageLocal({ [ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY]: normalizedToken }),
+    removeStorageLocal([ZIP_SLACK_LEGACY_USER_TOKEN_STORAGE_KEY])
+  ]);
+  clearSlackTokenBackoff(normalizedToken);
+  return normalizedToken;
+}
+
+async function captureSlackRuntimeUserTokenFromWorkspaceSession(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const workspaceOrigin = normalizeSlackWorkspaceOrigin(opts.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
+  const expectedUserId = normalizeSlackUserId(
+    opts.expectedUserId
+    || opts.expected_user_id
+    || ""
+  );
+  const allowCreateTab = opts.allowCreateTab !== false;
+  let bootstrapTabId = null;
+  try {
+    let tabs = await queryInjectableSlackTabs(workspaceOrigin);
+    if (!tabs.length && allowCreateTab) {
+      const bootstrapTab = await openSlackWorkspaceBootstrapTab(workspaceOrigin);
+      if (bootstrapTab && bootstrapTab.id != null) {
+        bootstrapTabId = Number(bootstrapTab.id);
+        await waitForTabComplete(bootstrapTabId, 7000);
+        await sleepMs(800);
+        tabs = await queryInjectableSlackTabs(workspaceOrigin);
+      }
+    }
+
+    const preferred = pickPreferredSlackTab(tabs);
+    const orderedTabs = preferred
+      ? [preferred].concat(tabs.filter((tab) => tab && preferred && tab.id !== preferred.id))
+      : tabs.slice();
+    if (!orderedTabs.length) {
+      return {
+        ok: false,
+        code: "slack_workspace_tab_missing",
+        error: "No active Slack workspace tab is available for Slack session hydration."
+      };
+    }
+
+    let lastFailureCode = "slack_user_token_missing";
+    let lastFailureError = "Slack session token not found yet. Finish login in the adobedx.slack.com tab.";
+    for (let i = 0; i < orderedTabs.length; i += 1) {
+      const tab = orderedTabs[i];
+      if (!tab || tab.id == null) continue;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        let authResult = null;
+        try {
+          authResult = await sendSlackInnerRequestToTab(tab.id, {
+            action: "slackAuthTest",
+            workspaceOrigin
+          });
+        } catch (err) {
+          authResult = {
+            ok: false,
+            code: "slack_workspace_session_unavailable",
+            error: err && err.message ? err.message : "Slack workspace session auth failed."
+          };
+        }
+
+        const candidateToken = extractSlackSessionTokenFromAuthResult(authResult);
+        let candidateUserId = normalizeSlackUserId(
+          authResult && (authResult.user_id || authResult.userId || "")
+        );
+        const candidateUserName = normalizeSlackDisplayName(
+          authResult && (authResult.user_name || authResult.userName || "")
+        );
+        const candidateAvatarUrl = normalizeSlackAvatarUrl(
+          authResult && (authResult.avatar_url || authResult.avatarUrl || "")
+        );
+        const candidateTeamId = normalizeSlackTeamId(
+          authResult && (authResult.team_id || authResult.teamId || "")
+        );
+
+        if (candidateToken) {
+          if (expectedUserId && !candidateUserId) {
+            const authCheck = await postSlackApiWithBearerToken(workspaceOrigin, "/api/auth.test", {
+              _x_reason: "zip-workspace-session-capture-bg"
+            }, candidateToken);
+            if (!authCheck || !authCheck.ok) {
+              lastFailureCode = String(authCheck && authCheck.code || "slack_auth_failed").trim().toLowerCase() || "slack_auth_failed";
+              lastFailureError = String(authCheck && authCheck.error || "Unable to validate Slack workspace session token.").trim();
+              if (isRetryableSlackWorkspaceSessionErrorMessage(lastFailureError) && attempt < 2) {
+                await sleepMs(700);
+                continue;
+              }
+              break;
+            }
+            const authPayload = authCheck.payload && typeof authCheck.payload === "object" ? authCheck.payload : {};
+            candidateUserId = normalizeSlackUserId(authPayload.user_id || authPayload.user || "");
+          }
+          if (expectedUserId && candidateUserId && candidateUserId !== expectedUserId) {
+            lastFailureCode = "slack_identity_mismatch";
+            lastFailureError = "Slack workspace session does not match the active Slack user.";
+            break;
+          }
+          const persistedToken = await persistSlackRuntimeUserToken(candidateToken);
+          return {
+            ok: true,
+            userToken: persistedToken || candidateToken,
+            userId: candidateUserId,
+            userName: candidateUserName,
+            avatarUrl: candidateAvatarUrl,
+            teamId: candidateTeamId
+          };
+        }
+
+        const resultCode = String(authResult && authResult.code || "").trim().toLowerCase();
+        const resultError = String(
+          (authResult && (
+            authResult.error
+            || authResult.warning
+            || authResult.message
+          ))
+          || "Slack workspace session token not found yet."
+        ).trim();
+        lastFailureCode = resultCode || "slack_user_token_missing";
+        lastFailureError = resultError || "Slack workspace session token not found yet.";
+        if (isRetryableSlackWorkspaceSessionErrorMessage(lastFailureError) && attempt < 2) {
+          await sleepMs(700);
+          continue;
+        }
+        break;
+      }
+    }
+
+    return {
+      ok: false,
+      code: lastFailureCode,
+      error: lastFailureError
+    };
+  } finally {
+    if (bootstrapTabId != null && opts.keepBootstrapTab !== true) {
+      await closeTabSilently(bootstrapTabId);
+    }
+  }
+}
+
 function buildSlackNewMessageFields(fields) {
   const source = fields && typeof fields === "object" ? { ...fields } : {};
   delete source.thread_ts;
@@ -3303,13 +3471,39 @@ async function getPassTransitionMembers(options) {
     };
   }
 
-  const tokens = await resolveSlackApiTokens({});
+  let tokens = await resolveSlackApiTokens({});
+  let workspaceSessionCapture = null;
+  if (force) {
+    const openIdSession = await readSlackOpenIdSession();
+    workspaceSessionCapture = await captureSlackRuntimeUserTokenFromWorkspaceSession({
+      workspaceOrigin: SLACK_WORKSPACE_ORIGIN,
+      expectedUserId: resolveExpectedSlackAuthorUserId({}, openIdSession),
+      allowCreateTab: true
+    }).catch((err) => ({
+      ok: false,
+      code: "slack_workspace_session_unavailable",
+      error: err && err.message ? err.message : "Unable to capture Slack workspace session token."
+    }));
+    if (workspaceSessionCapture && workspaceSessionCapture.ok === true) {
+      const storedTokens = await readStoredSlackApiTokens();
+      const capturedUserToken = normalizeSlackApiToken(workspaceSessionCapture.userToken);
+      tokens = {
+        botToken: storedTokens && storedTokens.botToken || "",
+        botCandidates: Array.isArray(storedTokens && storedTokens.botCandidates) ? storedTokens.botCandidates : [],
+        userToken: capturedUserToken,
+        userCandidates: capturedUserToken ? [capturedUserToken] : []
+      };
+    }
+  }
   const tokenAttempts = buildSlackQaiTokenAttempts(tokens, "user");
   if (!tokenAttempts.length) {
     return {
       ok: false,
-      code: "slack_token_missing",
-      error: "Slack token is unavailable for PASS-TRANSITION member hydration.",
+      code: String(workspaceSessionCapture && workspaceSessionCapture.code || "slack_token_missing").trim().toLowerCase() || "slack_token_missing",
+      error: String(
+        workspaceSessionCapture && workspaceSessionCapture.error
+        || "Slack token is unavailable for PASS-TRANSITION member hydration."
+      ).trim(),
       ...snapshot
     };
   }
@@ -3383,13 +3577,38 @@ async function getPassTransitionRecipients(options) {
     };
   }
 
-  const tokens = await resolveSlackApiTokens({});
+  let tokens = await resolveSlackApiTokens({});
+  let workspaceSessionCapture = null;
+  if (opts.force === true) {
+    const openIdSession = await readSlackOpenIdSession();
+    workspaceSessionCapture = await captureSlackRuntimeUserTokenFromWorkspaceSession({
+      workspaceOrigin: SLACK_WORKSPACE_ORIGIN,
+      expectedUserId: resolveExpectedSlackAuthorUserId({}, openIdSession),
+      allowCreateTab: true
+    }).catch((err) => ({
+      ok: false,
+      code: "slack_workspace_session_unavailable",
+      error: err && err.message ? err.message : "Unable to capture Slack workspace session token."
+    }));
+    if (workspaceSessionCapture && workspaceSessionCapture.ok === true) {
+      const capturedUserToken = normalizeSlackApiToken(workspaceSessionCapture.userToken);
+      tokens = {
+        botToken: "",
+        botCandidates: [],
+        userToken: capturedUserToken,
+        userCandidates: capturedUserToken ? [capturedUserToken] : []
+      };
+    }
+  }
   const tokenAttempts = buildSlackQaiTokenAttempts(tokens, "user");
   if (!tokenAttempts.length) {
     return {
       ok: false,
-      code: "slack_token_missing",
-      error: "Slack token is unavailable for PASS-TRANSITION recipient lookup.",
+      code: String(workspaceSessionCapture && workspaceSessionCapture.code || "slack_token_missing").trim().toLowerCase() || "slack_token_missing",
+      error: String(
+        workspaceSessionCapture && workspaceSessionCapture.error
+        || "Slack token is unavailable for PASS-TRANSITION recipient lookup."
+      ).trim(),
       ...membersResult
     };
   }
