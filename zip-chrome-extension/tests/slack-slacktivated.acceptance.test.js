@@ -106,7 +106,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.doesNotMatch(js, /if \(key === "u"\)/);
   assert.doesNotMatch(js, /if \(key === "s"\)/);
   assert.match(js, /if \(key === "k"\)/);
-  assert.match(js, /const ready = await refreshSlacktivatedState\(\{[\s\S]*allowOpenIdSilentProbe: true[\s\S]*allowSlackTabBootstrap: true[\s\S]*\}\)\.catch/);
+  assert.match(js, /const ready = isPassAiSlacktivated\(\) \|\| await refreshSlacktivatedState\(\{[\s\S]*allowOpenIdSilentProbe: true[\s\S]*allowSlackTabBootstrap: true[\s\S]*\}\)\.catch/);
   assert.match(js, /beginSlackLoginFlow\(\)\.catch/);
   assert.match(js, /const alreadyReady = await refreshPassAiSlackAuth\(\{ silent: true, allowOpenIdSilentProbe: false \}\)/);
   assert.match(js, /const openIdConfig = getPassAiSlackOpenIdConfig\(\);/);
@@ -148,6 +148,12 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.doesNotMatch(js, /hostname === "slack-edge\.com"/);
   assert.match(js, /function isTransientSlackAuthProbeFailureMessage\(message\)/);
   assert.match(js, /if \(wasReady && isTransientSlackAuthProbeFailureMessage\(message\)\) \{/);
+  assert.match(js, /function getPassAiSlacktivatedVerifiedSnapshot\(\)/);
+  assert.match(js, /function restorePassAiSlacktivatedVerifiedSnapshot\(snapshot\)/);
+  assert.match(js, /const verifiedSnapshot = getPassAiSlacktivatedVerifiedSnapshot\(\);/);
+  assert.match(js, /await persistPassAiSlackApiTokenConfig\(\{\s*botToken:\s*configuredBotToken \|\| "",\s*userToken:\s*""\s*\}\)\.catch/);
+  assert.match(js, /if \(restorePassAiSlacktivatedVerifiedSnapshot\(verifiedSnapshot\)\) \{/);
+  assert.match(js, /recordSlackProbeEvent\("slack_probe_verified_state_preserved"/);
   assert.match(js, /const allowSlackTabBootstrapCreate = opts\.allowSlackTabBootstrapCreate !== false;/);
   assert.match(js, /allowCreateTab:\s*allowSlackTabBootstrapCreate/);
   assert.match(js, /const bootstrapAllowCreateTab = opts\.allowCreateTab !== false;/);
@@ -374,6 +380,8 @@ test("background removes legacy Slack OAuth and popup-login handlers", () => {
   assert.match(source, /msg\.type === "ZIP_SLACK_OPENID_STATUS"/);
   assert.match(source, /msg\.type === "ZIP_SLACK_API_AUTH_TEST"/);
   assert.match(source, /msg\.type === "ZIP_SLACK_API_SEND_TO_SELF"/);
+  assert.match(source, /function isSlackWebSessionToken\(value\)/);
+  assert.match(source, /const useWebSessionTransport = isSlackWebSessionToken\(authToken\);/);
   assert.match(source, /msg\.type === "ZIP_SLACK_API_QAI_SEND"/);
   assert.match(source, /msg\.type === "ZIP_SLACK_API_QAI_POLL"/);
   assert.match(source, /async function slackSendToSingularityViaApi\(input\)/);

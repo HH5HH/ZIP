@@ -30,6 +30,18 @@ test("background sanitizes Slack self-DM payloads to always send new messages", 
   assert.match(source, /delivery_mode:\s*"bot_direct_channel"/);
 });
 
+test("background uses Slack web-session transport for xoxc\/xoxd tokens", () => {
+  const source = fs.readFileSync(BACKGROUND_JS_PATH, "utf8");
+  assert.match(source, /function isSlackWebSessionToken\(value\)/);
+  assert.match(source, /function buildSlackWebSessionRequestFields\(fields,\s*token\)/);
+  assert.match(source, /const useWebSessionTransport = isSlackWebSessionToken\(authToken\);/);
+  assert.match(source, /payload\._x_mode = "online";/);
+  assert.match(source, /payload\._x_sonic = true;/);
+  assert.match(source, /payload\._x_app_name = "client";/);
+  assert.match(source, /credentials:\s*useWebSessionTransport \? "include" : "omit"/);
+  assert.match(source, /cache:\s*useWebSessionTransport \? "no-store" : "default"/);
+});
+
 test("background targeted recipient send requires the requested Slack user", () => {
   const source = fs.readFileSync(BACKGROUND_JS_PATH, "utf8");
   assert.match(source, /async function slackSendMarkdownToUserViaApi\(input\)/);
@@ -57,6 +69,7 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
   assert.match(source, /let slackItToMeRequestInFlight = null;/);
   assert.match(source, /if \(state\.slackItToMeLoading \|\| state\.slackItToMeButtonState === "ack" \|\| slackItToMeRequestInFlight\) \{/);
   assert.match(source, /slackItToMeRequestInFlight = \(async \(\) => \{/);
+  assert.match(source, /const ready = isPassAiSlacktivated\(\) \|\| await refreshSlacktivatedState\(\{/);
   assert.match(source, /const sendPayload = \{[\s\S]*forceNewMessage:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*requireNativeNewMessage:\s*false[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*authorUserId:\s*normalizePassAiSlackUserId\(state\.passAiSlackUserId \|\| ""\)[\s\S]*\};/);

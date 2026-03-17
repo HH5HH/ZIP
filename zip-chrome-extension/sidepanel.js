@@ -5877,7 +5877,7 @@
         return;
       }
 
-      const ready = await refreshSlacktivatedState({
+      const ready = isPassAiSlacktivated() || await refreshSlacktivatedState({
         force: true,
         silent: true,
         allowOpenIdSilentProbe: true,
@@ -8833,6 +8833,43 @@
     }
   }
 
+  function getPassAiSlacktivatedVerifiedSnapshot() {
+    if (!isPassAiSlacktivated()) return null;
+    return {
+      userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+      userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+      avatarUrl: state.passAiSlackAvatarUrl || "",
+      directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
+      statusIcon: normalizePassAiSlackStatusIcon(state.passAiSlackStatusIcon || ""),
+      statusIconUrl: normalizePassAiSlackStatusIconUrl(state.passAiSlackStatusIconUrl || ""),
+      statusMessage: normalizePassAiSlackStatusMessage(state.passAiSlackStatusMessage || ""),
+      teamId: normalizePassAiSlackTeamId(state.passAiSlackTeamId || ""),
+      enterpriseId: String(state.passAiSlackEnterpriseId || "").trim().toUpperCase()
+    };
+  }
+
+  function restorePassAiSlacktivatedVerifiedSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") return false;
+    setPassAiSlackAuthState({
+      ready: true,
+      mode: "cached",
+      webReady: true,
+      api_validated: true,
+      verified: true,
+      userId: snapshot.userId || "",
+      userName: snapshot.userName || "",
+      avatarUrl: snapshot.avatarUrl || "",
+      directChannelId: snapshot.directChannelId || "",
+      statusIcon: snapshot.statusIcon || "",
+      statusIconUrl: snapshot.statusIconUrl || "",
+      statusMessage: snapshot.statusMessage || "",
+      teamId: snapshot.teamId || "",
+      enterpriseId: snapshot.enterpriseId || "",
+      skipPersist: true
+    });
+    return true;
+  }
+
   function setPassAiSlackAuthState(nextState) {
     const ready = !!(nextState && nextState.ready);
     const requestedMode = String(nextState && nextState.mode || "").trim().toLowerCase();
@@ -8997,6 +9034,7 @@
     const allowOpenIdSilentProbe = opts.allowOpenIdSilentProbe !== false;
     const allowSlackTabBootstrap = opts.allowSlackTabBootstrap === true;
     const allowSlackTabBootstrapCreate = opts.allowSlackTabBootstrapCreate !== false;
+    const verifiedSnapshot = getPassAiSlacktivatedVerifiedSnapshot();
     recordSlackProbeEvent("slack_probe_auth_refresh_started", {
       silent,
       allowOpenIdSilentProbe,
@@ -9039,11 +9077,11 @@
     const expectedApiUserId = normalizePassAiSlackUserId(
       state.passAiSlackWebReady ? (state.passAiSlackUserId || "") : ""
     );
+    const configuredTokens = getPassAiSlackApiTokenConfig();
+    const configuredUserToken = configuredTokens.userToken || "";
+    const configuredBotToken = configuredTokens.botToken || "";
     if (expectedApiUserId) {
       try {
-        const configuredTokens = getPassAiSlackApiTokenConfig();
-        const configuredUserToken = configuredTokens.userToken || "";
-        const configuredBotToken = configuredTokens.botToken || "";
         const apiStatus = await sendBackgroundRequest("ZIP_SLACK_API_AUTH_TEST", {
           workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
           userId: expectedApiUserId,
@@ -9191,11 +9229,11 @@
         });
       }
       if (isSlackApiTokenInvalidationCode(apiFailureCode)) {
-        setPassAiSlackAuthState({
-          ready: false,
-          error: apiFailureMessage || "Slack session expired. Click the Slack indicator to sign in again.",
-          clearPersisted: true
-        });
+        await persistPassAiSlackApiTokenConfig({
+          botToken: configuredBotToken || "",
+          userToken: ""
+        }).catch(() => {});
+        restorePassAiSlacktivatedVerifiedSnapshot(verifiedSnapshot);
         recordSlackProbeEvent("slack_probe_api_token_invalid", {
           code: apiFailureCode,
           message: apiFailureMessage || ""
@@ -9368,6 +9406,14 @@
           hasToken: !!isPassAiSlackUserApiToken(capturedWebToken),
           warning: normalizePassAiCommentBody(response.warning || "") || ""
         });
+        if (restorePassAiSlacktivatedVerifiedSnapshot(verifiedSnapshot)) {
+          recordSlackProbeEvent("slack_probe_verified_state_preserved", {
+            source: "session_only_refresh",
+            userId: webUserId,
+            warning: normalizePassAiCommentBody(response.warning || "") || ""
+          });
+          return true;
+        }
         if (!silent) {
           setStatus("Slack session detected in adobedx.slack.com. Finalizing Slack API validation…", false);
         }

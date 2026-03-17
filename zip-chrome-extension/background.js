@@ -2344,6 +2344,15 @@ function isSlackBotApiToken(value) {
   return /^xoxb-/i.test(token) || /^xoxe\.xoxb-/i.test(token);
 }
 
+function isSlackWebSessionToken(value) {
+  const token = normalizeSlackApiToken(value);
+  if (!token) return false;
+  return /^xoxc-/i.test(token)
+    || /^xoxd-/i.test(token)
+    || /^xoxe\.xoxc-/i.test(token)
+    || /^xoxe\.xoxd-/i.test(token);
+}
+
 function isSlackUserOAuthToken(value) {
   const token = normalizeSlackApiToken(value);
   if (!token) return false;
@@ -3524,6 +3533,24 @@ function buildSlackApiFormBody(fields) {
   return params.toString();
 }
 
+function buildSlackWebSessionRequestFields(fields, token) {
+  const source = fields && typeof fields === "object" ? fields : {};
+  const payload = {
+    ...source,
+    token: normalizeSlackApiToken(token)
+  };
+  if (!Object.prototype.hasOwnProperty.call(payload, "_x_mode")) {
+    payload._x_mode = "online";
+  }
+  if (!Object.prototype.hasOwnProperty.call(payload, "_x_sonic")) {
+    payload._x_sonic = true;
+  }
+  if (!Object.prototype.hasOwnProperty.call(payload, "_x_app_name")) {
+    payload._x_app_name = "client";
+  }
+  return payload;
+}
+
 async function postSlackApiWithBearerToken(workspaceOrigin, apiPath, fields, token) {
   const origin = normalizeSlackWorkspaceOrigin(workspaceOrigin);
   const endpoint = origin + String(apiPath || "");
@@ -3531,15 +3558,25 @@ async function postSlackApiWithBearerToken(workspaceOrigin, apiPath, fields, tok
   if (!authToken) {
     return { ok: false, error: "Slack API token is missing.", code: "slack_api_token_missing" };
   }
+  const useWebSessionTransport = isSlackWebSessionToken(authToken);
+  const headers = {
+    Accept: "application/json",
+    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+  };
+  if (!useWebSessionTransport) {
+    headers.Authorization = "Bearer " + authToken;
+  }
   try {
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-        Authorization: "Bearer " + authToken
-      },
-      body: buildSlackApiFormBody(fields)
+      headers,
+      credentials: useWebSessionTransport ? "include" : "omit",
+      cache: useWebSessionTransport ? "no-store" : "default",
+      body: buildSlackApiFormBody(
+        useWebSessionTransport
+          ? buildSlackWebSessionRequestFields(fields, authToken)
+          : fields
+      )
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload || payload.ok === false) {

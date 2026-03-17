@@ -847,6 +847,60 @@ test("ZIP_SLACK_API_AUTH_TEST rejects a stored token when it belongs to a differ
   );
 });
 
+test("ZIP_SLACK_API_AUTH_TEST uses Slack web-session transport for xoxc tokens", async () => {
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    storageSeed: {
+      zip_slack_oauth_token: "SLK_TEST_WEB_SESSION_TOKEN",
+      "zip.slack.openid.session.v1": {
+        userId: "UALICE123",
+        userName: "Alice Example",
+        avatarUrl: "https://example.com/alice.png"
+      }
+    },
+    fetch: ({ url, init }) => {
+      if (url.endsWith("/api/auth.test")) {
+        const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+        const authorization = String(headers.Authorization || headers.authorization || "");
+        assert.equal(authorization, "");
+        assert.equal(String(init && init.credentials || ""), "include");
+        assert.equal(String(init && init.cache || ""), "no-store");
+        const body = String(init && init.body || "");
+        assert.match(body, /(?:^|&)token=SLK_TEST_WEB_SESSION_TOKEN(?:&|$)/);
+        assert.match(body, /(?:^|&)_x_mode=online(?:&|$)/);
+        assert.match(body, /(?:^|&)_x_sonic=true(?:&|$)/);
+        assert.match(body, /(?:^|&)_x_app_name=client(?:&|$)/);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "UALICE123", user: "alice" }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  harness.resetCalls();
+  const response = await harness.sendRuntimeMessage({
+    type: "ZIP_SLACK_API_AUTH_TEST",
+    workspaceOrigin: "https://adobedx.slack.com",
+    expectedUserId: "UALICE123"
+  });
+
+  assert.equal(response && response.ok, true);
+  assert.equal(String(response && response.user_id || ""), "UALICE123");
+  assert.equal(
+    harness.calls.fetch.filter((requestUrl) => String(requestUrl).includes("/api/auth.test")).length,
+    1
+  );
+});
+
 test("ZIP_SLACK_API_SEND_TO_USER refuses to post when the token author mismatches the active Slack user", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],
