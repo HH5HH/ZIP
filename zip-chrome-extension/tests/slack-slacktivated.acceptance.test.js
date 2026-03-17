@@ -115,6 +115,8 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /runPassAiSlackOpenIdAuth\(\{ interactive: false \}\)/);
   assert.match(js, /runPassAiSlackOpenIdAuth\(\{ interactive: true \}\)/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_AUTH_TEST"/);
+  assert.match(js, /const shouldTryApiAuth = !!\(/);
+  assert.match(js, /userCandidates:\s*configuredUserToken \? \[configuredUserToken\] : \[\]/);
   assert.match(js, /existingSlackTabs = await querySlackTabsFromSidepanel\(\{ injectableOnly: true \}\)\.catch/);
   assert.match(js, /existingSlackTabs = await querySlackTabsFromSidepanel\(\{ injectableOnly: false \}\)\.catch/);
   assert.match(js, /opened = await focusSlackWorkspaceTab\(existingSlackTabs\[0\]\.id, loginUrl\)/);
@@ -181,6 +183,9 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /recordSlackProbeEvent\("slack_probe_api_auth_ok"/);
   assert.match(js, /recordSlackProbeEvent\("slack_probe_web_auth_ok"/);
   assert.match(js, /recordSlackProbeEvent\("slack_probe_session_only"/);
+  assert.match(js, /async function maybePrimePassTransitionRosterAfterSlacktivation\(\)/);
+  assert.match(js, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: false\s*\}\)/);
+  assert.match(js, /await maybePrimePassTransitionRosterAfterSlacktivation\(\)\.catch\(\(\) => null\);/);
   assert.match(js, /allowSlackTabBootstrapCreate:\s*false/);
   assert.match(js, /function getPassAiSlackApiTokenConfig\(\)/);
   assert.match(js, /async function rehydrateZipRuntime\(\)/);

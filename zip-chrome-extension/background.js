@@ -4014,6 +4014,9 @@ async function resolveSlackApiTokens(input) {
   const strictProvidedTokens = body.strictProvidedTokens === true;
   const botFromMessage = normalizeSlackApiToken(body.botToken || body.bot_token);
   const userFromMessage = normalizeSlackApiToken(body.userToken || body.user_token);
+  const oauthFromMessage = normalizeSlackApiToken(body.oauthToken || body.oauth_token);
+  const providedBotCandidates = Array.isArray(body.botCandidates) ? body.botCandidates : [];
+  const providedUserCandidates = Array.isArray(body.userCandidates) ? body.userCandidates : [];
   const uniq = (values) => {
     const out = [];
     const rows = Array.isArray(values) ? values : [];
@@ -4027,14 +4030,16 @@ async function resolveSlackApiTokens(input) {
   let botCandidates = [];
   let userCandidates = [];
   if (strictProvidedTokens) {
-    botCandidates = uniq([botFromMessage]);
-    userCandidates = uniq([userFromMessage]);
+    botCandidates = uniq([botFromMessage].concat(providedBotCandidates));
+    userCandidates = uniq([userFromMessage, oauthFromMessage].concat(providedUserCandidates));
   } else {
     const stored = await readStoredSlackApiTokens();
-    botCandidates = uniq([botFromMessage].concat(
+    const openIdSession = await readSlackOpenIdSession();
+    const openIdAccessToken = normalizeSlackApiToken(openIdSession && openIdSession.accessToken);
+    botCandidates = uniq([botFromMessage].concat(providedBotCandidates).concat(
       Array.isArray(stored && stored.botCandidates) ? stored.botCandidates : [stored && stored.botToken]
     ));
-    userCandidates = uniq([userFromMessage].concat(
+    userCandidates = uniq([userFromMessage, oauthFromMessage, openIdAccessToken].concat(providedUserCandidates).concat(
       Array.isArray(stored && stored.userCandidates) ? stored.userCandidates : [stored && stored.userToken]
     ));
   }

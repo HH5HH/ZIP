@@ -9119,19 +9119,56 @@
     let apiFailureCode = "";
     let apiFailureMessage = "";
     const expectedApiUserId = normalizePassAiSlackUserId(
-      state.passAiSlackWebReady ? (state.passAiSlackUserId || "") : ""
+      state.passAiSlackUserId
+      || (verifiedSnapshot && verifiedSnapshot.userId)
+      || ""
+    );
+    const expectedApiUserName = normalizePassAiSlackDisplayName(
+      state.passAiSlackUserName
+      || (verifiedSnapshot && verifiedSnapshot.userName)
+      || ""
+    );
+    const expectedApiDirectChannelId = normalizePassAiSlackDirectChannelId(
+      state.passAiSlackDirectChannelId
+      || (verifiedSnapshot && verifiedSnapshot.directChannelId)
+      || ""
+    );
+    const expectedApiStatusIcon = normalizePassAiSlackStatusIcon(
+      state.passAiSlackStatusIcon
+      || (verifiedSnapshot && verifiedSnapshot.statusIcon)
+      || ""
+    );
+    const expectedApiStatusIconUrl = normalizePassAiSlackStatusIconUrl(
+      state.passAiSlackStatusIconUrl
+      || (verifiedSnapshot && verifiedSnapshot.statusIconUrl)
+      || ""
+    );
+    const expectedApiStatusMessage = normalizePassAiSlackStatusMessage(
+      state.passAiSlackStatusMessage
+      || (verifiedSnapshot && verifiedSnapshot.statusMessage)
+      || ""
     );
     const configuredTokens = getPassAiSlackApiTokenConfig();
     const configuredUserToken = configuredTokens.userToken || "";
     const configuredBotToken = configuredTokens.botToken || "";
-    if (expectedApiUserId) {
+    const shouldTryApiAuth = !!(
+      openIdEnabled
+      || expectedApiUserId
+      || configuredUserToken
+      || (verifiedSnapshot && verifiedSnapshot.userId)
+    );
+    if (shouldTryApiAuth) {
       try {
         const apiStatus = await sendBackgroundRequest("ZIP_SLACK_API_AUTH_TEST", {
           workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
           userId: expectedApiUserId,
           expectedUserId: expectedApiUserId,
-          userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
-          directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
+          userCandidates: configuredUserToken ? [configuredUserToken] : [],
+          userName: expectedApiUserName,
+          directChannelId: expectedApiDirectChannelId,
+          statusIcon: expectedApiStatusIcon,
+          statusIconUrl: expectedApiStatusIconUrl,
+          statusMessage: expectedApiStatusMessage,
           // Avoid feeding back stale/non-Slack avatar URLs; let background resolve Slack profile avatar.
           avatarUrl: "",
           botToken: isPassAiSlackBotApiToken(configuredBotToken) ? configuredBotToken : "",
@@ -9500,6 +9537,45 @@
     }
   }
 
+  async function maybePrimePassTransitionRosterAfterSlacktivation() {
+    const passTransition = state.zipSecretConfig && state.zipSecretConfig.passTransition
+      ? buildPassTransitionConfigShape(state.zipSecretConfig.passTransition)
+      : null;
+    const hasPassTransitionChannel = !!normalizePassAiSlackChannelId(passTransition && passTransition.channelId || "");
+    if (!hasPassTransitionChannel) {
+      return { ok: true, skipped: true, reason: "channel_missing" };
+    }
+    if (
+      passTransition
+      && (
+        (Array.isArray(passTransition.recipients) && passTransition.recipients.length)
+        || (Array.isArray(passTransition.memberIds) && passTransition.memberIds.length)
+      )
+    ) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: "cache_present",
+        recipientCount: Math.max(0, Number(passTransition.recipientCount || 0)),
+        memberCount: Math.max(0, Number(passTransition.memberCount || 0))
+      };
+    }
+    const members = await sendBackgroundRequest("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", {
+      force: true,
+      allowCreateTab: false
+    });
+    if (!members || members.ok !== true) {
+      return members || {
+        ok: false,
+        error: "Unable to hydrate PASS-TRANSITION members."
+      };
+    }
+    await refreshZipSecretConfigFromStorage().catch(() => {});
+    applyZipConfigAfterStorageRefresh({ reportStatus: false });
+    await refreshPassTransitionRecipients({ force: true }).catch(() => []);
+    return members;
+  }
+
   async function refreshSlacktivatedState(options) {
     const opts = options && typeof options === "object" ? options : {};
     if (!state.user) {
@@ -9548,6 +9624,7 @@
         .then((ready) => {
           if (ready) {
             stopPassAiSlackAuthPolling();
+            maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
             maybeCloseZipOpenedSlackLoginTab("polling_login_complete", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
             setStatus("Slack sign-in detected. ZIP is now SLACKTIVATED.", false);
             return;
@@ -9582,6 +9659,7 @@
     try {
       const alreadyReady = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false });
       if (alreadyReady && state.passAiSlackReady) {
+        await maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
         setStatus("ZIP is now SLACKTIVATED.", false);
         return;
       }
@@ -9590,6 +9668,16 @@
       if (hasPassAiSlackOpenIdConfig(openIdConfig)) {
         const interactiveOpenId = await runPassAiSlackOpenIdAuth({ interactive: true }).catch(() => null);
         if (interactiveOpenId && interactiveOpenId.ok === true) {
+          const interactiveOpenIdState = normalizePassAiSlackOpenIdAuthResponse(interactiveOpenId);
+          const bootstrappedReady = await refreshPassAiSlackAuth({
+            silent: true,
+            allowOpenIdSilentProbe: false,
+            allowSlackTabBootstrap: false
+          }).catch(() => false);
+          if (!bootstrappedReady && interactiveOpenIdState && !isPassAiSlacktivated()) {
+            setPassAiSlackAuthState(interactiveOpenIdState);
+          }
+          await maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
           await maybeCloseZipOpenedSlackLoginTab("interactive_openid_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
           setStatus("ZIP is now SLACKTIVATED.", false);
           return;
@@ -9623,6 +9711,7 @@
       slackOpenIdSilentProbeLastAt = 0;
       const readyNow = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false, allowSlackTabBootstrap: false });
       if (readyNow) {
+        await maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
         await maybeCloseZipOpenedSlackLoginTab("login_flow_ready_now", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
         setStatus("ZIP is now SLACKTIVATED.", false);
         return;
