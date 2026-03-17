@@ -4036,12 +4036,15 @@ async function resolveSlackApiTokens(input) {
     const stored = await readStoredSlackApiTokens();
     const openIdSession = await readSlackOpenIdSession();
     const openIdAccessToken = normalizeSlackApiToken(openIdSession && openIdSession.accessToken);
+    const storedUserCandidates = Array.isArray(stored && stored.userCandidates)
+      ? stored.userCandidates
+      : [stored && stored.userToken];
     botCandidates = uniq([botFromMessage].concat(providedBotCandidates).concat(
       Array.isArray(stored && stored.botCandidates) ? stored.botCandidates : [stored && stored.botToken]
     ));
-    userCandidates = uniq([userFromMessage, oauthFromMessage, openIdAccessToken].concat(providedUserCandidates).concat(
-      Array.isArray(stored && stored.userCandidates) ? stored.userCandidates : [stored && stored.userToken]
-    ));
+    userCandidates = uniq([userFromMessage, oauthFromMessage].concat(providedUserCandidates).concat(
+      storedUserCandidates
+    ).concat([openIdAccessToken]));
   }
   // Classify tokens by prefix so runtime-captured session tokens and optional bot config survive slot mixups.
   const botResolved = uniq(botCandidates.concat(userCandidates)).filter((token) => isSlackBotApiToken(token));

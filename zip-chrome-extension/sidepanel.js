@@ -3452,7 +3452,8 @@
     const hasPassTransitionChannel = !!normalizePassAiSlackChannelId(passTransition && passTransition.channelId || "");
     if (hasPassTransitionChannel) {
       const members = await sendBackgroundRequest("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", {
-        force: true
+        force: true,
+        allowCreateTab: true
       });
       if (!members || members.ok !== true) {
         throw new Error(
@@ -9562,7 +9563,7 @@
     }
     const members = await sendBackgroundRequest("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", {
       force: true,
-      allowCreateTab: false
+      allowCreateTab: true
     });
     if (!members || members.ok !== true) {
       return members || {

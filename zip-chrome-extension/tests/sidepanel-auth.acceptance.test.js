@@ -158,6 +158,24 @@ function createChromeHarness(options) {
       },
       create(createInfo, callback) {
         calls.tabsCreate.push(createInfo);
+        if (options && typeof options.tabsCreate === "function") {
+          const scripted = options.tabsCreate({ createInfo, calls, mutable }) || {};
+          const scriptedResult = scripted.result && typeof scripted.result === "object"
+            ? scripted.result
+            : {
+              id: 999,
+              windowId: 202,
+              url: createInfo && createInfo.url ? createInfo.url : ""
+            };
+          if (Array.isArray(scripted.slackTabs)) {
+            mutable.slackTabs = scripted.slackTabs.slice();
+          }
+          if (typeof callback === "function") {
+            callback(scriptedResult);
+            return;
+          }
+          return Promise.resolve(scriptedResult);
+        }
         const result = {
           id: 999,
           windowId: 202,
@@ -305,6 +323,9 @@ function createChromeHarness(options) {
     crypto: { randomUUID: () => "00000000-0000-0000-0000-000000000000" },
     setTimeout(fn, delay) {
       calls.setTimeout.push({ fn, delay });
+      if (options && options.immediateTimeouts === true && typeof fn === "function") {
+        Promise.resolve().then(() => fn());
+      }
       return calls.setTimeout.length;
     },
     clearTimeout() {},
@@ -744,6 +765,7 @@ test("ZIP_IMPORT_KEY_PAYLOAD hydrates the cached PASS-TRANSITION roster during Z
 test("PASS-TRANSITION hydration falls back to bot token after channel_not_found on user token", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],
+    immediateTimeouts: true,
     storageSeed: {
       zip_slack_client_id: "pass-transition-client-id",
       zip_slack_client_secret: "pass-transition-client-secret",

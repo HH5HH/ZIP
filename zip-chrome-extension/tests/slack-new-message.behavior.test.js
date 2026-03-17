@@ -96,7 +96,7 @@ test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", 
 test("sidepanel exposes a re-hydrate action for Slack session and PASS-TRANSITION refresh", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   assert.match(source, /async function rehydrateZipRuntime\(\)/);
-  assert.match(source, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true\s*\}\)/);
+  assert.match(source, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: true\s*\}\)/);
   assert.match(source, /runContextMenuAction\("rehydrateZip"\)/);
 });
 
