@@ -548,7 +548,19 @@ test("ZIP_IMPORT_KEY_PAYLOAD strips user-scoped Slack tokens from ZIP.KEY config
 });
 
 test("ZIP_IMPORT_KEY_PAYLOAD preserves PASS-TRANSITION cache for load-once member hydration", async () => {
-  const harness = createChromeHarness({ zendeskTabs: [] });
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    storageSeed: {
+      zip_pass_transition_channel_id: "C09NHJCMFC1",
+      zip_pass_transition_recipients: [
+        {
+          userId: "U1234567890",
+          userName: "Alice Example",
+          label: "Alice Example (@alice)"
+        }
+      ]
+    }
+  });
 
   const imported = await harness.sendRuntimeMessage({
     type: "ZIP_IMPORT_KEY_PAYLOAD",
@@ -583,6 +595,10 @@ test("ZIP_IMPORT_KEY_PAYLOAD preserves PASS-TRANSITION cache for load-once membe
   assert.equal(String(stored.zip_pass_transition_channel_name || ""), "#pass-transition");
   assert.equal(String(stored.zip_pass_transition_member_ids || ""), "U1234567890,U2345678901");
   assert.equal(String(stored.zip_pass_transition_members_synced_at || ""), "2026-03-13T00:00:00.000Z");
+  assert.deepEqual(
+    Array.from(stored.zip_pass_transition_recipients || []).map((entry) => entry.userId),
+    ["U1234567890"]
+  );
 
   harness.resetCalls();
   const members = await harness.sendRuntimeMessage({ type: "ZIP_GET_PASS_TRANSITION_MEMBERS" });
@@ -591,6 +607,138 @@ test("ZIP_IMPORT_KEY_PAYLOAD preserves PASS-TRANSITION cache for load-once membe
   assert.equal(members && members.hydrated, false);
   assert.deepEqual(Array.from(members && members.memberIds || []), ["U1234567890", "U2345678901"]);
   assert.equal(harness.calls.fetch.length, 0);
+
+  const recipients = await harness.sendRuntimeMessage({ type: "ZIP_GET_PASS_TRANSITION_RECIPIENTS" });
+  assert.equal(recipients && recipients.ok, true);
+  assert.deepEqual(
+    Array.from(recipients && recipients.members || []).map((entry) => entry.userId),
+    ["U1234567890"]
+  );
+  assert.equal(harness.calls.fetch.length, 0);
+});
+
+test("ZIP_IMPORT_KEY_PAYLOAD hydrates the cached PASS-TRANSITION roster during ZIP.KEY import", async () => {
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    storageSeed: {
+      zip_pass_transition_channel_id: "C09NHJCMFC1"
+    },
+    fetch: ({ url, init }) => {
+      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+      const authorization = String(headers.Authorization || headers.authorization || "");
+      const params = new URLSearchParams(String(init && init.body || ""));
+      if (authorization !== "Bearer SLK_TEST_ZIP_BOT_TOKEN") {
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: async () => ({ ok: false, error: "invalid_auth" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/conversations.members")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, members: ["U1234567890", "U2345678901"] }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/auth.test")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "U1234567890", user: "alice" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/users.info")) {
+        const userId = String(params.get("user") || "").trim().toUpperCase();
+        const payloadByUserId = {
+          U1234567890: {
+            ok: true,
+            user: {
+              id: "U1234567890",
+              name: "alice",
+              real_name: "Alice Example",
+              deleted: false,
+              is_bot: false,
+              is_app_user: false,
+              profile: {
+                display_name: "Alice Example",
+                real_name: "Alice Example",
+                email: "alice@example.com",
+                image_72: "https://example.com/alice.png"
+              }
+            }
+          },
+          U2345678901: {
+            ok: true,
+            user: {
+              id: "U2345678901",
+              name: "bob",
+              real_name: "Bob Example",
+              deleted: false,
+              is_bot: false,
+              is_app_user: false,
+              profile: {
+                display_name: "Bob Example",
+                real_name: "Bob Example",
+                email: "bob@example.com",
+                image_72: "https://example.com/bob.png"
+              }
+            }
+          }
+        };
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => payloadByUserId[userId] || { ok: false, error: "user_not_found" },
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  const imported = await harness.sendRuntimeMessage({
+    type: "ZIP_IMPORT_KEY_PAYLOAD",
+    config: {
+      oidc: {
+        clientId: "pass-transition-client-id",
+        clientSecret: "pass-transition-client-secret",
+        scope: "openid profile email",
+        redirectPath: "slack-user"
+      },
+      api: {
+        botToken: "SLK_TEST_ZIP_BOT_TOKEN"
+      },
+      singularity: {
+        channelId: "C123456789A",
+        mention: "@Singularity"
+      },
+      passTransition: {
+        channelId: "C09NHJCMFC1",
+        channelName: "#pass-transition"
+      }
+    }
+  });
+
+  assert.equal(imported && imported.ok, true);
+  assert.deepEqual(
+    Array.from(imported && imported.passTransition && imported.passTransition.recipients || []).map((entry) => entry.userId),
+    ["U1234567890", "U2345678901"]
+  );
+
+  const stored = harness.storageDump();
+  assert.deepEqual(
+    Array.from(stored.zip_pass_transition_recipients || []).map((entry) => entry.userId),
+    ["U1234567890", "U2345678901"]
+  );
 });
 
 test("PASS-TRANSITION hydration falls back to bot token after channel_not_found on user token", async () => {
@@ -711,6 +859,59 @@ test("PASS-TRANSITION rehydrate captures a live Slack session token from the wor
           text: async () => ""
         });
       }
+      if (url.endsWith("/api/auth.test") && token === liveSessionToken) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "UALICE123", user: "alice" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/users.info") && token === liveSessionToken) {
+        const userId = String(params.get("user") || "").trim().toUpperCase();
+        const payloadByUserId = {
+          UALICE123: {
+            ok: true,
+            user: {
+              id: "UALICE123",
+              name: "alice",
+              real_name: "Alice Example",
+              deleted: false,
+              is_bot: false,
+              is_app_user: false,
+              profile: {
+                display_name: "Alice Example",
+                real_name: "Alice Example",
+                email: "alice@example.com",
+                image_72: "https://example.com/alice.png"
+              }
+            }
+          },
+          UBOB45678: {
+            ok: true,
+            user: {
+              id: "UBOB45678",
+              name: "bob",
+              real_name: "Bob Example",
+              deleted: false,
+              is_bot: false,
+              is_app_user: false,
+              profile: {
+                display_name: "Bob Example",
+                real_name: "Bob Example",
+                email: "bob@example.com",
+                image_72: "https://example.com/bob.png"
+              }
+            }
+          }
+        };
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => payloadByUserId[userId] || { ok: false, error: "user_not_found" },
+          text: async () => ""
+        });
+      }
       return Promise.resolve({
         ok: false,
         status: 404,
@@ -725,161 +926,54 @@ test("PASS-TRANSITION rehydrate captures a live Slack session token from the wor
   assert.equal(members && members.ok, true);
   assert.equal(members && members.hydrated, true);
   assert.deepEqual(Array.from(members && members.memberIds || []), ["UALICE123", "UBOB45678"]);
-  assert.equal(harness.calls.tabsSendMessage.length, 1, "workspace session auth should be captured from the live Slack tab");
+  assert.deepEqual(
+    Array.from(members && members.members || []).map((entry) => entry.userId),
+    ["UALICE123", "UBOB45678"]
+  );
+  assert.equal(harness.calls.tabsSendMessage.length >= 1, true, "workspace session auth should be captured from the live Slack tab");
   const stored = harness.storageDump();
   assert.equal(String(stored.zip_slack_oauth_token || ""), liveSessionToken);
+  assert.deepEqual(
+    Array.from(stored.zip_pass_transition_recipients || []).map((entry) => entry.userId),
+    ["UALICE123", "UBOB45678"]
+  );
 });
 
-test("PASS-TRANSITION recipients include the current Slack user and filter deleted and bot accounts", async () => {
+test("PASS-TRANSITION recipients read from the cached roster with no runtime Slack lookup", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],
     storageSeed: {
-      zip_slack_client_id: "pass-transition-client-id",
-      zip_slack_client_secret: "pass-transition-client-secret",
-      zip_slack_scope: "openid profile email",
-      zip_slack_redirect_path: "slack-user",
-      zip_slack_key_loaded: true,
-      zip_slack_oauth_token: "SLK_TEST_PASS_TRANSITION_USER_TOKEN",
-      zip_singularity_channel_id: "C123456789A",
-      zip_singularity_mention: "@Singularity",
       zip_pass_transition_channel_id: "C09NHJCMFC1",
       zip_pass_transition_channel_name: "#pass-transition",
       zip_pass_transition_member_ids: "U999999999,U222222222,U111111111,U333333333,U444444444",
       zip_pass_transition_members_synced_at: "2026-03-14T00:00:00.000Z",
-      "zip.slack.openid.session.v1": {
-        userId: "U999999999",
-        userName: "Minnick Example",
-        avatarUrl: "https://example.com/minnick.png"
-      }
-    },
-    fetch: ({ url, init }) => {
-      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
-      const authorization = String(headers.Authorization || headers.authorization || "");
-      const params = new URLSearchParams(String(init && init.body || ""));
-      if (authorization !== "Bearer SLK_TEST_PASS_TRANSITION_USER_TOKEN") {
-        return Promise.resolve({
-          ok: false,
-          status: 401,
-          json: async () => ({ ok: false, error: "invalid_auth" }),
-          text: async () => ""
-        });
-      }
-      if (url.endsWith("/api/auth.test")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ ok: true, user_id: "U999999999", user: "minnick" }),
-          text: async () => ""
-        });
-      }
-      if (url.endsWith("/api/users.info")) {
-        const userId = String(params.get("user") || "").trim().toUpperCase();
-        const payloadByUserId = {
-          U999999999: {
-            ok: true,
-            user: {
-              id: "U999999999",
-              name: "minnick",
-              real_name: "Minnick Example",
-              deleted: false,
-              is_bot: false,
-              is_app_user: false,
-              profile: {
-                display_name: "Minnick Example",
-                real_name: "Minnick Example",
-                email: "minnick@example.com",
-                image_72: "https://example.com/minnick.png"
-              }
-            }
-          },
-          U111111111: {
-            ok: true,
-            user: {
-              id: "U111111111",
-              name: "alice",
-              real_name: "Alice Example",
-              deleted: false,
-              is_bot: false,
-              is_app_user: false,
-              profile: {
-                display_name: "Alice Example",
-                real_name: "Alice Example",
-                email: "alice@example.com",
-                image_72: "https://example.com/alice.png"
-              }
-            }
-          },
-          U222222222: {
-            ok: true,
-            user: {
-              id: "U222222222",
-              name: "bob",
-              real_name: "Bob Example",
-              deleted: false,
-              is_bot: false,
-              is_app_user: false,
-              profile: {
-                display_name: "Bob Example",
-                real_name: "Bob Example",
-                email: "bob@example.com",
-                image_72: "https://example.com/bob.png"
-              }
-            }
-          },
-          U333333333: {
-            ok: true,
-            user: {
-              id: "U333333333",
-              name: "deleted-user",
-              real_name: "Deleted User",
-              deleted: true,
-              is_bot: false,
-              is_app_user: false,
-              profile: {
-                display_name: "Deleted User",
-                real_name: "Deleted User",
-                email: "deleted@example.com"
-              }
-            }
-          },
-          U444444444: {
-            ok: true,
-            user: {
-              id: "U444444444",
-              name: "zip-bot",
-              real_name: "ZIP Bot",
-              deleted: false,
-              is_bot: true,
-              is_app_user: false,
-              profile: {
-                display_name: "ZIP Bot",
-                real_name: "ZIP Bot",
-                email: "zip-bot@example.com"
-              }
-            }
-          }
-        };
-        const payload = payloadByUserId[userId] || { ok: false, error: "user_not_found" };
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => payload,
-          text: async () => ""
-        });
-      }
-      return Promise.resolve({
-        ok: false,
-        status: 404,
-        json: async () => ({ ok: false, error: "unexpected_request" }),
-        text: async () => ""
-      });
+      zip_pass_transition_recipients: [
+        {
+          userId: "U999999999",
+          userName: "Minnick Example",
+          label: "Minnick Example (@minnick)",
+          avatarUrl: "https://example.com/minnick.png"
+        },
+        {
+          userId: "U111111111",
+          userName: "Alice Example",
+          label: "Alice Example (@alice)",
+          avatarUrl: "https://example.com/alice.png"
+        },
+        {
+          userId: "U222222222",
+          userName: "Bob Example",
+          label: "Bob Example (@bob)",
+          avatarUrl: "https://example.com/bob.png"
+        }
+      ]
     }
   });
 
   harness.resetCalls();
   const recipients = await harness.sendRuntimeMessage({ type: "ZIP_GET_PASS_TRANSITION_RECIPIENTS" });
   assert.equal(recipients && recipients.ok, true);
-  assert.equal(String(recipients && recipients.selfUserId || ""), "U999999999");
+  assert.equal(String(recipients && recipients.selfUserId || ""), "");
   assert.deepEqual(
     Array.from(recipients && recipients.members || []).map((entry) => entry.userId),
     ["U999999999", "U111111111", "U222222222"]
@@ -888,14 +982,10 @@ test("PASS-TRANSITION recipients include the current Slack user and filter delet
     Array.from(recipients && recipients.members || []).map((entry) => entry.label),
     ["Minnick Example (@minnick)", "Alice Example (@alice)", "Bob Example (@bob)"]
   );
-  assert.equal(
-    harness.calls.fetch.some((requestUrl) => String(requestUrl).includes("/api/users.profile.get")),
-    false,
-    "PASS-TRANSITION recipients should not fetch self profiles while resolving teammate identities"
-  );
+  assert.equal(harness.calls.fetch.length, 0, "cached PASS-TRANSITION recipients should not perform runtime Slack API lookups");
 });
 
-test("PASS-TRANSITION recipient refresh captures a live Slack session token from the workspace tab when force-refreshing", async () => {
+test("PASS-TRANSITION rehydrate refreshes the cached roster from the live Slack workspace session", async () => {
   const liveSessionToken = "SLK_TEST_PASS_TRANSITION_RECIPIENT_SESSION";
   const harness = createChromeHarness({
     zendeskTabs: [],
@@ -1025,25 +1115,32 @@ test("PASS-TRANSITION recipient refresh captures a live Slack session token from
   });
 
   harness.resetCalls();
-  const recipients = await harness.sendRuntimeMessage({ type: "ZIP_GET_PASS_TRANSITION_RECIPIENTS", force: true });
+  const recipients = await harness.sendRuntimeMessage({ type: "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", force: true });
   assert.equal(recipients && recipients.ok, true);
   assert.equal(String(recipients && recipients.selfUserId || ""), "UALICE123");
   assert.deepEqual(
     Array.from(recipients && recipients.members || []).map((entry) => entry.userId),
     ["UALICE123", "UBOB45678"]
   );
-  assert.equal(harness.calls.tabsSendMessage.length >= 2, true, "force recipient refresh should use the live Slack tab for session capture and refresh");
+  assert.equal(harness.calls.tabsSendMessage.length >= 1, true, "rehydrate should use the live Slack tab for session capture");
   const stored = harness.storageDump();
   assert.equal(String(stored.zip_slack_oauth_token || ""), liveSessionToken);
+  assert.deepEqual(
+    Array.from(stored.zip_pass_transition_recipients || []).map((entry) => entry.userId),
+    ["UALICE123", "UBOB45678"]
+  );
 });
 
-test("force PASS-TRANSITION recipient refresh does not open a Slack tab during Shift+Click hydration", async () => {
+test("cached PASS-TRANSITION recipient reads never open Slack tabs during Shift+Click", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],
     storageSeed: {
       zip_pass_transition_channel_id: "C09NHJCMFC1",
       zip_pass_transition_channel_name: "#pass-transition",
       zip_pass_transition_member_ids: "UALICE123,UBOB45678",
+      zip_pass_transition_recipients: [
+        { userId: "UALICE123", userName: "Alice Example", label: "Alice Example (@alice)" }
+      ],
       zip_pass_transition_members_synced_at: "2026-03-17T00:00:00.000Z",
       "zip.slack.openid.session.v1": {
         userId: "UALICE123",
@@ -1055,13 +1152,15 @@ test("force PASS-TRANSITION recipient refresh does not open a Slack tab during S
 
   harness.resetCalls();
   const recipients = await harness.sendRuntimeMessage({
-    type: "ZIP_GET_PASS_TRANSITION_RECIPIENTS",
-    force: true,
-    allowCreateTab: false
+    type: "ZIP_GET_PASS_TRANSITION_RECIPIENTS"
   });
-  assert.equal(recipients && recipients.ok, false);
-  assert.equal(String(recipients && recipients.code || ""), "slack_workspace_tab_missing");
-  assert.equal(harness.calls.tabsCreate.length, 0, "force recipient refresh should not create a Slack tab during Shift+Click hydration");
+  assert.equal(recipients && recipients.ok, true);
+  assert.deepEqual(
+    Array.from(recipients && recipients.members || []).map((entry) => entry.userId),
+    ["UALICE123"]
+  );
+  assert.equal(harness.calls.tabsCreate.length, 0, "cached recipient reads should not create a Slack tab during Shift+Click");
+  assert.equal(harness.calls.fetch.length, 0, "cached recipient reads should not hit the Slack API");
 });
 
 test("ZIP_SLACK_API_AUTH_TEST rejects a stored token when it belongs to a different Slack user", async () => {

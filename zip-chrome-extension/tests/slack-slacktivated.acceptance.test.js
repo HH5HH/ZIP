@@ -66,14 +66,16 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(html, /id="zipTogglePassAiIcon"/);
   assert.match(html, /id="zipSlackItToMeBtn"/);
   assert.match(html, /id="zipSlackPanelIcon"/);
-  assert.match(html, /id="zipSlackItToMeBtn"[\s\S]*Shift\+Click: share visible tickets to PASS-TRANSITION\./);
+  assert.match(html, /id="zipSlackItToMeBtn"[\s\S]*Re-Hydrate ZIP to load pass-transition teammates\./);
   assert.match(html, /<script src="slack-runtime-config\.js"><\/script>/);
   assert.match(html, /id="zipTogglePassAiBtn"[^>]*class="[^"]*\bhidden\b[^"]*"/);
   assert.doesNotMatch(html, /id="zipSlackItToMeBtn"[^>]*class="[^"]*\bhidden\b[^"]*"/);
   assert.doesNotMatch(html, /id="zipSlackLoginBtn"/);
 
   assert.match(js, /SLACKTIVATED_LOGIN_TOOLTIP/);
-  assert.match(js, /SLACK_IT_TO_ME_DUAL_MODE_TOOLTIP = "Click: zip-zap tickets to SLACK\. Shift\+Click: share visible tickets to PASS-TRANSITION\."/);
+  assert.match(js, /SLACK_IT_TO_ME_CACHED_PASS_TRANSITION_TOOLTIP = "Click sends to you\. Shift\+Click uses the cached PASS-TRANSITION roster\."/);
+  assert.match(js, /SLACK_IT_TO_ME_REHYDRATE_TOOLTIP = "Click sends to you\. Re-Hydrate ZIP to load pass-transition teammates\."/);
+  assert.match(js, /PASS_TRANSITION_CACHE_MISSING_MESSAGE = "No PASS-TRANSITION roster is cached yet\. Re-Hydrate ZIP to load members\."/);
   assert.match(js, /slacktivatedBtn:\s*\$\("zipSlacktivatedBtn"\)/);
   assert.match(js, /slacktivatedStatusWrap:\s*\$\("zipSlacktivatedStatusWrap"\)/);
   assert.match(js, /contextMenuClearKey:\s*\$\("zipContextMenuClearKey"\)/);
@@ -124,7 +126,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /els\.passAiToggleBtn\.classList\.toggle\("hidden", !hasSelectedTicket\)/);
   assert.match(js, /els\.slackItToMeBtn\.classList\.remove\("hidden"\)/);
   assert.match(js, /const canUseSlackItToMe = slackReady/);
-  assert.match(js, /const slackItToMeTitle = slackReady \? SLACK_IT_TO_ME_DUAL_MODE_TOOLTIP : SLACKTIVATED_LOGIN_TOOLTIP;/);
+  assert.match(js, /const slackItToMeTitle = !slackReady[\s\S]*SLACKTIVATED_LOGIN_TOOLTIP[\s\S]*SLACK_IT_TO_ME_CACHED_PASS_TRANSITION_TOOLTIP[\s\S]*SLACK_IT_TO_ME_REHYDRATE_TOOLTIP/);
   assert.match(js, /function isPassAiSlacktivated\(\)\s*\{\s*return !!\(state\.passAiSlackReady && state\.passAiSlackWebReady\);\s*\}/);
   assert.match(js, /function buildPassAiSlackLoginUrl\(\)\s*\{\s*return buildPassAiSlackWorkspaceLandingUrl\(\);\s*\}/);
   assert.match(js, /getSlackTabCandidates\(\{\s*injectableOnly: true,\s*includeBackground: true,\s*workspaceOrigin\s*\}\)\.catch/);
@@ -188,7 +190,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /function sendSlackMeNoteFromDialog\(\)/);
   assert.match(js, /openSlackMeDialog\(\{ mode: "self" \}\)/);
   assert.match(js, /els\.slackMeRecipientSelect\.addEventListener\("change"/);
-  assert.match(js, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{[\s\S]*mode: "transition"[\s\S]*forceRecipients: true[\s\S]*preserveExisting: true[\s\S]*allowCreateTab: false[\s\S]*\}\)/);
+  assert.match(js, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition" \}\)/);
   assert.match(js, /let shouldCloseSlackMeDialog = false;/);
   assert.match(js, /shouldCloseSlackMeDialog = true;/);
   assert.match(js, /if \(shouldCloseSlackMeDialog\) \{\s*hideSlackMeDialog\(\);/);
@@ -202,7 +204,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /setSlackMeDialogStatus\("@SLACK ME failed: " \+ message, true\);/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
   assert.match(js, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS"/);
-  assert.match(js, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: true\s*\}\)/);
+  assert.match(js, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true\s*\}\)/);
   assert.match(js, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS"/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER"/);
   assert.doesNotMatch(js, /sendBackgroundRequest\("ZIP_SLACK_API_QAI_SEND"/);

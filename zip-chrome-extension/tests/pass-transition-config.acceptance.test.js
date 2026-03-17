@@ -29,6 +29,7 @@ test("sidepanel and options preserve PASS-TRANSITION ZIP.KEY fields during impor
   assert.match(sidepanel, /ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY/);
   assert.match(sidepanel, /ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY/);
   assert.match(sidepanel, /ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY/);
+  assert.match(sidepanel, /ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY/);
   assert.match(sidepanel, /ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY/);
   assert.match(sidepanel, /pass_transition_channel_id/);
   assert.match(sidepanel, /pass_transition_member_ids/);
@@ -48,10 +49,12 @@ test("background supports cached PASS-TRANSITION member hydration", () => {
   assert.match(background, /ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY/);
   assert.match(background, /ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY/);
   assert.match(background, /ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY/);
+  assert.match(background, /ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY/);
   assert.match(background, /ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY/);
   assert.match(background, /async function fetchSlackConversationMembersViaApi/);
   assert.match(background, /\/api\/conversations\.members/);
   assert.match(background, /async function getPassTransitionMembers/);
+  assert.match(background, /async function hydratePassTransitionRecipients/);
   assert.match(background, /async function getPassTransitionRecipients/);
   assert.match(background, /ZIP_GET_PASS_TRANSITION_MEMBERS/);
   assert.match(background, /ZIP_GET_PASS_TRANSITION_RECIPIENTS/);

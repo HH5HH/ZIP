@@ -74,14 +74,15 @@ test("sidepanel uses PASS-TRANSITION labels for the selected recipient UI and ma
   assert.match(source, /const recipientLabel = recipient\.label \|\| recipient\.userName \|\| recipient\.userId;/);
 });
 
-test("transition dialog waits for recipients before becoming visible and warms them on Slack auth", () => {
+test("transition dialog uses the cached roster and never warms Slack auth on login", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   const openDialogSource = extractFunctionSource(source, "openSlackMeDialog");
 
   assert.ok(
-    openDialogSource.indexOf('await loadPassTransitionRecipients({ force: opts.forceRecipients === true });')
-      < openDialogSource.indexOf('els.slackMeDialogBackdrop.classList.remove("hidden");'),
-    "SHIFT+CLICK dialog should finish loading PASS-TRANSITION recipients before revealing the popup."
+    openDialogSource.indexOf('els.slackMeDialogBackdrop.classList.remove("hidden");')
+      < openDialogSource.indexOf('loadPassTransitionRecipients({'),
+    "SHIFT+CLICK dialog should reveal immediately and then read the cached PASS-TRANSITION roster."
   );
-  assert.match(source, /prefetchPassTransitionRecipients\(\{ force: false \}\)\.catch\(\(\) => \{\}\);/);
+  assert.doesNotMatch(source, /prefetchPassTransitionRecipients\(\{ force: false \}\)\.catch\(\(\) => \{\}\);/);
+  assert.match(source, /const PASS_TRANSITION_CACHE_MISSING_MESSAGE = "No PASS-TRANSITION roster is cached yet\. Re-Hydrate ZIP to load members\.";/);
 });

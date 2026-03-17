@@ -35,6 +35,7 @@ const ZIP_SINGULARITY_MENTION_STORAGE_KEY = "zip_singularity_mention";
 const ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY = "zip_pass_transition_channel_id";
 const ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY = "zip_pass_transition_channel_name";
 const ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY = "zip_pass_transition_member_ids";
+const ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY = "zip_pass_transition_recipients";
 const ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY = "zip_pass_transition_members_synced_at";
 const ZIP_PENDING_WORKSPACE_CLIENT_DEEPLINK_STORAGE_KEY = "zip.pending.workspace.client.deeplink.v1";
 // Runtime-config / storage values should populate tokens. Do not hardcode live tokens in source.
@@ -119,6 +120,7 @@ const ZIP_SLACK_STORAGE_KEYS = [
   ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
   ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY,
   ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY,
+  ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY,
   ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY
 ];
 const THEME_PALETTE_DATA = (
@@ -2343,6 +2345,58 @@ function extractPassTransitionRecipientFromUsersInfoPayload(payload, fallbackUse
   };
 }
 
+function normalizeCachedPassTransitionRecipient(input) {
+  const raw = input && typeof input === "object" ? input : {};
+  const userId = normalizeSlackUserId(raw.userId || raw.user_id || "");
+  if (!userId) return null;
+  const userName = normalizeSlackDisplayName(
+    raw.userName
+    || raw.user_name
+    || raw.displayName
+    || raw.display_name
+    || ""
+  );
+  const label = normalizeSlackDisplayName(raw.label || "") || userName || ("@" + userId);
+  return {
+    userId,
+    userName,
+    displayName: normalizeSlackDisplayName(raw.displayName || raw.display_name || ""),
+    realName: normalizeSlackDisplayName(raw.realName || raw.real_name || ""),
+    handle: normalizeSlackHandleLoose(raw.handle || ""),
+    email: normalizeSlackEmailAddress(raw.email || ""),
+    avatarUrl: normalizeSlackAvatarUrl(raw.avatarUrl || raw.avatar_url || ""),
+    statusIcon: normalizeSlackStatusIcon(raw.statusIcon || raw.status_icon || ""),
+    statusIconUrl: normalizeSlackStatusIconUrl(raw.statusIconUrl || raw.status_icon_url || ""),
+    statusMessage: normalizeSlackStatusMessage(raw.statusMessage || raw.status_message || ""),
+    deleted: raw.deleted === true,
+    bot: raw.bot === true,
+    label
+  };
+}
+
+function normalizeCachedPassTransitionRecipientList(value) {
+  let rows = value;
+  if (typeof rows === "string") {
+    const trimmed = rows.trim();
+    if (!trimmed) return [];
+    try {
+      rows = JSON.parse(trimmed);
+    } catch (_) {
+      rows = [];
+    }
+  }
+  const input = Array.isArray(rows) ? rows : [];
+  const output = [];
+  const seen = new Set();
+  for (let i = 0; i < input.length; i += 1) {
+    const normalized = normalizeCachedPassTransitionRecipient(input[i]);
+    if (!normalized || seen.has(normalized.userId)) continue;
+    seen.add(normalized.userId);
+    output.push(normalized);
+  }
+  return output;
+}
+
 async function fetchPassTransitionRecipientViaApi(workspaceOrigin, token, userId) {
   const resolvedUserId = normalizeSlackUserId(userId);
   if (!resolvedUserId) {
@@ -2774,6 +2828,12 @@ function normalizeIsoDateTime(value) {
 
 function buildPassTransitionSnapshot(input) {
   const source = input && typeof input === "object" ? input : {};
+  const recipients = normalizeCachedPassTransitionRecipientList(
+    source.recipients
+    || source.recipientProfiles
+    || source[ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY]
+    || []
+  );
   const channelId = normalizeSlackChannelId(
     source.channelId
     || source.channel_id
@@ -2791,7 +2851,7 @@ function buildPassTransitionSnapshot(input) {
     || source.member_ids
     || source.members
     || source[ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY]
-    || ""
+    || recipients.map((entry) => entry.userId)
   );
   const membersSyncedAt = normalizeIsoDateTime(
     source.membersSyncedAt
@@ -2806,8 +2866,10 @@ function buildPassTransitionSnapshot(input) {
     channelName,
     memberIds,
     memberCount: memberIds.length,
+    recipients,
+    recipientCount: recipients.length,
     membersSyncedAt,
-    synced: !!(memberIds.length && membersSyncedAt)
+    synced: !!((memberIds.length || recipients.length) && membersSyncedAt)
   };
 }
 
@@ -3242,6 +3304,16 @@ function normalizeZipSecretConfig(input) {
       || passTransitionSource.membersSyncedAt
       || source[ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY]
       || source.pass_transition_members_synced_at
+      || "",
+    recipients:
+      passTransitionNestedSource.recipients
+      || passTransitionNestedSource.members_json
+      || passTransitionNestedSource.membersJson
+      || passTransitionSource.recipients
+      || passTransitionSource.membersJson
+      || source[ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY]
+      || source.pass_transition_recipients
+      || source.pass_transition_members_json
       || ""
   });
   const hasRequired = !!(clientId && clientSecret && singularityChannelId && singularityMention);
@@ -3314,6 +3386,7 @@ async function readZipSecretsStatus() {
     ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
     ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY,
     ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY,
     ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY
   ]);
   const stored = await readStorageLocal(keys);
@@ -3331,6 +3404,13 @@ async function storeZipSecrets(input, options) {
     throw new Error("ZIP.KEY is missing required SLACKTIVATION fields: " + missingFields.join(", ") + ".");
   }
   const opts = options && typeof options === "object" ? options : {};
+  const existingPassTransition = await readStorageLocal([
+    ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY
+  ]);
+  const existingPassTransitionChannelId = normalizeSlackChannelId(
+    existingPassTransition && existingPassTransition[ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY]
+  );
   const updates = {};
   const removals = [];
   const setOrRemove = (key, value) => {
@@ -3353,6 +3433,18 @@ async function storeZipSecrets(input, options) {
   setOrRemove(ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY, normalized.passTransition && normalized.passTransition.channelName);
   setOrRemove(ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY, normalized.passTransition && normalized.passTransition.memberIds);
   setOrRemove(ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY, normalized.passTransition && normalized.passTransition.membersSyncedAt);
+  const cachedRecipients = normalizeCachedPassTransitionRecipientList(
+    normalized.passTransition && normalized.passTransition.recipients
+  );
+  if (cachedRecipients.length) {
+    updates[ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY] = cachedRecipients;
+  } else if (
+    !normalized.passTransition
+    || !normalized.passTransition.channelId
+    || normalized.passTransition.channelId !== existingPassTransitionChannelId
+  ) {
+    removals.push(ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY);
+  }
   updates[ZIP_SLACK_KEY_META_STORAGE_KEY] = normalized.meta;
   updates[ZIP_SLACK_KEY_LOADED_STORAGE_KEY] = normalized.keyLoaded;
 
@@ -3370,6 +3462,7 @@ async function storeZipSecrets(input, options) {
     [ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY]: normalized.passTransition && normalized.passTransition.channelId,
     [ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY]: normalized.passTransition && normalized.passTransition.channelName,
     [ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY]: normalized.passTransition && normalized.passTransition.memberIds,
+    [ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY]: cachedRecipients,
     [ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY]: normalized.passTransition && normalized.passTransition.membersSyncedAt,
     [ZIP_SLACK_KEY_LOADED_STORAGE_KEY]: normalized.keyLoaded
   });
@@ -3452,6 +3545,7 @@ async function getPassTransitionMembers(options) {
     ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
     ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY,
     ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY,
     ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY
   ]);
   const snapshot = buildPassTransitionSnapshot(stored);
@@ -3558,11 +3652,11 @@ async function getPassTransitionMembers(options) {
   };
 }
 
-async function getPassTransitionRecipients(options) {
+async function hydratePassTransitionRecipients(options) {
   const opts = options && typeof options === "object" ? options : {};
   const allowCreateTab = opts.allowCreateTab === true;
   const membersResult = await getPassTransitionMembers({
-    force: opts.force === true,
+    force: true,
     allowCreateTab
   });
   if (!membersResult || membersResult.ok !== true) {
@@ -3734,11 +3828,47 @@ async function getPassTransitionRecipients(options) {
     });
   });
 
+  await setStorageLocal({
+    [ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY]: membersResult.channelId,
+    [ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY]: membersResult.channelName,
+    [ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY]: normalizeSlackUserIdCsv(membersResult.memberIds),
+    [ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY]: recipients,
+    [ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY]: membersResult.membersSyncedAt || nowIso()
+  });
+
   return {
     ok: true,
     ...membersResult,
     selfUserId,
     members: recipients
+  };
+}
+
+async function getPassTransitionRecipients() {
+  const stored = await readStorageLocal([
+    ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY,
+    ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY
+  ]);
+  const snapshot = buildPassTransitionSnapshot(stored);
+  if (!snapshot.channelId) {
+    return {
+      ok: false,
+      code: "pass_transition_channel_missing",
+      error: "PASS-TRANSITION channel ID is not configured in ZIP.KEY.",
+      ...snapshot,
+      members: []
+    };
+  }
+  return {
+    ok: true,
+    cached: true,
+    hydrated: false,
+    ...snapshot,
+    selfUserId: "",
+    members: Array.isArray(snapshot.recipients) ? snapshot.recipients.slice() : []
   };
 }
 
@@ -6703,14 +6833,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }));
     return true;
   }
+  if (msg.type === "ZIP_GET_PASS_TRANSITION_MEMBERS") {
+    getPassTransitionMembers({
+      force: msg.force === true,
+      allowCreateTab: msg.allowCreateTab === true
+    })
+      .then((result) => sendResponse(result || {
+        ok: false,
+        code: "pass_transition_unavailable",
+        error: "PASS-TRANSITION member hydration did not return a result."
+      }))
+      .catch((err) => sendResponse({
+        ok: false,
+        code: "pass_transition_hydration_failed",
+        error: err && err.message ? err.message : "Unable to hydrate PASS-TRANSITION members."
+      }));
+    return true;
+  }
   if (
-    msg.type === "ZIP_GET_PASS_TRANSITION_MEMBERS"
-    || msg.type === "ZIP_SYNC_PASS_TRANSITION_MEMBERS"
+    msg.type === "ZIP_SYNC_PASS_TRANSITION_MEMBERS"
     || msg.type === "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS"
   ) {
-    getPassTransitionMembers({
-      force: msg.force === true || msg.type === "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS",
-      allowCreateTab: msg.allowCreateTab === true || msg.type === "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS"
+    hydratePassTransitionRecipients({
+      allowCreateTab: msg.allowCreateTab === true
     })
       .then((result) => sendResponse(result || {
         ok: false,
@@ -6725,10 +6870,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg.type === "ZIP_GET_PASS_TRANSITION_RECIPIENTS") {
-    getPassTransitionRecipients({
-      force: msg.force === true,
-      allowCreateTab: msg.allowCreateTab === true
-    })
+    getPassTransitionRecipients()
       .then((result) => sendResponse(result || {
         ok: false,
         code: "pass_transition_recipients_unavailable",
@@ -6746,6 +6888,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY,
       ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY,
       ZIP_PASS_TRANSITION_MEMBER_IDS_STORAGE_KEY,
+      ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY,
       ZIP_PASS_TRANSITION_MEMBERS_SYNCED_AT_STORAGE_KEY
     ])
       .then((stored) => sendResponse({
@@ -6759,7 +6902,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg.type === "ZIP_IMPORT_KEY_PAYLOAD") {
-    storeZipSecrets(msg && msg.config && typeof msg.config === "object" ? msg.config : {})
+    (async () => {
+      const status = await storeZipSecrets(msg && msg.config && typeof msg.config === "object" ? msg.config : {});
+      const passTransition = status && status.passTransition ? status.passTransition : null;
+      if (!passTransition || !passTransition.channelId) {
+        return status;
+      }
+      const hydrationResult = await hydratePassTransitionRecipients({ allowCreateTab: false }).catch((err) => ({
+        ok: false,
+        code: "pass_transition_hydration_failed",
+        error: err && err.message ? err.message : "Unable to hydrate PASS-TRANSITION members."
+      }));
+      if (!hydrationResult || hydrationResult.ok !== true) {
+        return {
+          ...status,
+          passTransition: {
+            ...passTransition,
+            rosterError: String(hydrationResult && hydrationResult.error || "").trim(),
+            rosterErrorCode: String(hydrationResult && hydrationResult.code || "").trim().toLowerCase()
+          }
+        };
+      }
+      return {
+        ...status,
+        passTransition: {
+          ...passTransition,
+          memberIds: Array.isArray(hydrationResult.memberIds) ? hydrationResult.memberIds.slice() : [],
+          memberCount: Math.max(0, Number(hydrationResult.memberCount || 0)),
+          recipients: Array.isArray(hydrationResult.members) ? hydrationResult.members.slice() : [],
+          recipientCount: Math.max(0, Number(hydrationResult.members && hydrationResult.members.length || 0)),
+          membersSyncedAt: String(hydrationResult.membersSyncedAt || "").trim(),
+          synced: hydrationResult.synced === true
+        }
+      };
+    })()
       .then((status) => sendResponse(status))
       .catch((err) => sendResponse({
         ok: false,
