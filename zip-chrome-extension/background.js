@@ -6139,9 +6139,17 @@ async function openAskTeamEmail(tab) {
 }
 
 async function openGetLatestFlow() {
-  await refreshUpdateState({ force: true }).catch(() => {});
-  const latestVersion = updateState.latestVersion || "";
-  const latestCommitSha = updateState.latestCommitSha || "";
+  const refreshed = await refreshUpdateState({ force: true }).catch((err) => ({
+    currentVersion: getZipBuildVersion(),
+    latestVersion: "",
+    latestCommitSha: "",
+    updateAvailable: false,
+    checkedAt: Date.now(),
+    checkError: err && err.message ? err.message : "Version check failed"
+  }));
+  const hasFreshUpdateMetadata = !String(refreshed && refreshed.checkError || "").trim();
+  const latestVersion = hasFreshUpdateMetadata ? (refreshed && refreshed.latestVersion || "") : "";
+  const latestCommitSha = hasFreshUpdateMetadata ? (refreshed && refreshed.latestCommitSha || "") : "";
   const downloadUrl = buildLatestZipPackageUrl(latestCommitSha);
   const downloadFileName = buildLatestZipPackageFileName(latestVersion, latestCommitSha);
   const result = {
@@ -6150,6 +6158,7 @@ async function openGetLatestFlow() {
     downloadFileName,
     latestVersion: latestVersion,
     latestCommitSha: latestCommitSha,
+    checkError: String(refreshed && refreshed.checkError || "").trim(),
     downloadId: 0,
     downloadStarted: false,
     downloadTabOpened: false,

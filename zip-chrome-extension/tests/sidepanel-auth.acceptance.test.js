@@ -1058,6 +1058,56 @@ test("ZIP_CONTEXT_MENU_ACTION getLatest falls back to main ZIP URL with cache bu
   assert.equal(String(harness.calls.tabsCreate[0] && harness.calls.tabsCreate[0].url || ""), "chrome://extensions");
 });
 
+test("ZIP_CONTEXT_MENU_ACTION getLatest ignores stale cached metadata when refresh fails", async () => {
+  let requestPhase = 0;
+  const staleSha = "079ce8c82811f091e01385d59e4bb0b816c80d31";
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    fetch: ({ url }) => {
+      if (requestPhase === 0) {
+        if (url.includes("/zip-chrome-extension/manifest.json")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ version: "1.6.70" }),
+            text: async () => ""
+          });
+        }
+        if (url.includes("/git/ref/heads/main")) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ object: { sha: staleSha } }),
+            text: async () => ""
+          });
+        }
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 503,
+        json: async () => ({ ok: false, error: "upstream_unavailable" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  harness.resetCalls();
+  const first = await harness.sendRuntimeMessage({ type: "ZIP_CONTEXT_MENU_ACTION", action: "getLatest" });
+  assert.equal(first && first.ok, true);
+  assert.equal(String(first && first.latestCommitSha || ""), staleSha);
+
+  requestPhase = 1;
+  harness.resetCalls();
+  const second = await harness.sendRuntimeMessage({ type: "ZIP_CONTEXT_MENU_ACTION", action: "getLatest" });
+  assert.equal(second && second.ok, true);
+  assert.equal(String(second && second.latestCommitSha || ""), "");
+  assert.match(String(second && second.checkError || ""), /HTTP 503|Latest version unavailable|Version check failed/);
+  const downloadUrl = String(harness.calls.downloadsDownload[0] && harness.calls.downloadsDownload[0].url || "");
+  assert.match(downloadUrl, /\/main\/ziptool_distro\.zip\?cacheBust=\d+$/);
+  assert.equal(downloadUrl.includes(staleSha), false, "should not reuse stale commit-pinned ZIP URL after refresh failure");
+  assert.match(String(harness.calls.downloadsDownload[0] && harness.calls.downloadsDownload[0].filename || ""), /^ZIP-vlatest\.zip$/);
+});
+
 test("ZIP_CONTEXT_MENU_ACTION getLatest falls back to opening the package tab when downloads API fails", async () => {
   const latestSha = "fedcba9876543210fedcba9876543210fedcba98";
   const harness = createChromeHarness({
