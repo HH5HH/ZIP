@@ -66,7 +66,7 @@
           </div>
         </div>
         <div class="login-card-left">
-          <section id="zipConfigGate" class="zip-config-gate" aria-live="polite">
+          <section id="zipConfigGate" class="zip-config-gate hidden" aria-live="polite">
             <h2 class="zip-config-gate-title">Please drop ZIP.KEY to SLACKTIVATE</h2>
             <p id="zipConfigGateMessage" class="zip-config-gate-message">
               Drag and drop your ZIP.KEY file onto the target below.
@@ -263,6 +263,16 @@
       <span id="zipContextMenuBuild" class="zip-context-menu-build">ZIP</span>
     </div>
     <div class="zip-context-menu-divider" role="separator"></div>
+    <section id="zipContextMenuSlacktivateSection" class="zip-context-menu-slacktivate-section" aria-label="SLACKTIVATE">
+      <div id="zipContextMenuSlacktivateContent" class="zip-context-menu-slacktivate-content"></div>
+      <input
+        id="zipContextMenuSlacktivateInput"
+        class="zip-visually-hidden"
+        type="file"
+        accept=".key,.txt,.json,text/plain,application/json,application/octet-stream"
+      />
+    </section>
+    <div class="zip-context-menu-divider" role="separator"></div>
     <div id="zipContextMenuAppearanceRow" class="zip-context-menu-item zip-context-menu-theme-entry" role="group" aria-label="Appearance settings">
       <span class="zip-context-menu-item-icon" aria-hidden="true">
         <svg class="zip-context-menu-item-icon-svg" viewBox="0 0 20 20" focusable="false">
@@ -305,7 +315,7 @@
       <span class="zip-context-menu-item-label">Side panel position</span>
     </button>
     <button id="zipContextMenuGetLatest" class="zip-context-menu-item" type="button" role="menuitem">Get Latest</button>
-    <button id="zipContextMenuRehydrateZip" class="zip-context-menu-item" type="button" role="menuitem">
+    <button id="zipContextMenuRehydrateZip" class="zip-context-menu-item hidden" type="button" role="menuitem">
       <span class="zip-context-menu-item-icon" aria-hidden="true">
         <svg class="zip-context-menu-item-icon-svg" viewBox="0 0 20 20" focusable="false">
           <path d="M16.7 10a6.7 6.7 0 1 1-2-4.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>

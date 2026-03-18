@@ -24,6 +24,9 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(html, /id="zipConfigGate"/);
   assert.match(html, /id="zipConfigDropZone"/);
   assert.match(html, /id="zipConfigFileInput"/);
+  assert.match(html, /id="zipContextMenuSlacktivateSection"/);
+  assert.match(html, /id="zipContextMenuSlacktivateContent"/);
+  assert.match(html, /id="zipContextMenuSlacktivateInput"/);
   assert.match(html, /id="zipContextMenuClearKey"/);
   assert.match(html, /id="zipContextMenuAskTeam"/);
   assert.doesNotMatch(html, /id="zipContextMenuAskEric"/);
@@ -79,6 +82,9 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /slacktivatedBtn:\s*\$\("zipSlacktivatedBtn"\)/);
   assert.match(js, /slacktivatedStatusWrap:\s*\$\("zipSlacktivatedStatusWrap"\)/);
   assert.match(js, /contextMenuClearKey:\s*\$\("zipContextMenuClearKey"\)/);
+  assert.match(js, /contextMenuSlacktivateSection:\s*\$\("zipContextMenuSlacktivateSection"\)/);
+  assert.match(js, /contextMenuSlacktivateContent:\s*\$\("zipContextMenuSlacktivateContent"\)/);
+  assert.match(js, /contextMenuSlacktivateInput:\s*\$\("zipContextMenuSlacktivateInput"\)/);
   assert.match(js, /contextMenuSlackMe:\s*\$\("zipContextMenuSlackMe"\)/);
   assert.match(js, /contextMenuRehydrateZip:\s*\$\("zipContextMenuRehydrateZip"\)/);
   assert.match(js, /slackMeDialogBackdrop:\s*\$\("zipSlackMeDialogBackdrop"\)/);
@@ -189,6 +195,10 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /allowSlackTabBootstrapCreate:\s*false/);
   assert.match(js, /function getPassAiSlackApiTokenConfig\(\)/);
   assert.match(js, /async function rehydrateZipRuntime\(\)/);
+  assert.match(js, /function renderContextMenuSlacktivation\(\)/);
+  assert.match(js, /function buildContextMenuSlacktivatePendingMarkup\(status\)/);
+  assert.match(js, /function buildContextMenuSlacktivateReadyMarkup\(\)/);
+  assert.match(js, /async function handleContextMenuSlacktivateRefreshButtonClick\(\)/);
   assert.match(js, /runContextMenuAction\("clearZipKey"\)/);
   assert.match(js, /runContextMenuAction\("rehydrateZip"\)/);
   assert.match(js, /async function openSlackMeDialog\(options\)/);

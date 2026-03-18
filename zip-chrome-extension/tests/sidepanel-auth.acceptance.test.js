@@ -512,6 +512,9 @@ test("ZIP_CHECK_SECRETS reports missing state until ZIP_IMPORT_KEY_PAYLOAD succe
         scope: "openid profile email",
         redirectPath: "slack-user"
       },
+      api: {
+        userToken: "SLK_TEST_ZIP_USER_TOKEN"
+      },
       singularity: {
         channelId: "C123456789A",
         mention: "@Singularity"
@@ -526,8 +529,8 @@ test("ZIP_CHECK_SECRETS reports missing state until ZIP_IMPORT_KEY_PAYLOAD succe
   assert.equal(String(stored.zip_slack_client_id || ""), "zip-client-id");
   assert.equal(String(stored.zip_slack_client_secret || ""), "zip-client-secret");
   assert.equal(stored.zip_slack_key_loaded, true);
-  assert.equal(Object.prototype.hasOwnProperty.call(stored, "zip_slack_oauth_token"), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(stored, "zip_slack_user_token"), false);
+  assert.equal(String(stored.zip_slack_oauth_token || ""), "SLK_TEST_ZIP_USER_TOKEN");
+  assert.equal(String(stored.zip_slack_user_token || ""), "SLK_TEST_ZIP_USER_TOKEN");
 
   const cleared = await harness.sendRuntimeMessage({ type: "ZIP_CLEAR_KEY" });
   assert.equal(cleared && cleared.ok, true);
@@ -538,7 +541,7 @@ test("ZIP_CHECK_SECRETS reports missing state until ZIP_IMPORT_KEY_PAYLOAD succe
   assert.equal(afterClear.zip_slack_key_loaded, false);
 });
 
-test("ZIP_IMPORT_KEY_PAYLOAD strips user-scoped Slack tokens from ZIP.KEY config", async () => {
+test("ZIP_IMPORT_KEY_PAYLOAD preserves user-scoped Slack tokens from ZIP.KEY config", async () => {
   const harness = createChromeHarness({ zendeskTabs: [] });
 
   const imported = await harness.sendRuntimeMessage({
@@ -564,8 +567,8 @@ test("ZIP_IMPORT_KEY_PAYLOAD strips user-scoped Slack tokens from ZIP.KEY config
   assert.equal(imported && imported.ok, true);
   const stored = harness.storageDump();
   assert.equal(String(stored.zip_slack_bot_token || ""), "SLK_TEST_ZIP_BOT_TOKEN");
-  assert.equal(Object.prototype.hasOwnProperty.call(stored, "zip_slack_oauth_token"), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(stored, "zip_slack_user_token"), false);
+  assert.equal(String(stored.zip_slack_oauth_token || ""), "SLK_TEST_LEGACY_ZIP_KEY_TOKEN");
+  assert.equal(String(stored.zip_slack_user_token || ""), "SLK_TEST_LEGACY_ZIP_KEY_TOKEN");
 });
 
 test("ZIP_IMPORT_KEY_PAYLOAD preserves PASS-TRANSITION cache for load-once member hydration", async () => {
@@ -591,6 +594,9 @@ test("ZIP_IMPORT_KEY_PAYLOAD preserves PASS-TRANSITION cache for load-once membe
         clientSecret: "pass-transition-client-secret",
         scope: "openid profile email",
         redirectPath: "slack-user"
+      },
+      api: {
+        userToken: "SLK_TEST_PASS_TRANSITION_USER_TOKEN-token"
       },
       singularity: {
         channelId: "C123456789A",
@@ -648,7 +654,10 @@ test("ZIP_IMPORT_KEY_PAYLOAD hydrates the cached PASS-TRANSITION roster during Z
       const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
       const authorization = String(headers.Authorization || headers.authorization || "");
       const params = new URLSearchParams(String(init && init.body || ""));
-      if (authorization !== "Bearer SLK_TEST_ZIP_BOT_TOKEN") {
+      if (
+        authorization !== "Bearer SLK_TEST_ZIP_BOT_TOKEN"
+        && authorization !== "Bearer SLK_TEST_ZIP_USER_TOKEN"
+      ) {
         return Promise.resolve({
           ok: false,
           status: 401,
@@ -736,6 +745,7 @@ test("ZIP_IMPORT_KEY_PAYLOAD hydrates the cached PASS-TRANSITION roster during Z
         redirectPath: "slack-user"
       },
       api: {
+        userToken: "SLK_TEST_ZIP_USER_TOKEN",
         botToken: "SLK_TEST_ZIP_BOT_TOKEN"
       },
       singularity: {
@@ -1563,6 +1573,9 @@ test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", 
         scope: "openid profile email",
         redirectPath: "slack-user"
       },
+      api: {
+        userToken: "SLK_TEST_MENU_USER_TOKEN"
+      },
       singularity: {
         channelId: "C123456789A",
         mention: "@Singularity"
@@ -1821,50 +1834,58 @@ test("sidepanel login wiring uses LOGIN_CLICKED with no ZIP local sign-out path"
   assert.match(source, /const candidateIds = await collectZendeskTabCandidates\(\);/);
 });
 
-test("sidepanel requires ZIP.KEY gate before Zendesk login", () => {
+test("sidepanel loads ZIP.KEY for Slacktivation without gating Zendesk login", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
   const optionsSource = fs.readFileSync(OPTIONS_PATH, "utf8");
   const html = fs.readFileSync(path.join(ROOT, "sidepanel.html"), "utf8");
+  const startLoginMatch = source.match(/async function startLogin\(\)\s*\{[\s\S]*?\n  \}/);
+  const hydrateMatch = source.match(/async function hydrateAuthStateFromBackground\(options\)\s*\{[\s\S]*?\n  \}/);
+  assert.ok(startLoginMatch, "startLogin function not found");
+  assert.ok(hydrateMatch, "hydrateAuthStateFromBackground function not found");
   assert.match(source, /const ZIP_KEY_FILE_PREFIX = "ZIPKEY1:";/);
   assert.match(source, /const ZIP_CONFIG_META_STORAGE_KEY = "zip\.config\.meta\.v1";/);
   assert.match(source, /const ZIP_SLACKTIVATION_SERVICE_KEY = "slacktivation";/);
+  assert.match(source, /const ZIP_REQUIRED_SLACK_API_TOKEN_FIELD = "slacktivation\.user_token";/);
   assert.match(source, /"slacktivation\.client_id"/);
   assert.match(source, /"slacktivation\.client_secret"/);
-  assert.doesNotMatch(source, /"slacktivation\.user_token"/);
-  assert.doesNotMatch(optionsSource, /"slacktivation\.user_token"/);
+  assert.match(source, /"slacktivation\.user_token"/);
+  assert.match(optionsSource, /"user_token"/);
   assert.match(source, /"slacktivation\.singularity_channel_id"/);
   assert.match(source, /"slacktivation\.singularity_mention"/);
   assert.match(source, /function parseZipKeyPayload\(rawText\)/);
   assert.match(source, /function importZipKeyFromFile\(file\)/);
-  assert.match(source, /const gateStatus = enforceZipConfigGate\(\{ reportStatus: true \}\);/);
   assert.match(source, /msg\.type === "ZIP_KEY_CLEARED"/);
   assert.match(source, /Please drop an updated ZIP\.KEY to SLACKTIVATE ZIP\./);
-  assert.match(source, /Please drop ZIP\.KEY to SLACKTIVATE ZIP\./);
+  assert.match(source, /ZIP\.KEY is loaded\. Open the avatar menu to re-SLACKTIVATE ZIP actions\./);
+  assert.match(source, /ZIP\.KEY cleared\. Zendesk is still live; load a new ZIP\.KEY from the avatar menu to re-SLACKTIVATE\./);
   assert.match(source, /DROP ZIP\.KEY TO SLACKTIVATE/);
   assert.match(html, /Please drop ZIP\.KEY to SLACKTIVATE/);
   assert.match(html, /DROP ZIP\.KEY TO SLACKTIVATE/);
+  assert.doesNotMatch(startLoginMatch[0], /enforceZipConfigGate/);
+  assert.match(hydrateMatch[0], /enforceZipConfigGate\(\{ reportStatus: false \}\);/);
   assert.doesNotMatch(source, /ZIP\.KEY cleared\. Drop the latest ZIP\.KEY file to continue\./);
   assert.doesNotMatch(source, /Supports ZIPKEY1 files \(JSON or KEY=VALUE\)\./);
   assert.doesNotMatch(html, /Supports ZIPKEY1 files\./);
 });
 
-test("sidepanel ZIP.KEY persistence keeps optional bot config and strips user-scoped auth", () => {
+test("sidepanel ZIP.KEY persistence keeps optional bot config and user-scoped auth", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
   assert.match(source, /const normalizedBotToken = normalizePassAiSlackApiToken\(normalized\.api && normalized\.api\.botToken\);/);
-  assert.doesNotMatch(source, /const normalizedUserToken = normalizePassAiSlackApiToken\(normalized\.api && normalized\.api\.userToken\);/);
-  assert.match(source, /api:\s*\{[\s\S]*botToken:\s*normalizedBotToken[\s\S]*\}/);
+  assert.match(source, /const normalizedUserToken = normalizePassAiSlackApiToken\(normalized\.api && normalized\.api\.userToken\);/);
+  assert.match(source, /const normalizedOauthToken = normalizePassAiSlackApiToken\(normalized\.api && normalized\.api\.oauthToken\);/);
+  assert.match(source, /api:\s*\{[\s\S]*botToken:\s*normalizedBotToken,[\s\S]*userToken:\s*normalizedUserToken,[\s\S]*oauthToken:\s*normalizedOauthToken \|\| normalizedUserToken[\s\S]*\}/);
 });
 
 test("sidepanel Clear ZIP.KEY action requires explicit user confirmation", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
-  assert.match(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset ZIP now\?/);
+  assert.match(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset SLACKTIVATION now\?/);
   assert.match(source, /action === "clearZipKey" && !requestZipKeyClearConfirmation\(\)/);
   assert.match(source, /window\.confirm\(ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE\)/);
 });
 
 test("options Clear ZIP.KEY action requires explicit user confirmation", () => {
   const source = fs.readFileSync(OPTIONS_PATH, "utf8");
-  assert.match(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset ZIP now\?/);
+  assert.match(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset SLACKTIVATION now\?/);
   assert.match(source, /window\.confirm\(ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE\)/);
   assert.match(source, /setStatus\("Clear ZIP\.KEY canceled\."\)/);
 });

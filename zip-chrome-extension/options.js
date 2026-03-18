@@ -4,7 +4,7 @@
   const ZIP_KEY_FILE_PREFIX = "ZIPKEY1:";
   const DEFAULT_SCOPE = "openid profile email";
   const DEFAULT_REDIRECT_PATH = "slack-user";
-  const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP.KEY and reset ZIP now? This signs you out, clears SLACKTIVATION, and requires re-importing ZIP.KEY.";
+  const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP.KEY and reset SLACKTIVATION now? Zendesk stays signed in, and Slack actions stay disabled until you load a new ZIP.KEY.";
 
   const els = {
     file: document.getElementById("zipKeyFile"),
@@ -321,18 +321,67 @@
       "redirect_uri",
       "redirectUri"
     ]));
-    const botToken = normalizeSlackToken(readZipKeyValue(payload, [
-      "services.slacktivation.bot_token",
-      "services.slacktivation.botToken",
-      "services.slacktivation.api.bot_token",
-      "services.slacktivation.api.botToken",
-      "slacktivation.bot_token",
-      "slacktivation.botToken",
-      "slacktivation.api.bot_token",
-      "slacktivation.api.botToken",
-      "bot_token",
-      "botToken"
-    ]));
+    const rawApiTokens = [
+      readZipKeyValue(payload, [
+        "services.slacktivation.bot_token",
+        "services.slacktivation.botToken",
+        "services.slacktivation.api.bot_token",
+        "services.slacktivation.api.botToken",
+        "slacktivation.bot_token",
+        "slacktivation.botToken",
+        "slacktivation.api.bot_token",
+        "slacktivation.api.botToken",
+        "api.bot_token",
+        "api.botToken",
+        "bot_token",
+        "botToken"
+      ]),
+      readZipKeyValue(payload, [
+        "services.slacktivation.user_token",
+        "services.slacktivation.userToken",
+        "services.slacktivation.api.user_token",
+        "services.slacktivation.api.userToken",
+        "slacktivation.user_token",
+        "slacktivation.userToken",
+        "slacktivation.api.user_token",
+        "slacktivation.api.userToken",
+        "api.user_token",
+        "api.userToken",
+        "oauth_token",
+        "oauthToken",
+        "userToken"
+      ]),
+      readZipKeyValue(payload, [
+        "services.slacktivation.oauth_token",
+        "services.slacktivation.oauthToken",
+        "services.slacktivation.api.oauth_token",
+        "services.slacktivation.api.oauthToken",
+        "slacktivation.oauth_token",
+        "slacktivation.oauthToken",
+        "slacktivation.api.oauth_token",
+        "slacktivation.api.oauthToken",
+        "api.oauth_token",
+        "api.oauthToken",
+        "oauth_token",
+        "oauthToken"
+      ])
+    ];
+    const botCandidates = [];
+    const userCandidates = [];
+    rawApiTokens.forEach((entry) => {
+      const token = normalizeSlackToken(entry);
+      if (!token) return;
+      if (/^xoxb-/i.test(token) || /^xoxe\.xoxb-/i.test(token)) {
+        if (!botCandidates.includes(token)) botCandidates.push(token);
+        return;
+      }
+      if (!userCandidates.includes(token)) {
+        userCandidates.push(token);
+      }
+    });
+    const botToken = botCandidates[0] || "";
+    const userToken = userCandidates[0] || "";
+    const oauthToken = userCandidates[0] || "";
     const singularityChannelId = normalizeChannelId(readZipKeyValue(payload, [
       "services.slacktivation.singularity_channel_id",
       "services.slacktivation.singularityChannelId",
@@ -415,6 +464,7 @@
       "passTransitionMembersSyncedAt"
     ]));
     const missingFields = [];
+    if (!(userToken || oauthToken)) missingFields.push("user_token");
     if (!singularityChannelId) missingFields.push("singularity_channel_id");
     if (!singularityMention) missingFields.push("singularity_mention");
     if (missingFields.length) {
@@ -430,7 +480,9 @@
         redirectUri
       },
       api: {
-        botToken
+        botToken,
+        userToken,
+        oauthToken
       },
       singularity: {
         channelId: singularityChannelId,
@@ -471,9 +523,9 @@
     try {
       const status = await sendBackgroundRequest("ZIP_CHECK_SECRETS");
       if (status && status.ok) {
-        setStatus("ZIP.KEY is SLACKTIVATED and required Slack bridge config is available.", { ok: true });
+        setStatus("ZIP.KEY is loaded and SLACKTIVATION secrets are available.", { ok: true });
       } else {
-        setStatus("ZIP.KEY is not SLACKTIVATED. Import a ZIP.KEY file to continue.", { error: true });
+        setStatus("ZIP.KEY is not loaded. Import a ZIP.KEY file to continue.", { error: true });
       }
     } catch (err) {
       setStatus("Unable to read ZIP.KEY SLACKTIVATION status: " + (err && err.message ? err.message : "Unknown error"), { error: true });
