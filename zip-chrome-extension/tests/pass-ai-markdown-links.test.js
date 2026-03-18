@@ -30,6 +30,7 @@ function extractFunctionSource(source, functionName) {
 function loadPassAiMarkdownHelpers() {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   const script = [
+    'const ZIP_TOOL_DEEPLINK_LINK_LABEL = "in ZipTool";',
     extractFunctionSource(source, "escapePassAiHtml"),
     extractFunctionSource(source, "normalizePassAiMarkdownRefKey"),
     extractFunctionSource(source, "isPassAiHttpUrl"),
@@ -39,6 +40,8 @@ function loadPassAiMarkdownHelpers() {
     extractFunctionSource(source, "stripPassAiUnderParContextParams"),
     extractFunctionSource(source, "sanitizePassAiUnderParHash"),
     extractFunctionSource(source, "sanitizePassAiMarkdownHref"),
+    extractFunctionSource(source, "isPassAiZipClientShortcutLabel"),
+    extractFunctionSource(source, "buildPassAiZipClientShortcutHtml"),
     extractFunctionSource(source, "buildPassAiMarkdownLinkHtml"),
     extractFunctionSource(source, "replacePassAiMarkdownInlineLinks"),
     extractFunctionSource(source, "renderPassAiInlineMarkdown"),
@@ -61,23 +64,30 @@ function extractHref(html) {
   return match[1].replace(/&amp;/g, "&");
 }
 
-test("renderPassAiInlineMarkdown preserves full UnderPAR-style query links", () => {
+test("renderPassAiInlineMarkdown rewrites in UnderPAR shortcuts back to the ZIP client", () => {
   const { renderPassAiInlineMarkdown } = loadPassAiMarkdownHelpers();
   const url = "https://underpar.example/search?workspace=cmu&query=(status:open%20AND%20service:cmu)";
   const html = renderPassAiInlineMarkdown("[in UnderPAR](" + url + ")", {});
 
-  assert.ok(
-    html.includes('href="https://underpar.example/search?workspace=cmu&amp;query=(status:open%20AND%20service:cmu)"'),
-    "Expected the rendered href to preserve the full query URL."
-  );
-  assert.doesNotMatch(html, /&amp;amp;/);
-  assert.match(html, />in UnderPAR<\/a>/);
+  assert.match(html, /href="#"/);
+  assert.match(html, /data-zip-main-client="true"/);
+  assert.match(html, />in ZipTool<\/a>/);
 });
 
-test("renderPassAiInlineMarkdown strips UnderPAR global context query params", () => {
+test("renderPassAiInlineMarkdown rewrites context-heavy in UnderPAR shortcuts back to the ZIP client", () => {
   const { renderPassAiInlineMarkdown } = loadPassAiMarkdownHelpers();
   const url = "https://underpar.example/search?workspace=cmu&query=(status:open%20AND%20service:cmu)&globalContext=%7B%22env%22%3A%22ENV3%22%7D&environment=ENV3&mediaCompany=MediaCompany4";
   const html = renderPassAiInlineMarkdown("[in UnderPAR](" + url + ")", {});
+
+  assert.match(html, /href="#"/);
+  assert.match(html, /data-zip-main-client="true"/);
+  assert.match(html, />in ZipTool<\/a>/);
+});
+
+test("renderPassAiInlineMarkdown strips UnderPAR global context query params for non-shortcut links", () => {
+  const { renderPassAiInlineMarkdown } = loadPassAiMarkdownHelpers();
+  const url = "https://underpar.example/search?workspace=cmu&query=(status:open%20AND%20service:cmu)&globalContext=%7B%22env%22%3A%22ENV3%22%7D&environment=ENV3&mediaCompany=MediaCompany4";
+  const html = renderPassAiInlineMarkdown("[UnderPAR search](" + url + ")", {});
   const href = extractHref(html);
   const parsed = new URL(href);
 
@@ -90,10 +100,10 @@ test("renderPassAiInlineMarkdown strips UnderPAR global context query params", (
   assert.doesNotMatch(html, /globalContext|environment=|mediaCompany=/);
 });
 
-test("renderPassAiInlineMarkdown strips UnderPAR hash-route global context params", () => {
+test("renderPassAiInlineMarkdown strips UnderPAR hash-route global context params for non-shortcut links", () => {
   const { renderPassAiInlineMarkdown } = loadPassAiMarkdownHelpers();
   const url = "https://underpar.example/#/cm-workspace?workspace=cmu&selectedEnv=ENV4&selectedMediaCompany=MediaCompany3&query=service:cmu";
-  const html = renderPassAiInlineMarkdown("[in UnderPAR](" + url + ")", {});
+  const html = renderPassAiInlineMarkdown("[UnderPAR search](" + url + ")", {});
   const href = extractHref(html);
   const parsed = new URL(href);
   const hashQuery = parsed.hash.split("?")[1] || "";

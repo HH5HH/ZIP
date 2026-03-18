@@ -3215,6 +3215,18 @@ async function focusTabWindow(tab) {
   return true;
 }
 
+async function tryOpenZipSidePanelForTab(tab) {
+  const targetTab = tab && typeof tab === "object" ? tab : null;
+  if (!targetTab || targetTab.id == null || !sidePanelCapabilities.open) return false;
+  try {
+    await setOptionsForTab(targetTab.id, targetTab.url || "");
+    await chrome.sidePanel.open({ tabId: targetTab.id });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function broadcastZipWorkspaceDeeplinkToClient(payload) {
   const messagePayload = payload && typeof payload === "object" ? payload : {};
   return new Promise((resolve) => {
@@ -3339,6 +3351,62 @@ async function deliverZipWorkspaceDeeplinkToOpenClient(encodedPayload, sourceTab
   return true;
 }
 
+async function routeZipWorkspaceDeeplinkToZendeskClient(encodedPayload, sourceTabId) {
+  const payload = String(encodedPayload || "").trim();
+  if (!payload) return false;
+
+  let targetTab = null;
+  const lastOpenedTabId = Number(sidePanelState.lastOpened && sidePanelState.lastOpened.tabId);
+  if (Number.isFinite(lastOpenedTabId) && lastOpenedTabId > 0) {
+    const lastOpenedTab = await getTabById(lastOpenedTabId);
+    if (lastOpenedTab && isZendeskUrl(lastOpenedTab.url || "")) {
+      targetTab = lastOpenedTab;
+    }
+  }
+
+  if (!targetTab) {
+    const zendeskTabs = await queryZendeskTabs();
+    const preferredZendeskTab = pickPreferredZendeskTab(zendeskTabs);
+    if (preferredZendeskTab && preferredZendeskTab.id != null) {
+      targetTab = preferredZendeskTab;
+    }
+  }
+
+  if (!targetTab) {
+    try {
+      const createdZendeskTab = await chrome.tabs.create({ url: ZENDESK_DASHBOARD_URL, active: true });
+      if (createdZendeskTab && createdZendeskTab.id != null) {
+        targetTab = createdZendeskTab;
+      }
+    } catch (_) {}
+  }
+
+  const targetTabId = Number(targetTab && targetTab.id);
+  if (!Number.isFinite(targetTabId) || targetTabId <= 0) return false;
+
+  const queued = await queueZipWorkspaceDeeplinkForClient(payload, targetTabId).catch(() => null);
+  if (!queued) return false;
+
+  await focusTabWindow(targetTab);
+  const accepted = await broadcastZipWorkspaceDeeplinkToClient({
+    encodedPayload: payload,
+    targetTabId
+  });
+  if (accepted) {
+    await clearQueuedZipWorkspaceClientDeeplinkIfMatches(payload, targetTabId).catch(() => {});
+  } else {
+    const consumed = await waitForQueuedZipWorkspaceDeeplinkConsumption(payload, targetTabId, 1800);
+    if (!consumed) {
+      await tryOpenZipSidePanelForTab(targetTab);
+    }
+  }
+
+  if (Number(sourceTabId) !== targetTabId) {
+    await closeZipWorkspaceDeeplinkSourceTab(sourceTabId);
+  }
+  return true;
+}
+
 function maybeRouteZipWorkspaceDeeplinkTab(tabId, url) {
   const numericTabId = Number(tabId);
   if (!Number.isFinite(numericTabId)) return false;
@@ -3349,11 +3417,7 @@ function maybeRouteZipWorkspaceDeeplinkTab(tabId, url) {
     try {
       const deliveredToOpenClient = await deliverZipWorkspaceDeeplinkToOpenClient(parsed.payload, numericTabId);
       if (deliveredToOpenClient) return;
-      const workspaceUrl = buildZipWorkspaceInternalUrl(parsed.payload);
-      if (!workspaceUrl) return;
-      chrome.tabs.update(numericTabId, { url: workspaceUrl }, () => {
-        void chrome.runtime.lastError;
-      });
+      await routeZipWorkspaceDeeplinkToZendeskClient(parsed.payload, numericTabId);
     } finally {
       zipWorkspaceDeeplinkTabIds.delete(numericTabId);
     }

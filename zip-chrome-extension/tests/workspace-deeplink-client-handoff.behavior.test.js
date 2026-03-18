@@ -55,6 +55,7 @@ test("hidden live client still accepts runtime workspace deeplink handoff", () =
     'function setStatus() {}',
     'function getTicketTableContextStatusMessage() { return "context"; }',
     'function formatErrorMessage(err, fallback) { return err && err.message ? err.message : fallback; }',
+    extractFunctionSource(source, "getCurrentZipWorkspaceClientTabId"),
     extractFunctionSource(source, "handleRuntimeWorkspaceDeeplinkMessage"),
     "module.exports = { handleRuntimeWorkspaceDeeplinkMessage, state };"
   ].join("\n\n");
@@ -65,7 +66,8 @@ test("hidden live client still accepts runtime workspace deeplink handoff", () =
       state: {
         pendingWorkspaceDeeplink: null,
         user: null,
-        zendeskTabId: 42
+        sidePanelTargetTabId: 42,
+        zendeskTabId: 99
       },
       parsedPayload: {
         version: 1,
@@ -114,6 +116,7 @@ test("client can consume a queued targeted workspace deeplink from storage", asy
     'const removeChromeStorageLocal = globalThis.__seed.removeChromeStorageLocal;',
     'const handleRuntimeWorkspaceDeeplinkMessage = globalThis.__seed.handleRuntimeWorkspaceDeeplinkMessage;',
     extractFunctionSource(source, "normalizeQueuedZipWorkspaceClientDeeplink"),
+    extractFunctionSource(source, "getCurrentZipWorkspaceClientTabId"),
     extractFunctionSource(source, "consumeStoredZipWorkspaceDeeplinkForCurrentClient"),
     "module.exports = { consumeStoredZipWorkspaceDeeplinkForCurrentClient };"
   ].join("\n\n");
@@ -126,7 +129,8 @@ test("client can consume a queued targeted workspace deeplink from storage", asy
     exports: {},
     __seed: {
       state: {
-        zendeskTabId: 42
+        sidePanelTargetTabId: 42,
+        zendeskTabId: 99
       },
       getChromeStorageLocal: async () => ({
         "zip.pending.workspace.client.deeplink.v1": {
@@ -160,14 +164,19 @@ test("client can consume a queued targeted workspace deeplink from storage", asy
   ]);
 });
 
-test("background queues targeted client handoff before falling back to workspace mode", () => {
+test("background reroutes official deeplinks back into the Zendesk-hosted ZIP client", () => {
   const source = fs.readFileSync(BACKGROUND_JS_PATH, "utf8");
+  const maybeRouteSource = extractFunctionSource(source, "maybeRouteZipWorkspaceDeeplinkTab");
 
   assert.match(source, /const ZIP_PENDING_WORKSPACE_CLIENT_DEEPLINK_STORAGE_KEY = "zip\.pending\.workspace\.client\.deeplink\.v1";/);
   assert.match(source, /async function queueZipWorkspaceDeeplinkForClient\(encodedPayload,\s*targetTabId\)/);
   assert.match(source, /async function waitForQueuedZipWorkspaceDeeplinkConsumption\(encodedPayload,\s*targetTabId,\s*timeoutMs\)/);
+  assert.match(source, /async function routeZipWorkspaceDeeplinkToZendeskClient\(encodedPayload,\s*sourceTabId\)/);
   assert.match(source, /const queued = await queueZipWorkspaceDeeplinkForClient\(payload,\s*targetTabId\)\.catch\(\(\) => null\);/);
-  assert.match(source, /const consumed = await waitForQueuedZipWorkspaceDeeplinkConsumption\(payload,\s*targetTabId,\s*1800\);/);
+  assert.match(source, /await tryOpenZipSidePanelForTab\(targetTab\);/);
+  assert.match(maybeRouteSource, /const deliveredToOpenClient = await deliverZipWorkspaceDeeplinkToOpenClient\(parsed\.payload,\s*numericTabId\);/);
+  assert.match(maybeRouteSource, /await routeZipWorkspaceDeeplinkToZendeskClient\(parsed\.payload,\s*numericTabId\);/);
+  assert.doesNotMatch(maybeRouteSource, /workspaceUrl/);
 });
 
 test("background accepts official ZipTool deeplink origin even when runtime redirect origin differs", () => {

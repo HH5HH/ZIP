@@ -112,7 +112,7 @@ test("background can fall back to the live Slack tab session for PASS-TRANSITION
   assert.match(source, /callSlackApiProxy\(tabId,\s*"\/api\/users\.info"/);
 });
 
-test("workspace deeplinks route through the redirect URL into ZIP workspace mode", () => {
+test("workspace deeplinks route through the redirect URL back into the Zendesk-hosted ZIP client", () => {
   const background = fs.readFileSync(BACKGROUND_JS_PATH, "utf8");
   const sidepanel = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
 
@@ -120,14 +120,18 @@ test("workspace deeplinks route through the redirect URL into ZIP workspace mode
   assert.match(background, /const ZIP_APPLY_WORKSPACE_DEEPLINK_MESSAGE_TYPE = "ZIP_APPLY_WORKSPACE_DEEPLINK";/);
   assert.match(background, /function parseZipWorkspaceDeeplinkUrl\(value\)/);
   assert.match(background, /async function deliverZipWorkspaceDeeplinkToOpenClient\(encodedPayload,\s*sourceTabId\)/);
+  assert.match(background, /async function routeZipWorkspaceDeeplinkToZendeskClient\(encodedPayload,\s*sourceTabId\)/);
   assert.match(background, /chrome\.runtime\.sendMessage\(\{\s*type:\s*ZIP_APPLY_WORKSPACE_DEEPLINK_MESSAGE_TYPE,/);
   assert.match(background, /await closeZipWorkspaceDeeplinkSourceTab\(sourceTabId\);/);
   assert.match(background, /function maybeRouteZipWorkspaceDeeplinkTab\(tabId,\s*url\)/);
   assert.match(background, /chrome\.tabs\.onUpdated\.addListener\(\(tabId,\s*_info,\s*tab\) => \{[\s\S]*if \(maybeRouteZipWorkspaceDeeplinkTab\(tabId,\s*tab\.url\)\) return;/);
+  assert.match(background, /await routeZipWorkspaceDeeplinkToZendeskClient\(parsed\.payload,\s*numericTabId\);/);
+  assert.doesNotMatch(background, /chrome\.tabs\.update\(numericTabId,\s*\{\s*url:\s*workspaceUrl\s*\}/);
 
   assert.match(sidepanel, /function loadSingleTicketById\(ticketId\)/);
   assert.match(sidepanel, /function applyPendingWorkspaceDeeplink\(\)/);
   assert.match(sidepanel, /const ZIP_APPLY_WORKSPACE_DEEPLINK_MESSAGE_TYPE = "ZIP_APPLY_WORKSPACE_DEEPLINK";/);
+  assert.match(sidepanel, /function getCurrentZipWorkspaceClientTabId\(\)/);
   assert.match(sidepanel, /function handleRuntimeWorkspaceDeeplinkMessage\(messagePayload\)/);
   assert.match(sidepanel, /if \(msg\.type === ZIP_APPLY_WORKSPACE_DEEPLINK_MESSAGE_TYPE\) \{[\s\S]*sendResponse\(\{ ok: true, accepted \}\);/);
   assert.match(sidepanel, /state\.pendingWorkspaceDeeplink = readZipWorkspaceDeeplinkFromLocation\(\);/);

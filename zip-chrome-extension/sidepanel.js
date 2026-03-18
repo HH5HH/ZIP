@@ -142,6 +142,7 @@
     ticketTableLoading: false,
     showZdApiContainers: false,
     sidePanelLayout: "unknown",
+    sidePanelTargetTabId: null,
     zendeskTabId: null,
     slackTabId: null,
     slackWorkerTabId: null,
@@ -1533,7 +1534,9 @@
 
   function applySidePanelContext(context) {
     const side = context && (context.layout === "left" || context.layout === "right") ? context.layout : "unknown";
+    const lastOpenedTabId = Number(context && context.lastOpened && context.lastOpened.tabId);
     state.sidePanelLayout = side;
+    state.sidePanelTargetTabId = Number.isFinite(lastOpenedTabId) && lastOpenedTabId > 0 ? lastOpenedTabId : null;
     document.body.dataset.sidepanelSide = side;
     document.body.dataset.sidepanelLayoutSupported = context && context.capabilities && context.capabilities.getLayout ? "1" : "0";
     syncLoginCtaDirectionalCopy(side);
@@ -7722,13 +7725,25 @@
     return true;
   }
 
+  function getCurrentZipWorkspaceClientTabId() {
+    const currentSidePanelTabId = Number(state.sidePanelTargetTabId);
+    if (Number.isFinite(currentSidePanelTabId) && currentSidePanelTabId > 0) {
+      return currentSidePanelTabId;
+    }
+    const currentZendeskTabId = Number(state.zendeskTabId);
+    if (Number.isFinite(currentZendeskTabId) && currentZendeskTabId > 0) {
+      return currentZendeskTabId;
+    }
+    return null;
+  }
+
   async function consumeStoredZipWorkspaceDeeplinkForCurrentClient() {
     if (IS_WORKSPACE_MODE) return false;
     const stored = await getChromeStorageLocal([ZIP_PENDING_WORKSPACE_CLIENT_DEEPLINK_STORAGE_KEY]).catch(() => ({}));
     const queued = normalizeQueuedZipWorkspaceClientDeeplink(stored && stored[ZIP_PENDING_WORKSPACE_CLIENT_DEEPLINK_STORAGE_KEY]);
     if (!queued) return false;
-    const currentZendeskTabId = Number(state.zendeskTabId);
-    if (Number.isFinite(currentZendeskTabId) && currentZendeskTabId > 0 && queued.targetTabId !== currentZendeskTabId) {
+    const currentClientTabId = getCurrentZipWorkspaceClientTabId();
+    if (Number.isFinite(currentClientTabId) && currentClientTabId > 0 && queued.targetTabId !== currentClientTabId) {
       return false;
     }
     const accepted = handleRuntimeWorkspaceDeeplinkMessage({
@@ -7748,9 +7763,9 @@
     const parsedPayload = parseZipWorkspaceDeeplinkPayload(encodedPayload);
     if (!parsedPayload) return false;
     const targetTabId = Number(payloadSource.targetTabId);
-    if (Number.isFinite(targetTabId) && targetTabId > 0 && state.zendeskTabId != null) {
-      const currentZendeskTabId = Number(state.zendeskTabId);
-      if (Number.isFinite(currentZendeskTabId) && currentZendeskTabId > 0 && currentZendeskTabId !== targetTabId) {
+    const currentClientTabId = getCurrentZipWorkspaceClientTabId();
+    if (Number.isFinite(targetTabId) && targetTabId > 0 && Number.isFinite(currentClientTabId) && currentClientTabId > 0) {
+      if (currentClientTabId !== targetTabId) {
         return false;
       }
     }
@@ -10097,9 +10112,20 @@
     }
   }
 
+  function isPassAiZipClientShortcutLabel(value) {
+    return String(value == null ? "" : value).trim().toLowerCase() === "in underpar";
+  }
+
+  function buildPassAiZipClientShortcutHtml() {
+    return '<a href="#" data-zip-main-client="true">' + escapePassAiHtml(ZIP_TOOL_DEEPLINK_LINK_LABEL) + "</a>";
+  }
+
   function buildPassAiMarkdownLinkHtml(label, url) {
     const href = sanitizePassAiMarkdownHref(decodePassAiHtmlEntities(url).trim());
     const text = decodePassAiHtmlEntities(label || href);
+    if (isPassAiZipClientShortcutLabel(text)) {
+      return buildPassAiZipClientShortcutHtml();
+    }
     if (!isPassAiHttpUrl(href)) return escapePassAiHtml(text || href);
     const safeHref = escapePassAiHtml(href);
     const safeLabel = escapePassAiHtml(text || href);
@@ -13506,6 +13532,16 @@
         const url = value;
         openExternalUrl(url);
         target.value = "";
+      });
+    }
+    if (els.passAiDynamicReplyHost) {
+      els.passAiDynamicReplyHost.addEventListener("click", (event) => {
+        const shortcutLink = event && event.target && event.target.closest
+          ? event.target.closest("a[data-zip-main-client]")
+          : null;
+        if (!shortcutLink) return;
+        event.preventDefault();
+        closePassAiPanel();
       });
     }
     if (els.loginBtn) els.loginBtn.addEventListener("click", (e) => { e.preventDefault(); startLogin(); });
