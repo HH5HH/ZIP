@@ -53,8 +53,8 @@
   const SLACKTIVATED_PENDING_ICON_URL = "assets/brand/icons/icon128.png";
   const SLACKTIVATED_LOGIN_TOOLTIP = "ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/";
   const SLACK_IT_TO_ME_CACHED_PASS_TRANSITION_TOOLTIP = "Click sends to you. Shift+Click uses the cached PASS-TRANSITION roster.";
-  const SLACK_IT_TO_ME_REHYDRATE_TOOLTIP = "Click sends to you. Re-Hydrate ZIP to load pass-transition teammates.";
-  const PASS_TRANSITION_CACHE_MISSING_MESSAGE = "No PASS-TRANSITION roster is cached yet. Re-Hydrate ZIP to load members.";
+  const SLACK_IT_TO_ME_REHYDRATE_TOOLTIP = "Click sends to you. RE-SLACKTIVATE to load pass-transition teammates.";
+  const PASS_TRANSITION_CACHE_MISSING_MESSAGE = "No PASS-TRANSITION roster is cached yet. RE-SLACKTIVATE to load members.";
   const BLONDIE_BUTTON_STATES = new Set(["inactive", "ready", "active", "ack"]);
   const BLONDIE_BUTTON_ACK_RESET_MS = 2000;
   const BLONDIE_BUTTON_ICON_URLS = Object.freeze({
@@ -64,8 +64,6 @@
     ack: "assets/blondie-button-zipzap200.png"
   });
   const PASS_TRANSITION_SECTION_DIVIDER = "----------------------------------------";
-  const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP.KEY and reset SLACKTIVATION now? Zendesk stays signed in, and Slack actions stay disabled until you load a new ZIP.KEY.";
-  const ZIP_REHYDRATE_TOOLTIP = "Refresh the cached PASS-TRANSITION roster from Slack without clearing ZIP.KEY.";
   const PASS_AI_POLL_INTERVAL_MS = 1500;
   const PASS_AI_POLL_MAX_ATTEMPTS = 48;
   const PASS_AI_INACTIVITY_FINAL_MS = 6000;
@@ -816,12 +814,6 @@
     loginScreen: $("zipLoginScreen"),
     appDescription: $("zipAppDescription"),
     appScreen: $("zipAppScreen"),
-    configGate: $("zipConfigGate"),
-    configGateMessage: $("zipConfigGateMessage"),
-    configGateMeta: $("zipConfigGateMeta"),
-    configDropZone: $("zipConfigDropZone"),
-    configDropAction: $("zipConfigDropAction"),
-    configFileInput: $("zipConfigFileInput"),
     loginHeroToolBox: $("zipLoginHeroToolBox"),
     loginBtn: $("zipLoginBtn"),
     loginCtaText: $("zipLoginCtaText"),
@@ -841,9 +833,7 @@
     contextMenuToggleSide: $("zipContextMenuToggleSide"),
     contextMenuAskTeam: $("zipContextMenuAskTeam"),
     contextMenuSlackMe: $("zipContextMenuSlackMe"),
-    contextMenuClearKey: $("zipContextMenuClearKey"),
     contextMenuGetLatest: $("zipContextMenuGetLatest"),
-    contextMenuRehydrateZip: $("zipContextMenuRehydrateZip"),
     contextMenuAppearanceRow: $("zipContextMenuAppearanceRow"),
     contextMenuThemeStopToggle: $("zipContextMenuThemeStopToggle"),
     contextMenuThemeColorToggle: $("zipContextMenuThemeColorToggle"),
@@ -1479,7 +1469,6 @@
   function syncContextMenuAuthVisibility() {
     const loggedIn = !!state.user;
     const slackReady = isPassAiSlacktivated();
-    const slackConfigReady = !!state.zipConfigReady;
     if (els.contextMenuSlacktivateSection) {
       els.contextMenuSlacktivateSection.classList.toggle("hidden", !loggedIn);
       els.contextMenuSlacktivateSection.setAttribute("aria-hidden", loggedIn ? "false" : "true");
@@ -1494,16 +1483,6 @@
       els.contextMenuSlackMe.disabled = !(loggedIn && slackReady && !state.slackMeNoteLoading);
       els.contextMenuSlackMe.title = slackReady ? "@SLACK ME" : SLACKTIVATED_LOGIN_TOOLTIP;
       els.contextMenuSlackMe.setAttribute("aria-hidden", loggedIn ? "false" : "true");
-    }
-    if (els.contextMenuRehydrateZip) {
-      els.contextMenuRehydrateZip.classList.add("hidden");
-      els.contextMenuRehydrateZip.disabled = true;
-      els.contextMenuRehydrateZip.setAttribute("aria-hidden", "true");
-    }
-    if (els.contextMenuClearKey) {
-      els.contextMenuClearKey.classList.toggle("hidden", !loggedIn);
-      els.contextMenuClearKey.disabled = !loggedIn || (!slackConfigReady && !zipSlacktivationActionBusy);
-      els.contextMenuClearKey.setAttribute("aria-hidden", loggedIn ? "false" : "true");
     }
   }
 
@@ -2702,7 +2681,7 @@
           : (
             state.slackMePassTransitionLoading
               ? "Loading PASS-TRANSITION member..."
-              : "Re-Hydrate ZIP to load a PASS-TRANSITION member"
+              : "RE-SLACKTIVATE to load a PASS-TRANSITION member"
           )
       )
       : (displayName ? (displayName + " (you)") : "you");
@@ -3435,67 +3414,9 @@
       });
     });
   }
-
-  async function rehydrateZipRuntime() {
-    await refreshZipSecretConfigFromStorage().catch(() => {});
-    const gateStatus = applyZipConfigAfterStorageRefresh({ reportStatus: false });
-    if (!gateStatus.ready) {
-      throw new Error("ZIP.KEY must be loaded before ZIP can re-hydrate.");
-    }
-
-    clearSlackItToMeAckReset();
-    state.slackItToMeButtonState = "";
-    updateTicketActionButtons();
-    syncContextMenuAuthVisibility();
-    syncSlackMeDialogUi();
-
-    setStatus("Re-hydrating PASS-TRANSITION roster from Slack…", false);
-
-    let recipientCount = 0;
-    const passTransition = state.zipSecretConfig && state.zipSecretConfig.passTransition
-      ? state.zipSecretConfig.passTransition
-      : null;
-    const hasPassTransitionChannel = !!normalizePassAiSlackChannelId(passTransition && passTransition.channelId || "");
-    if (hasPassTransitionChannel) {
-      const members = await sendBackgroundRequest("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", {
-        force: true,
-        allowCreateTab: true
-      });
-      if (!members || members.ok !== true) {
-        throw new Error(
-          normalizePassAiCommentBody(members && (members.error || members.message))
-            || "Unable to refresh PASS-TRANSITION members."
-        );
-      }
-      await refreshZipSecretConfigFromStorage().catch(() => {});
-      applyZipConfigAfterStorageRefresh({ reportStatus: false });
-      const recipients = await refreshPassTransitionRecipients({ force: true });
-      recipientCount = Array.isArray(recipients) ? recipients.length : getSlackMePassTransitionRecipients().length;
-      syncSlackMeDialogUi();
-    }
-
-    const summary = ["ZIP re-hydrated."];
-    if (hasPassTransitionChannel) {
-      summary.push("PASS-TRANSITION members: " + recipientCount + ".");
-    }
-    setStatus(summary.join(" "), false);
-    return {
-      ok: true,
-      recipientCount
-    };
-  }
-
   async function runContextMenuAction(action) {
     hideContextMenu();
-    if (action === "clearZipKey" && !requestZipKeyClearConfirmation()) {
-      setStatus("Clear ZIP.KEY canceled.", false);
-      return;
-    }
     try {
-      if (action === "rehydrateZip") {
-        await rehydrateZipRuntime();
-        return;
-      }
       const response = await sendContextMenuAction(action);
       if (action === "toggleSide") {
         await loadSidePanelContext();
@@ -3549,19 +3470,6 @@
           return;
         }
         setStatus("Starting latest ZIP download and opening chrome://extensions...", false);
-        return;
-      }
-      if (action === "clearZipKey") {
-        if (response && response.ok === false) {
-          setStatus("Clear ZIP.KEY failed: " + (response.error || "Unknown error"), true);
-          return;
-        }
-        await refreshZipSecretConfigFromStorage().catch(() => {});
-        applyZipConfigAfterStorageRefresh({ reportStatus: false });
-        setPassAiSlackAuthState({ ready: false, clearPersisted: true, error: "" });
-        updateTicketActionButtons();
-        renderContextMenuSlacktivation();
-        setStatus("ZIP.KEY cleared. Zendesk is still live; load a new ZIP.KEY from the avatar menu to re-SLACKTIVATE.", false);
         return;
       }
     } catch (err) {
@@ -5935,14 +5843,7 @@
         return;
       }
 
-      const ready = isPassAiSlacktivated() || await refreshSlacktivatedState({
-        force: true,
-        silent: true,
-        allowOpenIdSilentProbe: true,
-        allowSlackTabBootstrap: true,
-        allowSlackTabBootstrapCreate: false
-      }).catch(() => false);
-      if (!ready || !isPassAiSlacktivated()) {
+      if (!isPassAiSlacktivated()) {
         setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
         updateTicketActionButtons();
         return;
@@ -7318,13 +7219,6 @@
     return text;
   }
 
-  function requestZipKeyClearConfirmation() {
-    if (typeof window === "undefined" || typeof window.confirm !== "function") {
-      return true;
-    }
-    return window.confirm(ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE);
-  }
-
   function normalizePassAiSlackTeamId(value) {
     const teamId = String(value || "").trim().toUpperCase();
     return /^[TE][A-Z0-9]{8,}$/.test(teamId) ? teamId : "";
@@ -8520,12 +8414,12 @@
   function getZipConfigGateMessage(status) {
     const gateStatus = status && typeof status === "object" ? status : getZipConfigGateStatus();
     if (gateStatus.reason === "missing_fields") {
-      return "ZIP.KEY is missing required SLACKTIVATION settings. Please drop an updated ZIP.KEY to SLACKTIVATE ZIP.";
+      return "ZIP.KEY is missing required SLACKTIVATION settings. Load an updated ZIP.KEY from the avatar menu.";
     }
     if (gateStatus.ready) {
-      return "ZIP.KEY is loaded. Open the avatar menu to re-SLACKTIVATE ZIP actions.";
+      return "ZIP.KEY is loaded. Use the avatar menu to RE-SLACKTIVATE ZIP actions.";
     }
-    return "Please drop ZIP.KEY to SLACKTIVATE ZIP.";
+    return "ZipTool starts without ZIP.KEY. Load ZIP.KEY from the avatar menu when you need Slack actions.";
   }
 
   function getZipConfigGateMetaText(status) {
@@ -8550,22 +8444,9 @@
     state.zipConfigMissingFields = Array.isArray(gateStatus.missingFields)
       ? gateStatus.missingFields.slice()
       : [];
-    document.body.classList.remove("zip-config-locked");
     if (els.loginBtn) {
       els.loginBtn.disabled = false;
       els.loginBtn.classList.remove("hidden");
-    }
-    if (els.configGate) {
-      els.configGate.classList.add("hidden");
-    }
-    if (els.configGateMessage) {
-      els.configGateMessage.textContent = getZipConfigGateMessage(gateStatus);
-    }
-    if (els.configGateMeta) {
-      const metaText = getZipConfigGateMetaText(gateStatus);
-      els.configGateMeta.textContent = metaText;
-      els.configGateMeta.classList.toggle("hidden", !metaText);
-      els.configGateMeta.classList.toggle("is-error", !!metaText && !gateStatus.ready && gateStatus.reason !== "missing_meta");
     }
     renderContextMenuSlacktivation();
     syncContextMenuAuthVisibility();
@@ -8590,15 +8471,6 @@
   function setZipConfigDropBusy(on) {
     const busy = !!on;
     zipSlacktivationActionBusy = busy;
-    if (els.configDropZone) {
-      els.configDropZone.disabled = busy;
-      els.configDropZone.classList.toggle("is-processing", busy);
-    }
-    if (els.configDropAction) {
-      els.configDropAction.textContent = busy
-        ? "SLACKTIVATING ZIP.KEY…"
-        : "DROP ZIP.KEY TO SLACKTIVATE";
-    }
     renderContextMenuSlacktivation();
     syncContextMenuAuthVisibility();
   }
@@ -8660,7 +8532,7 @@
     const metaText = getZipConfigGateMetaText(gateStatus);
     return (
       "<div class=\"zip-context-menu-slacktivate-state\" data-state=\"pending\">"
-      + "<section class=\"zip-config-gate\" aria-live=\"polite\">"
+      + "<section class=\"zip-config-gate underpar-slacktivate-gate\" aria-live=\"polite\">"
       + "<h2 class=\"zip-config-gate-title\">Please drop ZIP.KEY to SLACKTIVATE</h2>"
       + "<p class=\"zip-config-gate-message\">Drag and drop your ZIP.KEY file onto the target below.</p>"
       + "<button"
@@ -8686,58 +8558,33 @@
     const actionBusy = zipSlacktivationActionBusy === true;
     const disabled = actionBusy ? "disabled" : "";
     const importedAt = String(state.zipSecretConfig && state.zipSecretConfig.meta && state.zipSecretConfig.meta.importedAt || "").trim();
-    const teamId = normalizePassAiSlackTeamId(state.passAiSlackTeamId || "");
-    const directChannelId = normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || "");
-    const verifiedAt = slackReady
-      ? formatDateTime(new Date().toISOString())
-      : "";
     const lastError = normalizePassAiCommentBody(state.passAiSlackAuthError || "");
-    const eyebrow = slackReady ? "SLACKTIVATED" : "ZIP.KEY LOADED";
-    const title = slackReady
-      ? getSlacktivatedDisplayName()
-      : "Stored Slack credentials waiting for verification";
-    const meta = slackReady
+    const title = slackReady ? "ZIP is SLACKTIVATED." : "ZIP.KEY is loaded.";
+    const message = slackReady
       ? (
-        "Slack identity verified against "
-        + PASS_AI_SLACK_WORKSPACE_ORIGIN
-        + "."
+        normalizePassAiSlackStatusMessage(state.passAiSlackStatusMessage || "")
+        || ("Use RE-SLACKTIVATE to refresh the stored Slack identity against " + PASS_AI_SLACK_WORKSPACE_ORIGIN + ".")
       )
       : "Use RE-SLACKTIVATE to validate the stored Slack identity without slowing startup.";
-    const statusText = slackReady
-      ? (normalizePassAiSlackStatusMessage(state.passAiSlackStatusMessage || "", 160) || "No custom Slack profile status set.")
-      : "Zendesk is live. Slack-only actions stay disabled until the stored ZIP.KEY credentials are verified.";
     const rosterMarkup = buildContextMenuSlacktivateRosterMarkup();
     return (
       "<div class=\"zip-context-menu-slacktivate-state\" data-state=\"" + (slackReady ? "ready" : "loaded") + "\">"
-      + "<article class=\"zip-context-menu-slacktivate-card\">"
-      + "<div class=\"zip-context-menu-slacktivate-head\">"
-      + "<div>"
-      + "<p class=\"zip-context-menu-slacktivate-eyebrow\">" + escapeHtml(eyebrow) + "</p>"
-      + "<h3 class=\"zip-context-menu-slacktivate-title\">" + escapeHtml(title) + "</h3>"
-      + "<p class=\"zip-context-menu-slacktivate-meta\">" + escapeHtml(meta) + "</p>"
-      + "</div>"
+      + "<section class=\"zip-config-gate underpar-slacktivate-gate\" aria-live=\"polite\">"
+      + "<h2 class=\"zip-config-gate-title\">" + escapeHtml(title) + "</h2>"
+      + "<p class=\"zip-config-gate-message\">" + escapeHtml(message) + "</p>"
       + "<div class=\"zip-context-menu-slacktivate-actions\">"
       + "<button type=\"button\" class=\"zip-context-menu-slacktivate-action-btn\" data-slacktivate-action=\"refresh\" " + disabled + ">RE-SLACKTIVATE</button>"
       + "<button type=\"button\" class=\"zip-context-menu-slacktivate-action-btn\" data-slacktivate-trigger=\"file\" " + disabled + ">LOAD NEW ZIP.KEY</button>"
       + "</div>"
-      + "</div>"
-      + "<p class=\"zip-context-menu-slacktivate-statusline\"><strong>"
-      + escapeHtml(slackReady ? (state.passAiSlackStatusIcon || "Status") : "Startup")
-      + "</strong> "
-      + escapeHtml(statusText)
+      + "<p class=\"zip-config-gate-meta\">"
+      + escapeHtml(importedAt ? ("Key imported " + formatDateTime(importedAt) + ".") : "Stored Slacktivation config ready.")
       + "</p>"
-      + "<dl class=\"zip-context-menu-slacktivate-details\">"
-      + "<div class=\"zip-context-menu-slacktivate-detail\"><dt>Team</dt><dd>" + escapeHtml(teamId || "Pending") + "</dd></div>"
-      + "<div class=\"zip-context-menu-slacktivate-detail\"><dt>Direct Channel</dt><dd>" + escapeHtml(directChannelId || "Pending") + "</dd></div>"
-      + "<div class=\"zip-context-menu-slacktivate-detail\"><dt>Key Imported</dt><dd>" + escapeHtml(importedAt ? formatDateTime(importedAt) : "Unknown") + "</dd></div>"
-      + "<div class=\"zip-context-menu-slacktivate-detail\"><dt>Verified</dt><dd>" + escapeHtml(slackReady ? verifiedAt : "Pending") + "</dd></div>"
-      + "</dl>"
+      + "</section>"
       + rosterMarkup
       + (lastError
         ? ("<p class=\"zip-context-menu-slacktivate-inline-status\" data-tone=\"error\">" + escapeHtml(lastError) + "</p>")
         : "")
-      + "<p class=\"zip-context-menu-slacktivate-footnote\">ZipTool now starts without ZIP.KEY hydration. Use this menu to load or refresh SLACKTIVATION only when you need Slack actions.</p>"
-      + "</article>"
+      + "<p class=\"zip-context-menu-slacktivate-footnote\">Shift+Click Blondie Button uses this cached PASS-TRANSITION roster. ZipTool starts without ZIP.KEY hydration.</p>"
       + "</div>"
     );
   }
@@ -8772,19 +8619,73 @@
   async function handleContextMenuSlacktivateFile(file) {
     const selectedFile = file && typeof file === "object" ? file : null;
     if (!selectedFile) return;
-    await importZipKeyFromFile(selectedFile);
+    await performContextMenuSlacktivateAction(
+      "import",
+      { file: selectedFile },
+      {
+        start: "SLACKTIVATING ZIP.KEY for ZipTool...",
+        error: "Unable to Slacktivate ZipTool from the selected ZIP.KEY."
+      }
+    );
   }
 
   async function handleContextMenuSlacktivateRefreshButtonClick() {
-    if (zipSlacktivationActionBusy) return;
+    await performContextMenuSlacktivateAction(
+      "refresh",
+      { interactive: true },
+      {
+        start: "Refreshing stored Slacktivation credentials...",
+        error: "Unable to refresh stored Slacktivation credentials."
+      }
+    );
+  }
+
+  async function refreshContextMenuSlacktivationState() {
     const gateStatus = enforceZipConfigGate({ reportStatus: false });
     if (!gateStatus.ready) {
-      setStatus(getZipConfigGateMessage(gateStatus), true);
-      return;
+      throw new Error(getZipConfigGateMessage(gateStatus));
     }
-    setZipConfigDropBusy(true);
-    try {
-      setStatus("Refreshing stored Slacktivation credentials...", false);
+    const ready = await refreshSlacktivatedState({
+      force: true,
+      silent: true,
+      allowOpenIdSilentProbe: false,
+      allowSlackTabBootstrap: false,
+      allowSlackTabBootstrapCreate: false
+    }).catch(() => false);
+    await refreshZipSecretConfigFromStorage().catch(() => {});
+    applyZipConfigAfterStorageRefresh({ reportStatus: false });
+    if (!ready || !isPassAiSlacktivated()) {
+      throw new Error(
+        normalizePassAiCommentBody(state.passAiSlackAuthError || "")
+        || "Unable to re-SLACKTIVATE ZIP from the stored ZIP.KEY."
+      );
+    }
+    await maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
+    await refreshZipSecretConfigFromStorage().catch(() => {});
+    applyZipConfigAfterStorageRefresh({ reportStatus: false });
+    const rosterCount = getSlackMePassTransitionRecipients().length || Math.max(
+      0,
+      Number(state.zipSecretConfig && state.zipSecretConfig.passTransition && state.zipSecretConfig.passTransition.recipientCount || 0)
+    );
+    return {
+      statusMessage: "ZIP Slacktivation refreshed."
+        + (rosterCount ? " PASS-TRANSITION members: " + rosterCount + "." : "")
+    };
+  }
+
+  async function importZipKeyFromFile(file) {
+    if (!file || typeof file.text !== "function") {
+      throw new Error("No ZIP.KEY file was provided.");
+    }
+    const fileText = await file.text();
+    const parsed = parseZipKeyPayload(fileText);
+    const normalized = normalizeZipKeyConfig(parsed);
+    const response = await persistZipKeyConfig(normalized);
+    const gateStatus = enforceZipConfigGate({ reportStatus: false });
+    if (!gateStatus.ready) {
+      throw new Error("ZIP.KEY imported, but required SLACKTIVATION settings are still incomplete.");
+    }
+    if (state.user) {
       const ready = await refreshSlacktivatedState({
         force: true,
         silent: true,
@@ -8797,85 +8698,56 @@
       if (!ready || !isPassAiSlacktivated()) {
         throw new Error(
           normalizePassAiCommentBody(state.passAiSlackAuthError || "")
-          || "Unable to re-SLACKTIVATE ZIP from the stored ZIP.KEY."
+          || "ZIP.KEY loaded, but the stored Slack credentials could not be verified."
         );
       }
       await maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
-      await refreshZipSecretConfigFromStorage().catch(() => {});
-      applyZipConfigAfterStorageRefresh({ reportStatus: false });
       const rosterCount = getSlackMePassTransitionRecipients().length || Math.max(
         0,
-        Number(state.zipSecretConfig && state.zipSecretConfig.passTransition && state.zipSecretConfig.passTransition.recipientCount || 0)
+        Number(response && response.passTransition && response.passTransition.recipientCount || 0)
       );
-      setStatus(
-        "ZIP is SLACKTIVATED."
-        + (rosterCount ? " PASS-TRANSITION members: " + rosterCount + "." : ""),
-        false
-      );
-    } catch (err) {
-      const message = normalizePassAiCommentBody(err && err.message) || "Unable to re-SLACKTIVATE ZIP.";
-      setStatus(message, true);
-    } finally {
-      setZipConfigDropBusy(false);
-      if (els.contextMenuSlacktivateInput) els.contextMenuSlacktivateInput.value = "";
+      return {
+        statusMessage: "ZIP is SLACKTIVATED."
+          + (rosterCount ? " PASS-TRANSITION members: " + rosterCount + "." : "")
+      };
     }
+    return {
+      statusMessage: "ZIP.KEY loaded. Start Zendesk, then RE-SLACKTIVATE from the avatar menu when you need Slack actions."
+    };
   }
 
-  async function importZipKeyFromFile(file) {
-    if (!file || typeof file.text !== "function") {
-      throw new Error("No ZIP.KEY file was provided.");
-    }
+  async function performContextMenuSlacktivateAction(action, detail, messages) {
+    const normalizedAction = String(action || "").trim().toLowerCase();
+    if (!normalizedAction || zipSlacktivationActionBusy) return null;
+    const payload = detail && typeof detail === "object" ? detail : {};
+    const statusMessages = messages && typeof messages === "object" ? messages : {};
+    const startMessage = String(statusMessages.start || "").trim();
+    const fallbackError = String(statusMessages.error || "Unable to complete ZipTool Slacktivation.").trim();
+
     setZipConfigDropBusy(true);
     try {
-      const fileText = await file.text();
-      const parsed = parseZipKeyPayload(fileText);
-      const normalized = normalizeZipKeyConfig(parsed);
-      const response = await persistZipKeyConfig(normalized);
-      const gateStatus = enforceZipConfigGate({ reportStatus: false });
-      if (!gateStatus.ready) {
-        throw new Error("ZIP.KEY imported, but required SLACKTIVATION settings are still incomplete.");
+      if (startMessage) {
+        setStatus(startMessage, false);
       }
-      if (state.user) {
-        const ready = await refreshSlacktivatedState({
-          force: true,
-          silent: true,
-          allowOpenIdSilentProbe: false,
-          allowSlackTabBootstrap: false,
-          allowSlackTabBootstrapCreate: false
-        }).catch(() => false);
-        await refreshZipSecretConfigFromStorage().catch(() => {});
-        applyZipConfigAfterStorageRefresh({ reportStatus: false });
-        if (!ready || !isPassAiSlacktivated()) {
-          throw new Error(
-            normalizePassAiCommentBody(state.passAiSlackAuthError || "")
-            || "ZIP.KEY loaded, but the stored Slack credentials could not be verified."
-          );
-        }
-        await maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
-        const rosterCount = getSlackMePassTransitionRecipients().length || Math.max(
-          0,
-          Number(response && response.passTransition && response.passTransition.recipientCount || 0)
-        );
-        setStatus(
-          "ZIP is SLACKTIVATED."
-          + (rosterCount ? " PASS-TRANSITION members: " + rosterCount + "." : ""),
-          false
-        );
+      let result = null;
+      if (normalizedAction === "refresh") {
+        result = await refreshContextMenuSlacktivationState();
+      } else if (normalizedAction === "import") {
+        result = await importZipKeyFromFile(payload.file || null);
       } else {
-        setStatus("ZIP.KEY loaded. Start Zendesk, then use the avatar menu to re-SLACKTIVATE ZIP actions.", false);
+        throw new Error("Unknown ZipTool Slacktivation action.");
       }
+      const successMessage = String(result && result.statusMessage || statusMessages.success || "").trim();
+      if (successMessage) {
+        setStatus(successMessage, false);
+      }
+      return result;
     } catch (err) {
-      const message = String((err && err.message) || "Unable to import ZIP.KEY.").trim() || "Unable to import ZIP.KEY.";
-      enforceZipConfigGate({ reportStatus: false });
-      if (els.configGateMeta) {
-        els.configGateMeta.textContent = message;
-        els.configGateMeta.classList.add("is-error");
-      }
+      const message = normalizePassAiCommentBody(err && err.message) || fallbackError;
       setStatus(message, true);
       throw err;
     } finally {
       setZipConfigDropBusy(false);
-      if (els.configFileInput) els.configFileInput.value = "";
       if (els.contextMenuSlacktivateInput) els.contextMenuSlacktivateInput.value = "";
     }
   }
@@ -13465,22 +13337,13 @@
     }
     if (els.contextMenuSlackMe) {
       els.contextMenuSlackMe.addEventListener("click", () => {
+        if (els.contextMenuSlackMe.disabled || !isPassAiSlacktivated()) return;
         openSlackMeDialog({ mode: "self" });
       });
     }
     if (els.contextMenuGetLatest) {
       els.contextMenuGetLatest.addEventListener("click", () => {
         runContextMenuAction("getLatest");
-      });
-    }
-    if (els.contextMenuRehydrateZip) {
-      els.contextMenuRehydrateZip.addEventListener("click", () => {
-        runContextMenuAction("rehydrateZip");
-      });
-    }
-    if (els.contextMenuClearKey) {
-      els.contextMenuClearKey.addEventListener("click", () => {
-        runContextMenuAction("clearZipKey");
       });
     }
     if (els.contextMenuSlacktivateContent) {
@@ -13645,55 +13508,6 @@
         target.value = "";
       });
     }
-    if (els.configDropZone && els.configFileInput) {
-      const pickFile = () => {
-        if (!state.zipConfigReady) els.configFileInput.click();
-      };
-      const preventDefault = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      };
-      const setDragOver = (on) => {
-        els.configDropZone.classList.toggle("is-dragover", !!on);
-      };
-      els.configDropZone.addEventListener("click", (event) => {
-        event.preventDefault();
-        pickFile();
-      });
-      els.configDropZone.addEventListener("dragenter", (event) => {
-        if (state.zipConfigReady) return;
-        preventDefault(event);
-        setDragOver(true);
-      });
-      els.configDropZone.addEventListener("dragover", (event) => {
-        if (state.zipConfigReady) return;
-        preventDefault(event);
-        if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-        setDragOver(true);
-      });
-      els.configDropZone.addEventListener("dragleave", (event) => {
-        if (state.zipConfigReady) return;
-        preventDefault(event);
-        setDragOver(false);
-      });
-      els.configDropZone.addEventListener("drop", (event) => {
-        if (state.zipConfigReady) return;
-        preventDefault(event);
-        setDragOver(false);
-        const file = pickZipConfigFile(event.dataTransfer && event.dataTransfer.files);
-        if (!file) {
-          setStatus("No ZIP.KEY file detected in drop payload.", true);
-          return;
-        }
-        importZipKeyFromFile(file).catch(() => {});
-      });
-      els.configFileInput.addEventListener("change", (event) => {
-        const target = event && event.target;
-        const file = pickZipConfigFile(target && target.files);
-        if (!file) return;
-        importZipKeyFromFile(file).catch(() => {});
-      });
-    }
     if (els.loginBtn) els.loginBtn.addEventListener("click", (e) => { e.preventDefault(); startLogin(); });
     if (els.appVersionLink) {
       els.appVersionLink.addEventListener("click", (e) => {
@@ -13746,6 +13560,7 @@
     if (els.passAiToggleBtn) {
       els.passAiToggleBtn.addEventListener("click", (e) => {
         e.preventDefault();
+        if (els.passAiToggleBtn.disabled || !isPassAiSlacktivated()) return;
         if (state.passAiLoading || state.passAiSlackAuthPolling || state.slackItToMeLoading) return;
         togglePassAiPanelForSelectedTicket().catch(() => {});
       });
@@ -13779,6 +13594,7 @@
     if (els.askPassAiBtn) {
       els.askPassAiBtn.addEventListener("click", (e) => {
         e.preventDefault();
+        if (els.askPassAiBtn.disabled || !isPassAiSlacktivated()) return;
         if (state.passAiLoading) return;
         askPassAiForSelectedTicket();
       });
@@ -13786,6 +13602,7 @@
     if (els.slackItToMeBtn) {
       els.slackItToMeBtn.addEventListener("click", (e) => {
         e.preventDefault();
+        if (els.slackItToMeBtn.disabled || !isPassAiSlacktivated()) return;
         if (state.slackItToMeButtonState === "ack") return;
         if (e.shiftKey) {
           openSlackMeDialog({ mode: "transition" }).catch((err) => {

@@ -69,7 +69,7 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
   assert.match(source, /let slackItToMeRequestInFlight = null;/);
   assert.match(source, /if \(state\.slackItToMeLoading \|\| state\.slackItToMeButtonState === "ack" \|\| slackItToMeRequestInFlight\) \{/);
   assert.match(source, /slackItToMeRequestInFlight = \(async \(\) => \{/);
-  assert.match(source, /const ready = isPassAiSlacktivated\(\) \|\| await refreshSlacktivatedState\(\{/);
+  assert.match(source, /if \(!isPassAiSlacktivated\(\)\) \{[\s\S]*setStatus\(SLACKTIVATED_LOGIN_TOOLTIP,\s*true\);/);
   assert.match(source, /const sendPayload = \{[\s\S]*forceNewMessage:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*requireNativeNewMessage:\s*false[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*authorUserId:\s*normalizePassAiSlackUserId\(state\.passAiSlackUserId \|\| ""\)[\s\S]*\};/);
@@ -94,11 +94,13 @@ test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", 
   );
 });
 
-test("sidepanel exposes a re-hydrate action for Slack session and PASS-TRANSITION refresh", () => {
+test("sidepanel routes RE-SLACKTIVATE through the shared context-menu Slacktivation action", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
-  assert.match(source, /async function rehydrateZipRuntime\(\)/);
+  assert.match(source, /async function refreshContextMenuSlacktivationState\(\)/);
+  assert.match(source, /async function performContextMenuSlacktivateAction\(action,\s*detail,\s*messages\)/);
   assert.match(source, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: true\s*\}\)/);
-  assert.match(source, /runContextMenuAction\("rehydrateZip"\)/);
+  assert.match(source, /performContextMenuSlacktivateAction\(\s*"refresh"/);
+  assert.doesNotMatch(source, /async function rehydrateZipRuntime\(\)/);
 });
 
 test("background can fall back to the live Slack tab session for PASS-TRANSITION hydration", () => {

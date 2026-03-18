@@ -84,5 +84,5 @@ test("transition dialog uses the cached roster and never warms Slack auth on log
     "SHIFT+CLICK dialog should reveal immediately and then read the cached PASS-TRANSITION roster."
   );
   assert.doesNotMatch(source, /prefetchPassTransitionRecipients\(\{ force: false \}\)\.catch\(\(\) => \{\}\);/);
-  assert.match(source, /const PASS_TRANSITION_CACHE_MISSING_MESSAGE = "No PASS-TRANSITION roster is cached yet\. Re-Hydrate ZIP to load members\.";/);
+  assert.match(source, /const PASS_TRANSITION_CACHE_MISSING_MESSAGE = "No PASS-TRANSITION roster is cached yet\. RE-SLACKTIVATE to load members\.";/);
 });

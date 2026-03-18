@@ -1855,12 +1855,16 @@ test("sidepanel loads ZIP.KEY for Slacktivation without gating Zendesk login", (
   assert.match(source, /function parseZipKeyPayload\(rawText\)/);
   assert.match(source, /function importZipKeyFromFile\(file\)/);
   assert.match(source, /msg\.type === "ZIP_KEY_CLEARED"/);
-  assert.match(source, /Please drop an updated ZIP\.KEY to SLACKTIVATE ZIP\./);
-  assert.match(source, /ZIP\.KEY is loaded\. Open the avatar menu to re-SLACKTIVATE ZIP actions\./);
+  assert.match(source, /ZIP\.KEY is missing required SLACKTIVATION settings\. Load an updated ZIP\.KEY from the avatar menu\./);
+  assert.match(source, /ZIP\.KEY is loaded\. Use the avatar menu to RE-SLACKTIVATE ZIP actions\./);
+  assert.match(source, /ZipTool starts without ZIP\.KEY\. Load ZIP\.KEY from the avatar menu when you need Slack actions\./);
   assert.match(source, /ZIP\.KEY cleared\. Zendesk is still live; load a new ZIP\.KEY from the avatar menu to re-SLACKTIVATE\./);
   assert.match(source, /DROP ZIP\.KEY TO SLACKTIVATE/);
-  assert.match(html, /Please drop ZIP\.KEY to SLACKTIVATE/);
-  assert.match(html, /DROP ZIP\.KEY TO SLACKTIVATE/);
+  assert.doesNotMatch(html, /Please drop ZIP\.KEY to SLACKTIVATE/);
+  assert.doesNotMatch(html, /DROP ZIP\.KEY TO SLACKTIVATE/);
+  assert.doesNotMatch(html, /id="zipConfigGate"/);
+  assert.doesNotMatch(html, /id="zipConfigDropZone"/);
+  assert.doesNotMatch(html, /id="zipConfigFileInput"/);
   assert.doesNotMatch(startLoginMatch[0], /enforceZipConfigGate/);
   assert.match(hydrateMatch[0], /enforceZipConfigGate\(\{ reportStatus: false \}\);/);
   assert.doesNotMatch(source, /ZIP\.KEY cleared\. Drop the latest ZIP\.KEY file to continue\./);
@@ -1876,11 +1880,10 @@ test("sidepanel ZIP.KEY persistence keeps optional bot config and user-scoped au
   assert.match(source, /api:\s*\{[\s\S]*botToken:\s*normalizedBotToken,[\s\S]*userToken:\s*normalizedUserToken,[\s\S]*oauthToken:\s*normalizedOauthToken \|\| normalizedUserToken[\s\S]*\}/);
 });
 
-test("sidepanel Clear ZIP.KEY action requires explicit user confirmation", () => {
+test("sidepanel no longer exposes a Clear ZIP.KEY confirmation flow", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
-  assert.match(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset SLACKTIVATION now\?/);
-  assert.match(source, /action === "clearZipKey" && !requestZipKeyClearConfirmation\(\)/);
-  assert.match(source, /window\.confirm\(ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE\)/);
+  assert.doesNotMatch(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset SLACKTIVATION now\?/);
+  assert.doesNotMatch(source, /requestZipKeyClearConfirmation\(\)/);
 });
 
 test("options Clear ZIP.KEY action requires explicit user confirmation", () => {

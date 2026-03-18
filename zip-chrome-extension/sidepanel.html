@@ -66,27 +66,6 @@
           </div>
         </div>
         <div class="login-card-left">
-          <section id="zipConfigGate" class="zip-config-gate hidden" aria-live="polite">
-            <h2 class="zip-config-gate-title">Please drop ZIP.KEY to SLACKTIVATE</h2>
-            <p id="zipConfigGateMessage" class="zip-config-gate-message">
-              Drag and drop your ZIP.KEY file onto the target below.
-            </p>
-            <button
-              id="zipConfigDropZone"
-              class="zip-config-dropzone spectrum-Button spectrum-Button--outline spectrum-Button--sizeM"
-              type="button"
-              aria-describedby="zipConfigGateMeta"
-            >
-              <span id="zipConfigDropAction" class="spectrum-Button-label">DROP ZIP.KEY TO SLACKTIVATE</span>
-            </button>
-            <input
-              id="zipConfigFileInput"
-              class="zip-visually-hidden"
-              type="file"
-              accept=".key,.txt,text/plain,application/octet-stream"
-            />
-            <p id="zipConfigGateMeta" class="zip-config-gate-meta hidden"></p>
-          </section>
           <button
             id="zipLoginBtn"
             class="btn primary zip-login-cta spectrum-Button spectrum-Button--fill spectrum-Button--accent spectrum-Button--sizeM hidden"
@@ -174,7 +153,7 @@
               <path d="M12 5a7 7 0 1 1-6.93 8h2.03a5 5 0 1 0 1.24-4.1L11 11H4V4l2.81 2.81A8.96 8.96 0 0 1 12 5z" fill="currentColor"></path>
             </svg>
           </button>
-          <button id="zipSlackItToMeBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Click sends to you. Re-Hydrate ZIP to load pass-transition teammates." aria-label="Click sends to you. Re-Hydrate ZIP to load pass-transition teammates." disabled>
+          <button id="zipSlackItToMeBtn" class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS" title="Click sends to you. RE-SLACKTIVATE to load pass-transition teammates." aria-label="Click sends to you. RE-SLACKTIVATE to load pass-transition teammates." disabled>
             <img
               id="zipSlackPanelIcon"
               class="zip-slack-panel-icon zip-round-z-icon"
@@ -315,15 +294,6 @@
       <span class="zip-context-menu-item-label">Side panel position</span>
     </button>
     <button id="zipContextMenuGetLatest" class="zip-context-menu-item" type="button" role="menuitem">Get Latest</button>
-    <button id="zipContextMenuRehydrateZip" class="zip-context-menu-item hidden" type="button" role="menuitem">
-      <span class="zip-context-menu-item-icon" aria-hidden="true">
-        <svg class="zip-context-menu-item-icon-svg" viewBox="0 0 20 20" focusable="false">
-          <path d="M16.7 10a6.7 6.7 0 1 1-2-4.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
-          <path d="M13.8 2.9h3v3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
-        </svg>
-      </span>
-      <span class="zip-context-menu-item-label">Re-Hydrate ZIP</span>
-    </button>
     <button id="zipContextMenuToggleZdApi" class="zip-context-menu-item" type="button" role="menuitem">
       <span class="zip-context-menu-item-icon" aria-hidden="true">
         <svg class="zip-context-menu-item-icon-svg" viewBox="0 0 20 20" focusable="false">
@@ -332,16 +302,6 @@
         </svg>
       </span>
       <span id="zipContextMenuToggleZdApiLabel" class="zip-context-menu-item-label">Show ZD API</span>
-    </button>
-    <div class="zip-context-menu-divider" role="separator"></div>
-    <button id="zipContextMenuClearKey" class="zip-context-menu-item zip-context-menu-item-danger" type="button" role="menuitem">
-      <span class="zip-context-menu-item-icon" aria-hidden="true">
-        <svg class="zip-context-menu-item-icon-svg" viewBox="0 0 20 20" focusable="false">
-          <path d="M5.2 4.5h9.6l-.9 12.2a1.2 1.2 0 0 1-1.2 1.1H7.3a1.2 1.2 0 0 1-1.2-1.1L5.2 4.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
-          <path d="M3.8 4.5h12.4M8 4.5V3.1c0-.6.5-1.1 1.1-1.1h1.8c.6 0 1.1.5 1.1 1.1v1.4M8.3 8.3v6M11.7 8.3v6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
-        </svg>
-      </span>
-      <span class="zip-context-menu-item-label">Clear ZIP.KEY</span>
     </button>
   </div>
   <div id="zipContextMenuThemeFlyout" class="zip-context-menu-theme-flyout hidden" role="menu" aria-label="Spectrum 2 accent colors"></div>
@@ -361,7 +321,7 @@
           <select id="zipSlackMeRecipientSelect" class="zip-select-control zip-slack-me-recipient-select" aria-label="PASS-TRANSITION member">
             <option value="">Choose PASS-TRANSITION member</option>
           </select>
-          <p id="zipSlackMeRecipientHelp" class="zip-slack-me-recipient-help">Shift+Click uses the cached PASS-TRANSITION roster. Use Re-Hydrate ZIP to refresh it.</p>
+          <p id="zipSlackMeRecipientHelp" class="zip-slack-me-recipient-help">Shift+Click uses the cached PASS-TRANSITION roster. Use RE-SLACKTIVATE to refresh it.</p>
         </div>
       </div>
       <label class="zip-visually-hidden" for="zipSlackMeInput">Slack message</label>
