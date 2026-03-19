@@ -92,6 +92,9 @@ test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", 
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   assert.match(source, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition" \}\)/);
   assert.match(source, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS", \{\}\)/);
+  assert.match(source, /async function refreshPassTransitionRecipientAfterUserNotFound\(referenceRecipient\)/);
+  assert.match(source, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: true\s*\}\)/);
+  assert.match(source, /if \(\(!response \|\| response\.ok !== true\) && responseCode === "user_not_found"\) \{/);
   assert.match(source, /await ensurePassAiSlackIdentityVerifiedForDelivery\(\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER"/);
   assert.match(source, /await ensurePassAiSlackIdentityVerifiedForDelivery\(\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
   assert.match(

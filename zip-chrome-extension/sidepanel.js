@@ -2480,14 +2480,66 @@
     const avatarUrl = normalizePassAiSlackAvatarUrl(raw.avatarUrl || raw.avatar_url || "");
     const statusIcon = normalizePassAiSlackStatusIcon(raw.statusIcon || raw.status_icon || "");
     const statusMessage = normalizePassAiSlackStatusMessage(raw.statusMessage || raw.status_message || "");
+    const displayName = normalizePassAiSlackDisplayName(raw.displayName || raw.display_name || "");
+    const realName = normalizePassAiSlackDisplayName(raw.realName || raw.real_name || "");
+    const handle = normalizePassAiSlackDisplayName(String(raw.handle || "").replace(/^@+/, "")) || "";
+    const email = normalizeEmailAddress(raw.email || raw.user_email || "");
     return {
       userId,
       userName,
+      displayName,
+      realName,
+      handle,
+      email,
       avatarUrl,
       statusIcon,
       statusMessage,
       label
     };
+  }
+
+  function normalizePassTransitionRecipientMatchText(value) {
+    return normalizePassAiSlackDisplayName(String(value || "").replace(/^@+/, "")) .toLowerCase();
+  }
+
+  function collectPassTransitionRecipientMatchKeys(input) {
+    const raw = input && typeof input === "object" ? input : {};
+    const keys = [];
+    const add = (value) => {
+      const normalized = String(value || "").trim().toLowerCase();
+      if (!normalized) return;
+      if (!keys.includes(normalized)) keys.push(normalized);
+    };
+    add(normalizePassAiSlackUserId(raw.userId || raw.user_id || ""));
+    add(normalizeEmailAddress(raw.email || raw.user_email || ""));
+    add(normalizePassTransitionRecipientMatchText(raw.handle || ""));
+    add(normalizePassTransitionRecipientMatchText(raw.label || ""));
+    add(normalizePassTransitionRecipientMatchText(raw.userName || raw.user_name || ""));
+    add(normalizePassTransitionRecipientMatchText(raw.displayName || raw.display_name || ""));
+    add(normalizePassTransitionRecipientMatchText(raw.realName || raw.real_name || ""));
+    return keys;
+  }
+
+  function findPassTransitionRecipientMatch(recipients, referenceRecipient) {
+    const rows = Array.isArray(recipients) ? recipients : [];
+    const reference = normalizePassTransitionRecipientShape(referenceRecipient);
+    if (!reference) return null;
+    const referenceUserId = normalizePassAiSlackUserId(reference.userId || "");
+    if (referenceUserId) {
+      const exact = rows.find((entry) => normalizePassAiSlackUserId(entry && entry.userId || "") === referenceUserId);
+      if (exact) return exact;
+    }
+    const referenceKeys = collectPassTransitionRecipientMatchKeys(reference);
+    if (!referenceKeys.length) return null;
+    for (let index = 0; index < rows.length; index += 1) {
+      const recipient = normalizePassTransitionRecipientShape(rows[index]);
+      if (!recipient) continue;
+      const recipientKeys = collectPassTransitionRecipientMatchKeys(recipient);
+      if (recipientKeys.some((key) => referenceKeys.includes(key))) {
+        return recipient;
+      }
+    }
+    return null;
   }
 
   function normalizePassTransitionRecipientList(value) {
@@ -2662,6 +2714,41 @@
       state.slackMePassTransitionLoading = false;
       syncSlackMeDialogUi();
     }
+  }
+
+  async function refreshPassTransitionRecipientAfterUserNotFound(referenceRecipient) {
+    const reference = normalizePassTransitionRecipientShape(referenceRecipient);
+    if (!reference) {
+      throw new Error("PASS-TRANSITION recipient is no longer valid. Select the recipient again.");
+    }
+    const response = await sendBackgroundRequest("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", {
+      force: true,
+      allowCreateTab: true
+    });
+    if (!response || response.ok !== true) {
+      throw new Error(
+        normalizePassAiCommentBody(response && (response.error || response.message))
+          || "Unable to refresh PASS-TRANSITION members from Slack."
+      );
+    }
+    const refreshedRecipients = Array.isArray(response.members)
+      ? response.members.map((entry) => normalizePassTransitionRecipientShape(entry)).filter(Boolean)
+      : [];
+    if (!refreshedRecipients.length) {
+      throw new Error("PASS-TRANSITION roster is empty after live Slack refresh.");
+    }
+    state.slackMePassTransitionRecipients = refreshedRecipients;
+    passTransitionRecipientsRequestInFlight = null;
+    passTransitionRecipientsResolvedKey = buildPassTransitionRecipientCacheKey();
+    const matchedRecipient = findPassTransitionRecipientMatch(refreshedRecipients, reference);
+    if (!matchedRecipient) {
+      setSelectedPassTransitionRecipient("");
+      syncSlackMeDialogUi();
+      throw new Error("Selected PASS-TRANSITION recipient was not found in the refreshed Slack roster. Choose the recipient again.");
+    }
+    setSelectedPassTransitionRecipient(matchedRecipient.userId);
+    syncSlackMeDialogUi();
+    return matchedRecipient;
   }
 
   async function ensurePassTransitionRecipientsLoaded(options) {
@@ -3213,16 +3300,16 @@
       await ensurePassAiSlackIdentityVerifiedForDelivery();
       const slackApiTokens = getPassAiSlackApiTokenConfig();
       await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
-      const response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_USER", {
+      const sendPassTransitionShare = async (targetRecipient) => sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_USER", {
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
-        userId: recipient.userId,
-        userName: recipient.userName || recipient.label || recipient.userId,
-        avatarUrl: recipient.avatarUrl || "",
+        userId: targetRecipient.userId,
+        userName: targetRecipient.userName || targetRecipient.label || targetRecipient.userId,
+        avatarUrl: targetRecipient.avatarUrl || "",
         authorUserId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
         authorUserName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
         authorAvatarUrl: state.passAiSlackAvatarUrl || "",
         directChannelId: "",
-        markdownText: buildPassTransitionShareMarkdown(rows, noteText, recipient),
+        markdownText: buildPassTransitionShareMarkdown(rows, noteText, targetRecipient),
         botToken: "",
         userToken: slackApiTokens.userToken || "",
         autoBootstrapSlackTab: false,
@@ -3234,13 +3321,20 @@
         skipUnreadMark: true,
         forceNewMessage: true
       });
+      let deliveryRecipient = recipient;
+      let response = await sendPassTransitionShare(deliveryRecipient);
+      let responseCode = String(response && response.code || "").trim().toLowerCase();
+      if ((!response || response.ok !== true) && responseCode === "user_not_found") {
+        deliveryRecipient = await refreshPassTransitionRecipientAfterUserNotFound(recipient);
+        response = await sendPassTransitionShare(deliveryRecipient);
+        responseCode = String(response && response.code || "").trim().toLowerCase();
+      }
       if (!response || response.ok !== true) {
-        const responseCode = String(response && response.code || "").trim().toLowerCase();
         const responseMessage = normalizePassAiCommentBody(response && (response.error || response.message)) || "Slack share failed.";
         const responseCodeLabel = responseCode ? ("[" + responseCode + "] ") : "";
         throw new Error(responseCodeLabel + responseMessage);
       }
-      const recipientLabel = recipient.label || recipient.userName || recipient.userId;
+      const recipientLabel = deliveryRecipient.label || deliveryRecipient.userName || deliveryRecipient.userId;
       const sentRows = Math.min(rows.length, SLACK_IT_TO_ME_MAX_ROWS);
       const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
       const deliveryMode = String(response && response.delivery_mode || "").trim();
