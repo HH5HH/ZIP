@@ -1659,6 +1659,92 @@ test("ZIP_SLACK_API_SEND_TO_USER prefers the live Slack workspace session before
   );
 });
 
+test("ZIP_SLACK_API_SEND_TO_USER falls back to bot delivery when the user token is enterprise-restricted", async () => {
+  const seenAuthorizations = [];
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    fetch: ({ url, init }) => {
+      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+      const authorization = String(headers.Authorization || headers.authorization || "");
+      seenAuthorizations.push(authorization);
+      if (url.endsWith("/api/auth.test") && authorization === "Bearer SLK_TEST_DIRECT_USER_TOKEN") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "UALICE123", user: "alice" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/conversations.open") && authorization === "Bearer SLK_TEST_DIRECT_USER_TOKEN") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: false, error: "enterprise_is_restricted" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/auth.test") && authorization === "Bearer SLK_TEST_DIRECT_BOT_TOKEN") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, team_id: "TALICE123" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/conversations.open") && authorization === "Bearer SLK_TEST_DIRECT_BOT_TOKEN") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, channel: { id: "DBOTFALLBACK1" } }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/chat.postMessage") && authorization === "Bearer SLK_TEST_DIRECT_BOT_TOKEN") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, channel: "DBOTFALLBACK1", ts: "1711111111.000300" }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  harness.resetCalls();
+  const response = await harness.sendRuntimeMessage({
+    type: "ZIP_SLACK_API_SEND_TO_USER",
+    workspaceOrigin: "https://adobedx.slack.com",
+    userId: "UBOBUSER1",
+    authorUserId: "UALICE123",
+    markdownText: "handoff note",
+    userToken: "SLK_TEST_DIRECT_USER_TOKEN",
+    botToken: "SLK_TEST_DIRECT_BOT_TOKEN",
+    autoBootstrapSlackTab: false,
+    preferBotDmDelivery: false,
+    requireNativeNewMessage: false,
+    requireBotDelivery: false,
+    allowBotDelivery: true,
+    skipUnreadMark: true,
+    forceNewMessage: true
+  });
+
+  assert.equal(response && response.ok, true);
+  assert.equal(String(response && response.delivery_mode || ""), "bot_direct_channel");
+  assert.equal(seenAuthorizations.includes("Bearer SLK_TEST_DIRECT_USER_TOKEN"), true);
+  assert.equal(seenAuthorizations.includes("Bearer SLK_TEST_DIRECT_BOT_TOKEN"), true);
+  assert.equal(
+    harness.calls.fetch.some((requestUrl) => String(requestUrl).includes("/api/chat.postMessage")),
+    true,
+    "bot fallback should post the DM after enterprise user-token restrictions"
+  );
+});
+
 test("ZIP_SLACK_API_AUTH_TEST prefers Slack profile identity over stale caller-provided names", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],

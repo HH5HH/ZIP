@@ -48,9 +48,9 @@ test("background targeted recipient send requires the requested Slack user", () 
   assert.match(source, /preferApiFirst:\s*false/);
   assert.match(source, /preferRequestedUser:\s*true/);
   assert.match(source, /requireRequestedUser:\s*true/);
-  assert.match(source, /preferBotDmDelivery:\s*false/);
-  assert.match(source, /requireBotDelivery:\s*false/);
-  assert.match(source, /allowBotDelivery:\s*false/);
+  assert.match(source, /const preferBotDmDelivery = body\.preferBotDmDelivery === true;/);
+  assert.match(source, /const requireBotDelivery = body\.requireBotDelivery === true;/);
+  assert.match(source, /const allowBotDelivery = body\.allowBotDelivery === true \|\| requireBotDelivery;/);
   assert.match(source, /msg\.type === "ZIP_SLACK_API_SEND_TO_USER"/);
   assert.match(source, /if \(requireRequestedUser\) \{\s*pushUserIdCandidate\(requestedUserId\);/);
 });
@@ -81,10 +81,10 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
   assert.match(source, /const sendPayload = \{[\s\S]*authorAvatarUrl:\s*state\.passAiSlackAvatarUrl \|\| ""[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*preferBotDmDelivery:\s*false[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*requireBotDelivery:\s*false[\s\S]*\};/);
-  assert.match(source, /const sendPayload = \{[\s\S]*allowBotDelivery:\s*false[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*allowBotDelivery:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*skipUnreadMark:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*directChannelId:\s*normalizePassAiSlackDirectChannelId\(state\.passAiSlackDirectChannelId \|\| ""\)[\s\S]*\};/);
-  assert.match(source, /const sendPayload = \{[\s\S]*botToken:\s*""[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*botToken:\s*slackApiTokens\.botToken \|\| ""[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*autoBootstrapSlackTab:\s*false[\s\S]*\};/);
 });
 
@@ -99,7 +99,7 @@ test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", 
   assert.match(source, /await ensurePassAiSlackIdentityVerifiedForDelivery\(\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
   assert.match(
     source,
-    /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER",\s*\{[\s\S]*botToken:\s*""[\s\S]*preferBotDmDelivery:\s*false[\s\S]*allowBotDelivery:\s*false[\s\S]*\}\);/
+    /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER",\s*\{[\s\S]*botToken:\s*slackApiTokens\.botToken \|\| ""[\s\S]*preferBotDmDelivery:\s*false[\s\S]*allowBotDelivery:\s*true[\s\S]*\}\);/
   );
 });
 

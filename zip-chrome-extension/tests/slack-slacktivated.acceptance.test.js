@@ -251,7 +251,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.doesNotMatch(js, /PASS_AI_SLACK_WORKSPACE_ORIGIN \+ \"\/signin\"/);
   assert.doesNotMatch(js, /datasetName:/);
   assert.match(js, /userToken:\s*slackApiTokens\.userToken \|\| ""/);
-  assert.match(js, /botToken:\s*""/);
+  assert.match(js, /botToken:\s*slackApiTokens\.botToken \|\| ""/);
   assert.match(js, /authorUserId:\s*normalizePassAiSlackUserId\(state\.passAiSlackUserId \|\| ""\)/);
   assert.match(js, /authorUserName:\s*normalizePassAiSlackDisplayName\(state\.passAiSlackUserName \|\| ""\)/);
   assert.match(js, /authorAvatarUrl:\s*state\.passAiSlackAvatarUrl \|\| ""/);
@@ -261,7 +261,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /requireNativeNewMessage:\s*false/);
   assert.match(js, /requireBotDelivery:\s*false/);
   assert.match(js, /autoBootstrapSlackTab:\s*false/);
-  assert.match(js, /allowBotDelivery:\s*false/);
+  assert.match(js, /allowBotDelivery:\s*true/);
   assert.match(js, /skipUnreadMark:\s*true/);
   assert.doesNotMatch(js, /csvFilename:/);
   assert.doesNotMatch(js, /csvContent:/);
@@ -283,7 +283,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /const signatureLine = buildZipToolSlackFooterLine\(\);/);
   assert.match(js, /SLACK_TO_ZIPTOOL delivered/);
   assert.match(js, /preferBotDmDelivery:\s*false/);
-  assert.match(js, /allowBotDelivery:\s*false/);
+  assert.match(js, /allowBotDelivery:\s*true/);
   assert.match(js, /@SLACK ME sent\./);
   assert.doesNotMatch(js, /\*Visible Rows:\*/);
 });

@@ -4688,6 +4688,9 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
 async function slackSendMarkdownToUserViaApi(input) {
   const body = input && typeof input === "object" ? input : {};
   const requestedUserId = normalizeSlackUserId(body.userId || body.user_id);
+  const preferBotDmDelivery = body.preferBotDmDelivery === true;
+  const requireBotDelivery = body.requireBotDelivery === true;
+  const allowBotDelivery = body.allowBotDelivery === true || requireBotDelivery;
   if (!requestedUserId) {
     return {
       ok: false,
@@ -4702,9 +4705,9 @@ async function slackSendMarkdownToUserViaApi(input) {
     preferApiFirst: false,
     preferRequestedUser: true,
     requireRequestedUser: true,
-    preferBotDmDelivery: false,
-    requireBotDelivery: false,
-    allowBotDelivery: false
+    preferBotDmDelivery,
+    requireBotDelivery,
+    allowBotDelivery
   });
 }
 
