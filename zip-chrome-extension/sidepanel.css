@@ -206,6 +206,8 @@ body {
   --zip-feedback-warning-border: var(--spectrum-semantic-notice-color-default);
   --zip-feedback-danger-bg: var(--spectrum-semantic-negative-color-background);
   --zip-feedback-danger-border: var(--spectrum-semantic-negative-color-default);
+  --zip-feedback-success-bg: var(--spectrum-semantic-positive-color-background);
+  --zip-feedback-success-border: var(--spectrum-semantic-positive-color-default);
   --zip-feedback-info-ring-subtle: color-mix(in srgb, rgb(var(--zip-accent-800)) 12%, transparent);
   --zip-feedback-info-ring-strong: color-mix(in srgb, rgb(var(--zip-accent-800)) 18%, transparent);
   /* Global zebra tuning: adjust this single token up/down for all tables. */
@@ -1003,6 +1005,27 @@ body.zip-ticket-cloud-search-busy * {
 
 .zip-footer-status.error::before {
   content: "Error: ";
+}
+
+.zip-footer-status.success {
+  color: var(--spectrum-semantic-positive-color-default);
+  border-color: var(--zip-feedback-success-border);
+  background: var(--zip-feedback-success-bg);
+  font-weight: var(--spectrum-font-weight-bold);
+}
+
+.zip-footer-status.success::before {
+  content: "OK";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 18px;
+  padding-inline: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--zip-feedback-success-border) 20%, transparent);
+  color: var(--spectrum-semantic-positive-color-default);
+  font-size: var(--spectrum-font-size-50);
+  letter-spacing: 0.08em;
 }
 
 .zip-footer-version {
@@ -4285,6 +4308,12 @@ td a:hover { text-decoration: underline; }
   font-size: var(--zip-density-font-detail);
   line-height: var(--zip-density-line-detail);
   pointer-events: none;
+}
+
+.zip-toast[data-tone="success"] {
+  border-color: var(--zip-feedback-success-border);
+  background: color-mix(in srgb, var(--zip-feedback-success-bg) 84%, var(--bg-overlay) 16%);
+  color: var(--spectrum-semantic-positive-color-default);
 }
 
 .raw-nested-table {

@@ -33,6 +33,8 @@ function buildSidepanelHarnessBootstrap(options) {
     openIdStatusPayload: null,
     silentAuthOk: false,
     interactiveAuthOk: false,
+    passTransitionRehydrateOk: true,
+    passTransitionRecipients: null,
     storageSeed: null,
     slackTabs: [],
     activeTabSlack: false
@@ -156,6 +158,51 @@ function buildSidepanelHarnessBootstrap(options) {
             error: interactive ? "auth_flow_failed" : "interaction_required"
           };
         }
+        if (type === "ZIP_IMPORT_KEY_PAYLOAD") {
+          const cfg = message && message.config && typeof message.config === "object" ? message.config : {};
+          const oidc = cfg.oidc && typeof cfg.oidc === "object" ? cfg.oidc : {};
+          const api = cfg.api && typeof cfg.api === "object" ? cfg.api : {};
+          const singularity = cfg.singularity && typeof cfg.singularity === "object" ? cfg.singularity : {};
+          const passTransition = cfg.passTransition && typeof cfg.passTransition === "object" ? cfg.passTransition : {};
+          const meta = cfg.meta && typeof cfg.meta === "object" ? clone(cfg.meta) : clone(seededMeta);
+          Object.assign(storage, {
+            zip_slack_client_id: String(oidc.clientId || ""),
+            zip_slack_client_secret: String(oidc.clientSecret || ""),
+            zip_slack_oauth_token: String(api.oauthToken || api.userToken || ""),
+            zip_slack_bot_token: String(api.botToken || ""),
+            zip_slack_scope: String(oidc.scope || "openid profile email"),
+            zip_slack_redirect_path: String(oidc.redirectPath || "slack-user"),
+            zip_slack_redirect_uri: String(oidc.redirectUri || ""),
+            zip_slack_key_loaded: true,
+            zip_singularity_channel_id: String(singularity.channelId || ""),
+            zip_singularity_mention: String(singularity.mention || ""),
+            zip_pass_transition_channel_id: String(passTransition.channelId || ""),
+            zip_pass_transition_channel_name: String(passTransition.channelName || ""),
+            zip_pass_transition_member_ids: "",
+            zip_pass_transition_recipients: [],
+            zip_pass_transition_members_synced_at: "",
+            zip_slack_key_meta: meta,
+            "zip.config.meta.v1": meta
+          });
+          return { ok: true, meta };
+        }
+        if (type === "ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS") {
+          if (!scenario.passTransitionRehydrateOk) {
+            return { ok: false, code: "pass_transition_hydration_failed", error: "PASS-TRANSITION hydration failed in test harness." };
+          }
+          const recipients = Array.isArray(scenario.passTransitionRecipients) && scenario.passTransitionRecipients.length
+            ? clone(scenario.passTransitionRecipients)
+            : [
+              { userId: "UALICE123", label: "Alice Example", userName: "Alice Example", avatarUrl: "https://example.com/alice.png" },
+              { userId: "UBOB45678", label: "Bob Example", userName: "Bob Example", avatarUrl: "https://example.com/bob.png" }
+            ];
+          Object.assign(storage, {
+            zip_pass_transition_member_ids: recipients.map((entry) => String(entry.userId || "")).filter(Boolean).join(","),
+            zip_pass_transition_recipients: recipients,
+            zip_pass_transition_members_synced_at: new Date().toISOString()
+          });
+          return { ok: true, recipients, recipientCount: recipients.length };
+        }
         if (type === "ZIP_REQUEST") {
           const inner = message && message.inner && typeof message.inner === "object" ? message.inner : {};
           const action = String(inner.action || "");
@@ -215,6 +262,7 @@ function buildSidepanelHarnessBootstrap(options) {
       Object.assign(storage, {
         zip_slack_client_id: "mock.client.id",
         zip_slack_client_secret: "mock.client.secret",
+        zip_slack_bot_token: "SLK_TEST_MOCK_BOT_TOKEN",
         zip_slack_oauth_token: "SLK_TEST_MOCK_USER_TOKEN",
         zip_slack_scope: "openid profile email",
         zip_slack_redirect_path: "slack-user",
@@ -481,6 +529,8 @@ async function readSlackUiReport(page) {
     const slackStatusImg = document.getElementById("zipSlacktivatedStatusIconImg");
     const slackStatusMessage = document.getElementById("zipSlacktivatedStatusMessage");
     const slackToMe = document.getElementById("zipSlackItToMeBtn");
+    const status = document.getElementById("zipStatus");
+    const toast = document.getElementById("zipToast");
     return {
       calls,
       messageTypes,
@@ -490,7 +540,14 @@ async function readSlackUiReport(page) {
       slackAvatarSrc: slackAvatar ? String(slackAvatar.getAttribute("src") || slackAvatar.src || "") : "",
       slackStatusImgSrc: slackStatusImg ? String(slackStatusImg.getAttribute("src") || slackStatusImg.src || "") : "",
       slackStatusMessage: slackStatusMessage ? String(slackStatusMessage.textContent || "").trim() : "",
-      slackToMeDisabled: !!(slackToMe && slackToMe.disabled)
+      slackToMeDisabled: !!(slackToMe && slackToMe.disabled),
+      statusText: status ? String(status.textContent || "").trim() : "",
+      statusClass: status ? String(status.className || "") : "",
+      toastText: toast ? String(toast.textContent || "").trim() : "",
+      toastHidden: !!(toast && toast.classList.contains("hidden")),
+      toastTone: toast ? String(toast.dataset && toast.dataset.tone || "") : "",
+      statusHistory: Array.isArray(window.__zipStatusHistory) ? window.__zipStatusHistory.slice() : [],
+      toastHistory: Array.isArray(window.__zipToastHistory) ? window.__zipToastHistory.slice() : []
     };
   });
 }
@@ -500,6 +557,74 @@ async function clickSlacktivatedButton(page) {
     const btn = document.getElementById("zipSlacktivatedBtn");
     if (btn) btn.click();
   });
+}
+
+async function startFeedbackCapture(page) {
+  await page.evaluate(() => {
+    const status = document.getElementById("zipStatus");
+    const toast = document.getElementById("zipToast");
+    window.__zipStatusHistory = [];
+    window.__zipToastHistory = [];
+    if (window.__zipStatusObserver) window.__zipStatusObserver.disconnect();
+    if (window.__zipToastObserver) window.__zipToastObserver.disconnect();
+
+    const recordStatus = () => {
+      if (!status) return;
+      const text = String(status.textContent || "").trim();
+      if (!text) return;
+      if (window.__zipStatusHistory[window.__zipStatusHistory.length - 1] === text) return;
+      window.__zipStatusHistory.push(text);
+    };
+    const recordToast = () => {
+      if (!toast || toast.classList.contains("hidden")) return;
+      const text = String(toast.textContent || "").trim();
+      if (!text) return;
+      if (window.__zipToastHistory[window.__zipToastHistory.length - 1] === text) return;
+      window.__zipToastHistory.push(text);
+    };
+
+    recordStatus();
+    recordToast();
+
+    if (status) {
+      window.__zipStatusObserver = new MutationObserver(recordStatus);
+      window.__zipStatusObserver.observe(status, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ["class"]
+      });
+    }
+    if (toast) {
+      window.__zipToastObserver = new MutationObserver(recordToast);
+      window.__zipToastObserver.observe(toast, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ["class", "data-tone"]
+      });
+    }
+  });
+}
+
+function buildZipKeyFileContents(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const lines = [
+    "ZIPKEY1:",
+    "slacktivation.client_id=mock.client.id",
+    "slacktivation.client_secret=mock.client.secret",
+    "slacktivation.user_token=SLK_TEST_IMPORTED_USER_TOKEN",
+    "slacktivation.bot_token=SLK_TEST_IMPORTED_BOT_TOKEN",
+    "slacktivation.singularity_channel_id=C123TEST9",
+    "slacktivation.singularity_mention=@zip-bot"
+  ];
+  if (opts.includePassTransition !== false) {
+    lines.push("slacktivation.pass_transition.channel_id=C09NHJCMFC1");
+    lines.push("slacktivation.pass_transition.channel_name=#pass-transition");
+  }
+  return lines.join("\n");
 }
 
 test("Playwright smoke: existing Slack session SLACKTIVATES sidepanel without opening extra Slack tabs", async (t) => {
@@ -548,6 +673,108 @@ test("Playwright smoke: existing Slack session SLACKTIVATES sidepanel without op
   assert.equal(report.slackToMeDisabled, false, "@ME should be enabled when SLACKTIVATED");
   assert.match(report.slackClass, /\bis-slacktivated\b/);
   assert.match(report.slackTitle, /SLACKTIVATED/i);
+});
+
+test("Playwright smoke: ZIP.KEY import shows phase-1 progress and waits for Slack login", async (t) => {
+  const playwright = await loadPlaywrightOrSkip(t);
+  if (!playwright) return;
+
+  let browser;
+  try {
+    browser = await playwright.chromium.launch({ headless: true });
+  } catch (err) {
+    t.skip("Chromium failed to launch for Playwright smoke test: " + (err && err.message ? err.message : "unknown error"));
+    return;
+  }
+
+  t.after(async () => {
+    try {
+      await browser.close();
+    } catch (_) {}
+  });
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  await bootSidepanelForScenario(page, {
+    openIdStatusOk: false,
+    silentAuthOk: false,
+    interactiveAuthOk: false
+  });
+
+  await startFeedbackCapture(page);
+  await page.setInputFiles("#zipContextMenuSlacktivateInput", {
+    name: "ZIP.KEY",
+    mimeType: "text/plain",
+    buffer: Buffer.from(buildZipKeyFileContents())
+  });
+
+  await page.waitForFunction(() => {
+    const status = document.getElementById("zipStatus");
+    return !!(status && /SLACKTIVATED! Please click the Z avatar to log into Slack\./.test(String(status.textContent || "")));
+  }, { timeout: 10000 });
+
+  const report = await readSlackUiReport(page);
+  assert.match(report.statusText, /SLACKTIVATED! Please click the Z avatar to log into Slack\./);
+  assert.match(report.statusClass, /\bsuccess\b/);
+  assert.match(report.slackClass, /\bis-slack-pending\b/);
+  assert.equal(report.slackToMeDisabled, true, "@ME should stay disabled after ZIP.KEY hydration until Slack login finishes");
+  assert.ok(report.statusHistory.includes("SLACKTIVATING ZIP.KEY…"), "should show ZIP.KEY import progress");
+  assert.ok(report.statusHistory.includes("Hydrating PASS-TRANSITION roster…"), "should show PASS-TRANSITION hydration progress");
+  assert.ok(report.toastHistory.includes("SLACKTIVATED! Please click the Z avatar to log into Slack."), "should toast the phase-1 success confirmation");
+});
+
+test("Playwright smoke: ZIP.KEY hydration failure never emits a false success toast", async (t) => {
+  const playwright = await loadPlaywrightOrSkip(t);
+  if (!playwright) return;
+
+  let browser;
+  try {
+    browser = await playwright.chromium.launch({ headless: true });
+  } catch (err) {
+    t.skip("Chromium failed to launch for Playwright smoke test: " + (err && err.message ? err.message : "unknown error"));
+    return;
+  }
+
+  t.after(async () => {
+    try {
+      await browser.close();
+    } catch (_) {}
+  });
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  await bootSidepanelForScenario(page, {
+    openIdStatusOk: false,
+    silentAuthOk: false,
+    interactiveAuthOk: false,
+    passTransitionRehydrateOk: false
+  });
+
+  await startFeedbackCapture(page);
+  await page.setInputFiles("#zipContextMenuSlacktivateInput", {
+    name: "ZIP.KEY",
+    mimeType: "text/plain",
+    buffer: Buffer.from(buildZipKeyFileContents())
+  });
+
+  await page.waitForFunction(() => {
+    const status = document.getElementById("zipStatus");
+    return !!(status && /PASS-TRANSITION hydration failed in test harness\./.test(String(status.textContent || "")));
+  }, { timeout: 10000 });
+
+  const report = await readSlackUiReport(page);
+  assert.ok(report.statusHistory.includes("Hydrating PASS-TRANSITION roster…"), "should surface the hydration step before failure");
+  assert.ok(
+    report.statusHistory.some((entry) => /PASS-TRANSITION hydration failed in test harness\./.test(entry)),
+    "should record the phase-1 failure in footer status history"
+  );
+  assert.equal(
+    report.toastHistory.includes("SLACKTIVATED! Please click the Z avatar to log into Slack."),
+    false,
+    "must not emit the phase-1 success toast when hydration fails"
+  );
 });
 
 test("Playwright smoke: Slack header never duplicates a status asset into the avatar slot", async (t) => {
@@ -633,6 +860,8 @@ test("Playwright smoke: no Slack session triggers interactive OpenID auth and SL
     interactiveAuthOk: true
   });
 
+  await startFeedbackCapture(page);
+
   await page.waitForFunction(() => {
     const slackBtn = document.getElementById("zipSlacktivatedBtn");
     return !!(slackBtn && slackBtn.classList.contains("is-slack-pending"));
@@ -646,6 +875,11 @@ test("Playwright smoke: no Slack session triggers interactive OpenID auth and SL
     return !!(slackBtn && slackBtn.classList.contains("is-slacktivated") && slackToMe && !slackToMe.disabled);
   }, { timeout: 10000 });
 
+  await page.waitForFunction(() => {
+    return Array.isArray(window.__zipToastHistory)
+      && window.__zipToastHistory.includes("SLACKTIVATED! Slack login confirmed. Slack actions are ready.");
+  }, { timeout: 10000 });
+
   const report = await readSlackUiReport(page);
   const interactiveOpenIdCall = (report.openIdAuthCalls || []).find((call) => call && call.interactive === true);
   assert.ok(interactiveOpenIdCall, "should run interactive OpenID auth when no Slack session exists");
@@ -656,6 +890,8 @@ test("Playwright smoke: no Slack session triggers interactive OpenID auth and SL
   assert.equal(slackTabUpdates.length, 0, "should not retarget tabs when OpenID interactive auth succeeds");
   assert.equal((report.calls.windowsCreate || []).length, 0, "must not create popup windows");
   assert.match(report.slackClass, /\bis-slacktivated\b/);
+  assert.ok(report.statusHistory.includes("Checking adobedx.slack.com session…"), "should show the Slack session probe");
+  assert.ok(report.toastHistory.includes("SLACKTIVATED! Slack login confirmed. Slack actions are ready."), "should toast the final Slack login success");
 });
 
 test("Playwright smoke: OpenID auth failure opens exactly one normal Slack tab (no popup)", async (t) => {
@@ -686,6 +922,7 @@ test("Playwright smoke: OpenID auth failure opens exactly one normal Slack tab (
     slackTabs: []
   });
 
+  await startFeedbackCapture(page);
   await clickSlacktivatedButton(page);
 
   await page.waitForFunction(() => {
@@ -705,6 +942,8 @@ test("Playwright smoke: OpenID auth failure opens exactly one normal Slack tab (
   assert.equal((report.calls.windowsCreate || []).length, 0, "must not create popup windows");
   assert.match(report.slackClass, /\bis-slack-pending\b/);
   assert.equal(report.slackToMeDisabled, true, "@ME should stay disabled until SLACKTIVATED");
+  assert.ok(report.statusHistory.includes("Checking adobedx.slack.com session…"), "should show the Slack session probe before waiting");
+  assert.equal(report.toastHistory.includes("SLACKTIVATED! Slack login confirmed. Slack actions are ready."), false, "must not toast final success while login is still pending");
 });
 
 test("Playwright smoke: fallback uses existing Slack tab focus instead of creating a new tab", async (t) => {

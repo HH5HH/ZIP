@@ -2143,6 +2143,15 @@ test("sidepanel partial Slack token persistence preserves the ZIP.KEY bot token"
   assert.match(source, /const userTokenInput = hasUserTokenUpdate \? \(cfg\.userToken \|\| cfg\.oauthToken\) : currentConfig\.userToken;/);
 });
 
+test("sidepanel stages ZIP.KEY hydration before final Slack login verification", () => {
+  const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
+  assert.match(source, /async function ensurePassAiSlackRosterHydrated\(options\)/);
+  assert.match(source, /async function ensurePassAiSlacktivationHydrated\(options\)/);
+  assert.match(source, /const hydrationResult = await ensurePassAiSlacktivationHydrated\(/);
+  assert.doesNotMatch(source, /ZIP\.KEY loaded, but the stored Slack credentials could not be verified\./);
+  assert.doesNotMatch(source, /Unable to re-SLACKTIVATE ZIP from the stored ZIP\.KEY\./);
+});
+
 test("sidepanel no longer exposes a Clear ZIP.KEY confirmation flow", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
   assert.doesNotMatch(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset SLACKTIVATION now\?/);

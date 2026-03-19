@@ -196,7 +196,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /async function maybePrimePassTransitionRosterAfterSlacktivation\(\)/);
   assert.match(js, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: true\s*\}\)/);
   assert.match(js, /async function ensurePassAiSlackSetupReady\(options\)/);
-  assert.match(js, /const setupResult = await ensurePassAiSlackSetupReady\(\{\s*allowPassTransitionHydration:\s*true\s*\}\);/);
+  assert.match(js, /const setupResult = await ensurePassAiSlackSetupReady\(\{[\s\S]*allowPassTransitionHydration:\s*true[\s\S]*\}\);/);
   assert.doesNotMatch(js, /await maybePrimePassTransitionRosterAfterSlacktivation\(\)\.catch\(\(\) => null\);/);
   assert.match(js, /allowSlackTabBootstrapCreate:\s*false/);
   assert.match(js, /function getPassAiSlackApiTokenConfig\(\)/);
@@ -291,6 +291,43 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /allowBotDelivery:\s*true/);
   assert.match(js, /@SLACK ME sent\./);
   assert.doesNotMatch(js, /\*Visible Rows:\*/);
+});
+
+test("sidepanel tracks staged Slacktivation progress in the footer and toast", () => {
+  const js = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
+  const css = fs.readFileSync(SIDEPANEL_CSS_PATH, "utf8");
+
+  assert.match(js, /const SLACKTIVATION_IMPORT_PROGRESS_MESSAGE = "SLACKTIVATING ZIP\.KEY…";/);
+  assert.match(js, /const SLACKTIVATION_REFRESH_PROGRESS_MESSAGE = "Refreshing stored Slacktivation credentials…";/);
+  assert.match(js, /const SLACKTIVATION_PASS_TRANSITION_PROGRESS_MESSAGE = "Hydrating PASS-TRANSITION roster…";/);
+  assert.match(js, /const SLACKTIVATION_PHASE1_SUCCESS_MESSAGE = "SLACKTIVATED! Please click the Z avatar to log into Slack\.";/);
+  assert.match(js, /const SLACKTIVATION_PHASE2_PROBE_MESSAGE = "Checking adobedx\.slack\.com session…";/);
+  assert.match(js, /const SLACKTIVATION_PHASE2_WAIT_MESSAGE = "Waiting for Slack sign-in in adobedx\.slack\.com…";/);
+  assert.match(js, /const SLACKTIVATION_PHASE2_FINALIZING_MESSAGE = "Finalizing Slack API validation…";/);
+  assert.match(js, /const SLACKTIVATION_PHASE2_SUCCESS_MESSAGE = "SLACKTIVATED! Slack login confirmed\. Slack actions are ready\.";/);
+  assert.match(js, /slacktivationStatusPhase:\s*""/);
+  assert.match(js, /slacktivationStatusStep:\s*""/);
+  assert.match(js, /slacktivationStatusTone:\s*""/);
+  assert.match(js, /slacktivationStatusMessage:\s*""/);
+  assert.match(js, /function normalizeSlacktivationFooterTone\(value\)/);
+  assert.match(js, /function syncSlacktivationFooterStatusState\(\)/);
+  assert.match(js, /function setSlacktivationFooterStatus\(tone,\s*message,\s*options\)/);
+  assert.match(js, /function clearSlacktivationFooterStatus\(options\)/);
+  assert.match(js, /function setSlacktivationPhase2Progress\(message,\s*step\)/);
+  assert.match(js, /function setSlacktivationPhase2Success\(message\)/);
+  assert.match(js, /showToast\(String\(opts\.toastMessage \|\| text\)\.trim\(\), Number\(opts\.durationMs\) \|\| 2400, \{ tone: "success" \}\);/);
+  assert.match(js, /async function ensurePassAiSlacktivationHydrated\(options\)/);
+  assert.match(js, /async function ensurePassAiSlackRosterHydrated\(options\)/);
+  assert.match(js, /setSlacktivationFooterStatus\("loading", startMessage,/);
+  assert.match(js, /setSlacktivationFooterStatus\("success", successMessage,/);
+  assert.match(js, /setSlacktivationPhase2Progress\(SLACKTIVATION_PHASE2_PROBE_MESSAGE,\s*"probe_session"\)/);
+  assert.match(js, /setSlacktivationPhase2Progress\(SLACKTIVATION_PHASE2_WAIT_MESSAGE,\s*"waiting_for_sign_in"\)/);
+  assert.match(js, /setSlacktivationPhase2Progress\(SLACKTIVATION_PHASE2_FINALIZING_MESSAGE,\s*"finalizing_api_validation"\)/);
+  assert.match(js, /setSlacktivationPhase2Success\(\);/);
+
+  assert.match(css, /\.zip-footer-status\.success \{/);
+  assert.match(css, /\.zip-footer-status\.success::before \{/);
+  assert.match(css, /\.zip-toast\[data-tone="success"\] \{/);
 });
 
 test("sidepanel styles avoid custom Slack header spinner overlay", () => {
