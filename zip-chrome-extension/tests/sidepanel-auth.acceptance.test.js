@@ -2125,6 +2125,15 @@ test("sidepanel ZIP.KEY persistence keeps optional bot config and user-scoped au
   assert.match(source, /api:\s*\{[\s\S]*botToken:\s*normalizedBotToken,[\s\S]*userToken:\s*normalizedUserToken,[\s\S]*oauthToken:\s*normalizedOauthToken \|\| normalizedUserToken[\s\S]*\}/);
 });
 
+test("sidepanel partial Slack token persistence preserves the ZIP.KEY bot token", () => {
+  const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
+  assert.match(source, /const currentConfig = getPassAiSlackApiTokenConfig\(\);/);
+  assert.match(source, /const hasBotTokenUpdate = !!\(cfg && typeof cfg === "object" && Object\.prototype\.hasOwnProperty\.call\(cfg, "botToken"\)\);/);
+  assert.match(source, /const hasUserTokenUpdate = !!\(cfg && typeof cfg === "object" && \(\s*Object\.prototype\.hasOwnProperty\.call\(cfg, "userToken"\)\s*\|\|\s*Object\.prototype\.hasOwnProperty\.call\(cfg, "oauthToken"\)\s*\)\);/);
+  assert.match(source, /const botToken = normalizePassAiSlackApiToken\(hasBotTokenUpdate \? cfg\.botToken : currentConfig\.botToken\);/);
+  assert.match(source, /const userTokenInput = hasUserTokenUpdate \? \(cfg\.userToken \|\| cfg\.oauthToken\) : currentConfig\.userToken;/);
+});
+
 test("sidepanel no longer exposes a Clear ZIP.KEY confirmation flow", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
   assert.doesNotMatch(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset SLACKTIVATION now\?/);

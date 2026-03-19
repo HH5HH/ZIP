@@ -8993,11 +8993,18 @@
   }
 
   function persistPassAiSlackApiTokenConfig(config) {
-    const cfg = config && typeof config === "object" ? config : getPassAiSlackApiTokenConfig();
+    const currentConfig = getPassAiSlackApiTokenConfig();
+    const cfg = config && typeof config === "object" ? config : currentConfig;
+    const hasBotTokenUpdate = !!(cfg && typeof cfg === "object" && Object.prototype.hasOwnProperty.call(cfg, "botToken"));
+    const hasUserTokenUpdate = !!(cfg && typeof cfg === "object" && (
+      Object.prototype.hasOwnProperty.call(cfg, "userToken")
+      || Object.prototype.hasOwnProperty.call(cfg, "oauthToken")
+    ));
     const updates = {};
     const removals = [];
-    const botToken = normalizePassAiSlackApiToken(cfg.botToken);
-    const userToken = normalizePassAiSlackApiToken(cfg.userToken);
+    const botToken = normalizePassAiSlackApiToken(hasBotTokenUpdate ? cfg.botToken : currentConfig.botToken);
+    const userTokenInput = hasUserTokenUpdate ? (cfg.userToken || cfg.oauthToken) : currentConfig.userToken;
+    const userToken = normalizePassAiSlackApiToken(userTokenInput);
     if (botToken) {
       updates[ZIP_SLACK_BOT_TOKEN_STORAGE_KEY] = botToken;
     } else {
