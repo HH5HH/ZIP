@@ -72,6 +72,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.doesNotMatch(html, /id="zipSlackLoginBtn"/);
 
   assert.match(js, /SLACKTIVATED_LOGIN_TOOLTIP/);
+  assert.match(js, /const ZIP_REQUIRED_SLACK_BOT_TOKEN_FIELD = "slacktivation\.bot_token";/);
   assert.match(js, /SLACK_IT_TO_ME_CACHED_PASS_TRANSITION_TOOLTIP = "Click sends to you\. Shift\+Click uses the cached PASS-TRANSITION roster\."/);
   assert.match(js, /SLACK_IT_TO_ME_REHYDRATE_TOOLTIP = "Click sends to you\. RE-SLACKTIVATE to load pass-transition teammates\."/);
   assert.match(js, /PASS_TRANSITION_CACHE_MISSING_MESSAGE = "No PASS-TRANSITION roster is cached yet\. RE-SLACKTIVATE to load members\."/);
@@ -110,7 +111,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.doesNotMatch(js, /if \(key === "u"\)/);
   assert.doesNotMatch(js, /if \(key === "s"\)/);
   assert.match(js, /if \(key === "k"\)/);
-  assert.match(js, /if \(!isPassAiSlacktivated\(\)\) \{[\s\S]*setStatus\(SLACKTIVATED_LOGIN_TOOLTIP,\s*true\);[\s\S]*updateTicketActionButtons\(\);[\s\S]*return;/);
+  assert.match(js, /if \(!isPassAiSlacktivated\(\)\) \{[\s\S]*setStatus\(getPassAiSlackBlockedMessage\(\),\s*true\);[\s\S]*updateTicketActionButtons\(\);[\s\S]*return;/);
   assert.match(js, /beginSlackLoginFlow\(\)\.catch/);
   assert.match(js, /const alreadyReady = await refreshPassAiSlackAuth\(\{ silent: true, allowOpenIdSilentProbe: false \}\)/);
   assert.match(js, /const openIdConfig = getPassAiSlackOpenIdConfig\(\);/);
@@ -134,8 +135,10 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /els\.passAiToggleBtn\.classList\.toggle\("hidden", !hasSelectedTicket\)/);
   assert.match(js, /els\.slackItToMeBtn\.classList\.remove\("hidden"\)/);
   assert.match(js, /const canUseSlackItToMe = slackReady/);
-  assert.match(js, /const slackItToMeTitle = !slackReady[\s\S]*SLACKTIVATED_LOGIN_TOOLTIP[\s\S]*SLACK_IT_TO_ME_CACHED_PASS_TRANSITION_TOOLTIP[\s\S]*SLACK_IT_TO_ME_REHYDRATE_TOOLTIP/);
-  assert.match(js, /function isPassAiSlacktivated\(\)\s*\{\s*return !!\(state\.passAiSlackReady && state\.passAiSlackWebReady\);\s*\}/);
+  assert.match(js, /const slackItToMeTitle = !slackReady[\s\S]*slackBlockedMessage[\s\S]*SLACK_IT_TO_ME_CACHED_PASS_TRANSITION_TOOLTIP[\s\S]*SLACK_IT_TO_ME_REHYDRATE_TOOLTIP/);
+  assert.match(js, /function isPassAiSlackAuthVerified\(\)\s*\{\s*return !!\(state\.passAiSlackReady && state\.passAiSlackWebReady\);\s*\}/);
+  assert.match(js, /function getPassAiSlackSetupStatus\(\)/);
+  assert.match(js, /function isPassAiSlacktivated\(\)\s*\{\s*return getPassAiSlackSetupStatus\(\)\.ready;\s*\}/);
   assert.match(js, /function buildPassAiSlackLoginUrl\(\)\s*\{\s*return buildPassAiSlackWorkspaceLandingUrl\(\);\s*\}/);
   assert.match(js, /getSlackTabCandidates\(\{\s*injectableOnly: true,\s*includeBackground: true,\s*workspaceOrigin\s*\}\)\.catch/);
   assert.match(js, /if \(!candidateIds\.length && String\(inner && inner\.action \|\| ""\) === "slackAuthTest"\)\s*\{/);
@@ -159,7 +162,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /function isTransientSlackAuthProbeFailureMessage\(message\)/);
   assert.match(js, /if \(\s*wasReady[\s\S]*priorSlackAuthMode !== "cached"[\s\S]*isTransientSlackAuthProbeFailureMessage\(message\)[\s\S]*\) \{/);
   assert.match(js, /function getPassAiSlacktivatedVerifiedSnapshot\(\)/);
-  assert.match(js, /if \(!isPassAiSlacktivated\(\) \|\| !authMode \|\| authMode === "cached"\) return null;/);
+  assert.match(js, /if \(!isPassAiSlackAuthVerified\(\) \|\| !authMode \|\| authMode === "cached"\) return null;/);
   assert.match(js, /function restorePassAiSlacktivatedVerifiedSnapshot\(snapshot\)/);
   assert.match(js, /const verifiedSnapshot = getPassAiSlacktivatedVerifiedSnapshot\(\);/);
   assert.match(js, /await persistPassAiSlackApiTokenConfig\(\{\s*botToken:\s*configuredBotToken \|\| "",\s*userToken:\s*""\s*\}\)\.catch/);
@@ -192,7 +195,9 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /recordSlackProbeEvent\("slack_probe_session_only"/);
   assert.match(js, /async function maybePrimePassTransitionRosterAfterSlacktivation\(\)/);
   assert.match(js, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: true\s*\}\)/);
-  assert.match(js, /await maybePrimePassTransitionRosterAfterSlacktivation\(\)\.catch\(\(\) => null\);/);
+  assert.match(js, /async function ensurePassAiSlackSetupReady\(options\)/);
+  assert.match(js, /const setupResult = await ensurePassAiSlackSetupReady\(\{\s*allowPassTransitionHydration:\s*true\s*\}\);/);
+  assert.doesNotMatch(js, /await maybePrimePassTransitionRosterAfterSlacktivation\(\)\.catch\(\(\) => null\);/);
   assert.match(js, /allowSlackTabBootstrapCreate:\s*false/);
   assert.match(js, /function getPassAiSlackApiTokenConfig\(\)/);
   assert.match(js, /function renderContextMenuSlacktivation\(\)/);

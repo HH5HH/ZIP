@@ -23,6 +23,7 @@
   const ZIP_KEY_FILE_PREFIX = "ZIPKEY1:";
   const ZIP_CONFIG_META_STORAGE_KEY = "zip.config.meta.v1";
   const ZIP_SLACKTIVATION_SERVICE_KEY = "slacktivation";
+  const ZIP_REQUIRED_SLACK_BOT_TOKEN_FIELD = "slacktivation.bot_token";
   const ZIP_REQUIRED_SLACK_API_TOKEN_FIELD = "slacktivation.user_token";
   const ZIP_REQUIRED_CONFIG_FIELDS = Object.freeze([
     "slacktivation.client_id",
@@ -1470,7 +1471,8 @@
 
   function syncContextMenuAuthVisibility() {
     const loggedIn = !!state.user;
-    const slackReady = isPassAiSlacktivated();
+    const slackStatus = getPassAiSlackSetupStatus();
+    const slackReady = slackStatus.ready;
     if (els.contextMenuSlacktivateSection) {
       els.contextMenuSlacktivateSection.classList.toggle("hidden", !loggedIn);
       els.contextMenuSlacktivateSection.setAttribute("aria-hidden", loggedIn ? "false" : "true");
@@ -1483,7 +1485,7 @@
     if (els.contextMenuSlackMe) {
       els.contextMenuSlackMe.classList.toggle("hidden", !loggedIn);
       els.contextMenuSlackMe.disabled = !(loggedIn && slackReady && !state.slackMeNoteLoading);
-      els.contextMenuSlackMe.title = slackReady ? "@SLACK ME" : SLACKTIVATED_LOGIN_TOOLTIP;
+      els.contextMenuSlackMe.title = slackReady ? "@SLACK ME" : slackStatus.message;
       els.contextMenuSlackMe.setAttribute("aria-hidden", loggedIn ? "false" : "true");
     }
   }
@@ -3196,7 +3198,7 @@
     hideContextMenu();
     if (!state.user) return;
     if (!isPassAiSlacktivated()) {
-      setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+      setStatus(getPassAiSlackBlockedMessage(), true);
       return;
     }
     if (!els.slackMeDialogBackdrop) return;
@@ -3266,8 +3268,9 @@
     if (state.slackMeNoteLoading) return;
     let shouldCloseSlackMeDialog = false;
     if (!isPassAiSlacktivated()) {
-      setSlackMeDialogStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
-      setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+      const blockedMessage = getPassAiSlackBlockedMessage();
+      setSlackMeDialogStatus(blockedMessage, true);
+      setStatus(blockedMessage, true);
       syncSlackMeDialogUi();
       return;
     }
@@ -3364,8 +3367,9 @@
     if (state.slackMeNoteLoading) return;
     let shouldCloseSlackMeDialog = false;
     if (!isPassAiSlacktivated()) {
-      setSlackMeDialogStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
-      setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+      const blockedMessage = getPassAiSlackBlockedMessage();
+      setSlackMeDialogStatus(blockedMessage, true);
+      setStatus(blockedMessage, true);
       syncSlackMeDialogUi();
       return;
     }
@@ -4615,8 +4619,114 @@
     updatePassAiAnswerPlaceholder();
   }
 
-  function isPassAiSlacktivated() {
+  function isPassAiSlackAuthVerified() {
     return !!(state.passAiSlackReady && state.passAiSlackWebReady);
+  }
+
+  function getPassAiSlackSetupStatus() {
+    const gateStatus = getZipConfigGateStatus();
+    if (!gateStatus.ready) {
+      return {
+        ready: false,
+        reason: gateStatus.reason || "zip_key_missing",
+        message: getZipConfigGateMessage(gateStatus)
+      };
+    }
+    if (!isPassAiSlackAuthVerified()) {
+      return {
+        ready: false,
+        reason: "slack_login_required",
+        message: SLACKTIVATED_LOGIN_TOOLTIP
+      };
+    }
+    const passTransition = state.zipSecretConfig && state.zipSecretConfig.passTransition
+      ? buildPassTransitionConfigShape(state.zipSecretConfig.passTransition)
+      : null;
+    const requiresPassTransitionRoster = !!normalizePassAiSlackChannelId(passTransition && passTransition.channelId || "");
+    const cachedRecipientCount = Math.max(
+      0,
+      Number(
+        (passTransition && (passTransition.recipientCount || passTransition.memberCount))
+        || getSlackMePassTransitionRecipients().length
+        || 0
+      )
+    );
+    if (requiresPassTransitionRoster && !cachedRecipientCount) {
+      return {
+        ready: false,
+        reason: "pass_transition_not_ready",
+        message: PASS_TRANSITION_CACHE_MISSING_MESSAGE
+      };
+    }
+    return {
+      ready: true,
+      reason: "",
+      message: ""
+    };
+  }
+
+  function getPassAiSlackBlockedMessage() {
+    const status = getPassAiSlackSetupStatus();
+    return status.message || SLACKTIVATED_LOGIN_TOOLTIP;
+  }
+
+  function isPassAiSlacktivated() {
+    return getPassAiSlackSetupStatus().ready;
+  }
+
+  function setPassAiSlackSetupError(message) {
+    state.passAiSlackAuthError = normalizePassAiCommentBody(message || "");
+    updateTicketActionButtons();
+    renderContextMenuSlacktivation();
+  }
+
+  async function ensurePassAiSlackSetupReady(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    let setupStatus = getPassAiSlackSetupStatus();
+    if (setupStatus.ready) {
+      setPassAiSlackSetupError("");
+      return {
+        ok: true,
+        reason: ""
+      };
+    }
+    if (setupStatus.reason !== "pass_transition_not_ready" || opts.allowPassTransitionHydration === false) {
+      const message = setupStatus.message || SLACKTIVATED_LOGIN_TOOLTIP;
+      setPassAiSlackSetupError(message);
+      return {
+        ok: false,
+        code: setupStatus.reason || "slack_setup_incomplete",
+        error: message
+      };
+    }
+    const hydrationResult = await maybePrimePassTransitionRosterAfterSlacktivation().catch((err) => ({
+      ok: false,
+      code: "pass_transition_hydration_failed",
+      error: err && err.message ? err.message : "Unable to hydrate PASS-TRANSITION members."
+    }));
+    await refreshZipSecretConfigFromStorage().catch(() => {});
+    applyZipConfigAfterStorageRefresh({ reportStatus: false });
+    setupStatus = getPassAiSlackSetupStatus();
+    if (setupStatus.ready) {
+      setPassAiSlackSetupError("");
+      return {
+        ok: true,
+        reason: ""
+      };
+    }
+    const message = normalizePassAiCommentBody(
+      hydrationResult && (hydrationResult.error || hydrationResult.message)
+    ) || setupStatus.message || PASS_TRANSITION_CACHE_MISSING_MESSAGE;
+    setPassAiSlackSetupError(message);
+    return {
+      ok: false,
+      code: String(
+        (hydrationResult && hydrationResult.code)
+        || setupStatus.reason
+        || "slack_setup_incomplete"
+      ).trim().toLowerCase() || "slack_setup_incomplete",
+      error: message
+    };
   }
 
   function getPassAiSlackAuthMode() {
@@ -4624,8 +4734,9 @@
   }
 
   async function ensurePassAiSlackIdentityVerifiedForDelivery() {
-    if (!isPassAiSlacktivated()) {
-      throw new Error(SLACKTIVATED_LOGIN_TOOLTIP);
+    const gateStatus = enforceZipConfigGate({ reportStatus: false });
+    if (!gateStatus.ready) {
+      throw new Error(getZipConfigGateMessage(gateStatus));
     }
     const ready = await refreshSlacktivatedState({
       force: true,
@@ -4639,20 +4750,29 @@
     const refreshedUserName = normalizePassAiSlackDisplayName(state.passAiSlackUserName || "");
     if (
       ready
-      && isPassAiSlacktivated()
+      && isPassAiSlackAuthVerified()
       && refreshedAuthMode
       && refreshedAuthMode !== "cached"
       && refreshedUserId
       && refreshedUserName
     ) {
-      return true;
+      const setupResult = await ensurePassAiSlackSetupReady({
+        allowPassTransitionHydration: true
+      });
+      if (setupResult && setupResult.ok === true) {
+        return true;
+      }
+      throw new Error(
+        normalizePassAiCommentBody(setupResult && (setupResult.error || setupResult.message))
+          || getPassAiSlackBlockedMessage()
+      );
     }
     throw new Error("Slack identity needs verification. Click SLACKTIVATE and sign in as your active Slack user.");
   }
 
   async function openPassAiPanelForSelectedTicket() {
     if (!isPassAiSlacktivated()) {
-      setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+      setStatus(getPassAiSlackBlockedMessage(), true);
       updateTicketActionButtons();
       return;
     }
@@ -4681,7 +4801,7 @@
       return;
     }
     if (!isPassAiSlacktivated()) {
-      setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+      setStatus(getPassAiSlackBlockedMessage(), true);
       updateTicketActionButtons();
       return;
     }
@@ -4738,6 +4858,9 @@
   function syncSlacktivatedIndicator() {
     const status = getSlacktivatedStatusSnapshot();
     const hasStatus = !!(status.icon || status.iconUrl || status.message);
+    const gateStatus = getZipConfigGateStatus();
+    const ready = isPassAiSlacktivated();
+    const blockedMessage = getPassAiSlackBlockedMessage();
     if (els.slacktivatedIcon) {
       const defaultSrc = String(
         (els.slacktivatedIcon.dataset && els.slacktivatedIcon.dataset.defaultSrc)
@@ -4745,18 +4868,18 @@
         || SLACKTIVATED_PENDING_ICON_URL
       ).trim() || SLACKTIVATED_PENDING_ICON_URL;
       const avatar = sanitizePassAiSlackAvatarUrl(state.passAiSlackAvatarUrl || "", status.iconUrl);
-      const useAvatar = !!(state.passAiSlackReady && avatar);
+      const useAvatar = !!(ready && avatar);
       els.slacktivatedIcon.src = useAvatar ? avatar : defaultSrc;
       els.slacktivatedIcon.alt = useAvatar
         ? ("Slack avatar for " + getSlacktivatedDisplayName())
         : "ZIP Slack app status";
     }
     if (els.slacktivatedStatusWrap) {
-      const shouldShowStatus = !!(isPassAiSlacktivated() && hasStatus);
+      const shouldShowStatus = !!(ready && hasStatus);
       els.slacktivatedStatusWrap.classList.toggle("hidden", !shouldShowStatus);
     }
     if (els.slacktivatedStatusIconImg) {
-      const showImage = !!(isPassAiSlacktivated() && hasStatus && status.iconUrl);
+      const showImage = !!(ready && hasStatus && status.iconUrl);
       if (showImage) {
         els.slacktivatedStatusIconImg.src = status.iconUrl;
       } else {
@@ -4767,14 +4890,13 @@
     if (els.slacktivatedStatusIcon) {
       const iconText = status.icon || "";
       els.slacktivatedStatusIcon.textContent = iconText;
-      const showTextIcon = !!(isPassAiSlacktivated() && hasStatus && !status.iconUrl && iconText);
+      const showTextIcon = !!(ready && hasStatus && !status.iconUrl && iconText);
       els.slacktivatedStatusIcon.classList.toggle("hidden", !showTextIcon);
     }
     if (els.slacktivatedStatusMessage) {
       els.slacktivatedStatusMessage.textContent = status.message || "";
     }
     if (els.slacktivatedBtn) {
-      const ready = isPassAiSlacktivated();
       els.slacktivatedBtn.classList.toggle("is-slacktivated", ready);
       els.slacktivatedBtn.classList.toggle("is-slack-pending", !ready);
       els.slacktivatedBtn.classList.toggle("has-status", !!(ready && hasStatus));
@@ -4786,10 +4908,10 @@
           + ", ZIP is SLACKTIVATED!!!"
           + (statusLabel ? (" Status: " + statusLabel) : "")
         )
-        : SLACKTIVATED_LOGIN_TOOLTIP;
+        : blockedMessage;
       els.slacktivatedBtn.title = title;
       els.slacktivatedBtn.setAttribute("aria-label", title);
-      els.slacktivatedBtn.disabled = !state.user;
+      els.slacktivatedBtn.disabled = !state.user || !gateStatus.ready;
     }
   }
 
@@ -4845,6 +4967,7 @@
     const selectedTicketId = getSelectedPassAiTicketId();
     const hasSelectedTicket = selectedTicketId != null;
     const slackReady = isPassAiSlacktivated();
+    const slackBlockedMessage = getPassAiSlackBlockedMessage();
     syncSlacktivatedIndicator();
 
     const slackItToMeButtonState = getSlackItToMeButtonState();
@@ -4856,7 +4979,7 @@
         && slackItToMeButtonState !== "ack";
       const hasCachedPassTransitionRecipients = getSlackMePassTransitionRecipients().length > 0;
       const slackItToMeTitle = !slackReady
-        ? SLACKTIVATED_LOGIN_TOOLTIP
+        ? slackBlockedMessage
         : (
           hasCachedPassTransitionRecipients
             ? SLACK_IT_TO_ME_CACHED_PASS_TRANSITION_TOOLTIP
@@ -4909,7 +5032,7 @@
         ? "Close Q and AI panel"
         : (
           !slackReady
-            ? SLACKTIVATED_LOGIN_TOOLTIP
+            ? slackBlockedMessage
             : (hasSelectedTicket ? "Open Q and AI panel" : "Select a ticket row to open Q and AI.")
         );
       els.passAiToggleBtn.classList.toggle("hidden", !hasSelectedTicket);
@@ -5975,7 +6098,7 @@
       }
 
       if (!isPassAiSlacktivated()) {
-        setStatus(SLACKTIVATED_LOGIN_TOOLTIP, true);
+        setStatus(getPassAiSlackBlockedMessage(), true);
         updateTicketActionButtons();
         return;
       }
@@ -8198,6 +8321,7 @@
     const missingFields = [];
     if (!clientId) missingFields.push("slacktivation.client_id");
     if (!clientSecret) missingFields.push("slacktivation.client_secret");
+    if (!apiTokens.botToken) missingFields.push(ZIP_REQUIRED_SLACK_BOT_TOKEN_FIELD);
     if (!(apiTokens.userToken || apiTokens.oauthToken)) missingFields.push(ZIP_REQUIRED_SLACK_API_TOKEN_FIELD);
     if (!singularityChannelId) missingFields.push("slacktivation.singularity_channel_id");
     if (!singularityMention) missingFields.push("slacktivation.singularity_mention");
@@ -8298,6 +8422,7 @@
     const hasRequired = !!(
       clientId
       && clientSecret
+      && botToken
       && singularityChannelId
       && singularityMention
       && (userToken || oauthToken)
@@ -8438,7 +8563,7 @@
   async function hydratePassAiSlacktivatedStateFromCache(options) {
     const opts = options && typeof options === "object" ? options : {};
     if (!state.user) return false;
-    if (!opts.force && slackSessionCacheHydrated) return isPassAiSlacktivated();
+    if (!opts.force && slackSessionCacheHydrated) return isPassAiSlackAuthVerified();
     const cached = await readPassAiSlacktivatedSessionCache().catch(() => null);
     slackSessionCacheHydrated = true;
     if (!cached) return false;
@@ -8462,7 +8587,7 @@
       enterpriseId: cached.enterpriseId || "",
       skipPersist: true
     });
-    return isPassAiSlacktivated();
+    return isPassAiSlackAuthVerified();
   }
 
   async function refreshZipSecretConfigFromStorage() {
@@ -8528,6 +8653,9 @@
     const meta = readZipConfigMeta();
     const secretConfig = state && state.zipSecretConfig ? state.zipSecretConfig : null;
     const openIdConfig = getPassAiSlackOpenIdConfig();
+    const hasBotToken = !!normalizePassAiSlackApiToken(
+      secretConfig && secretConfig.botToken || ""
+    );
     const hasUserScopedToken = !!normalizePassAiSlackApiToken(
       secretConfig && (secretConfig.userToken || secretConfig.oauthToken) || ""
     );
@@ -8536,10 +8664,11 @@
       "slacktivation.client_secret": !!String(openIdConfig.clientSecret || "").trim(),
       "slacktivation.singularity_channel_id": !!String(secretConfig && secretConfig.singularityChannelId || "").trim(),
       "slacktivation.singularity_mention": !!String(secretConfig && secretConfig.singularityMention || "").trim(),
+      [ZIP_REQUIRED_SLACK_BOT_TOKEN_FIELD]: hasBotToken,
       [ZIP_REQUIRED_SLACK_API_TOKEN_FIELD]: hasUserScopedToken
     };
     const missingFields = ZIP_REQUIRED_CONFIG_FIELDS
-      .concat([ZIP_REQUIRED_SLACK_API_TOKEN_FIELD])
+      .concat([ZIP_REQUIRED_SLACK_BOT_TOKEN_FIELD, ZIP_REQUIRED_SLACK_API_TOKEN_FIELD])
       .filter((field) => !requiredFieldState[field]);
 
     let reason = "";
@@ -8708,7 +8837,7 @@
         normalizePassAiSlackStatusMessage(state.passAiSlackStatusMessage || "")
         || ("Use RE-SLACKTIVATE to refresh the stored Slack identity against " + PASS_AI_SLACK_WORKSPACE_ORIGIN + ".")
       )
-      : "Use RE-SLACKTIVATE to validate the stored Slack identity without slowing startup.";
+      : getPassAiSlackBlockedMessage();
     const rosterMarkup = buildContextMenuSlacktivateRosterMarkup();
     return (
       "<div class=\"zip-context-menu-slacktivate-state\" data-state=\"" + (slackReady ? "ready" : "loaded") + "\">"
@@ -8797,15 +8926,21 @@
     }).catch(() => false);
     await refreshZipSecretConfigFromStorage().catch(() => {});
     applyZipConfigAfterStorageRefresh({ reportStatus: false });
-    if (!ready || !isPassAiSlacktivated()) {
+    if (!ready || !isPassAiSlackAuthVerified()) {
       throw new Error(
         normalizePassAiCommentBody(state.passAiSlackAuthError || "")
         || "Unable to re-SLACKTIVATE ZIP from the stored ZIP.KEY."
       );
     }
-    await maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
-    await refreshZipSecretConfigFromStorage().catch(() => {});
-    applyZipConfigAfterStorageRefresh({ reportStatus: false });
+    const setupResult = await ensurePassAiSlackSetupReady({
+      allowPassTransitionHydration: true
+    });
+    if (!setupResult || setupResult.ok !== true) {
+      throw new Error(
+        normalizePassAiCommentBody(setupResult && (setupResult.error || setupResult.message))
+          || getPassAiSlackBlockedMessage()
+      );
+    }
     const rosterCount = getSlackMePassTransitionRecipients().length || Math.max(
       0,
       Number(state.zipSecretConfig && state.zipSecretConfig.passTransition && state.zipSecretConfig.passTransition.recipientCount || 0)
@@ -8838,13 +8973,21 @@
       }).catch(() => false);
       await refreshZipSecretConfigFromStorage().catch(() => {});
       applyZipConfigAfterStorageRefresh({ reportStatus: false });
-      if (!ready || !isPassAiSlacktivated()) {
+      if (!ready || !isPassAiSlackAuthVerified()) {
         throw new Error(
           normalizePassAiCommentBody(state.passAiSlackAuthError || "")
           || "ZIP.KEY loaded, but the stored Slack credentials could not be verified."
         );
       }
-      await maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
+      const setupResult = await ensurePassAiSlackSetupReady({
+        allowPassTransitionHydration: true
+      });
+      if (!setupResult || setupResult.ok !== true) {
+        throw new Error(
+          normalizePassAiCommentBody(setupResult && (setupResult.error || setupResult.message))
+            || getPassAiSlackBlockedMessage()
+        );
+      }
       const rosterCount = getSlackMePassTransitionRecipients().length || Math.max(
         0,
         Number(response && response.passTransition && response.passTransition.recipientCount || 0)
@@ -9230,7 +9373,7 @@
 
   function getPassAiSlacktivatedVerifiedSnapshot() {
     const authMode = getPassAiSlackAuthMode();
-    if (!isPassAiSlacktivated() || !authMode || authMode === "cached") return null;
+    if (!isPassAiSlackAuthVerified() || !authMode || authMode === "cached") return null;
     return {
       userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
       userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
@@ -9447,7 +9590,7 @@
       if (nowMs - Number(slackOpenIdSilentProbeLastAt || 0) >= SLACK_OPENID_SILENT_PROBE_MIN_GAP_MS) {
         slackOpenIdSilentProbeLastAt = nowMs;
         const silentOpenId = await runPassAiSlackOpenIdAuth({ interactive: false }).catch(() => null);
-        if (silentOpenId && silentOpenId.ok === true && isPassAiSlacktivated()) {
+        if (silentOpenId && silentOpenId.ok === true && isPassAiSlackAuthVerified()) {
           recordSlackProbeEvent("slack_probe_openid_ready", { source: "silent_probe" });
           if (!silent) setStatus("ZIP is now SLACKTIVATED.", false);
           await maybeCloseZipOpenedSlackLoginTab("openid_silent_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
@@ -9880,7 +10023,7 @@
       scheduleSlackWorkerTabClose("web_auth_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS);
       return true;
     } catch (tabErr) {
-      const wasReady = isPassAiSlacktivated();
+      const wasReady = isPassAiSlackAuthVerified();
       const message = normalizePassAiCommentBody(tabErr && tabErr.message) || "Slack sign-in is required.";
       recordSlackProbeEvent("slack_probe_web_auth_failed", { message });
       if (
@@ -9947,10 +10090,10 @@
     const force = !!opts.force;
     const nowMs = Date.now();
     if (!force && slackAuthCheckInFlight) {
-      return isPassAiSlacktivated();
+      return isPassAiSlackAuthVerified();
     }
     if (!force && nowMs - Number(slackAuthCheckLastAt || 0) < SLACK_AUTH_AUTO_REFRESH_MIN_GAP_MS) {
-      return isPassAiSlacktivated();
+      return isPassAiSlackAuthVerified();
     }
 
     slackAuthCheckInFlight = true;
@@ -9983,10 +10126,22 @@
     const poll = () => {
       passAiSlackAuthPollAttempt += 1;
       refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false, allowSlackTabBootstrap: true })
-        .then((ready) => {
+        .then(async (ready) => {
           if (ready) {
             stopPassAiSlackAuthPolling();
-            maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
+            const setupResult = await ensurePassAiSlackSetupReady({
+              allowPassTransitionHydration: true
+            }).catch((err) => ({
+              ok: false,
+              error: err && err.message ? err.message : getPassAiSlackBlockedMessage()
+            }));
+            if (!setupResult || setupResult.ok !== true) {
+              const message = normalizePassAiCommentBody(setupResult && (setupResult.error || setupResult.message))
+                || getPassAiSlackBlockedMessage();
+              setPassAiSlackSetupError(message);
+              setStatus("Slack sign-in detected, but ZipTool Slack setup is incomplete: " + message, true);
+              return;
+            }
             maybeCloseZipOpenedSlackLoginTab("polling_login_complete", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
             setStatus("Slack sign-in detected. ZIP is now SLACKTIVATED.", false);
             return;
@@ -10012,6 +10167,11 @@
   }
 
   async function beginSlackLoginFlow() {
+    const gateStatus = enforceZipConfigGate({ reportStatus: false });
+    if (!gateStatus.ready) {
+      setStatus(getZipConfigGateMessage(gateStatus), gateStatus.reason === "missing_fields");
+      return;
+    }
     stopPassAiSlackAuthPolling();
     state.passAiSlackAuthError = "";
     slackLoginFlowOpenedTabId = null;
@@ -10021,7 +10181,15 @@
     try {
       const alreadyReady = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false });
       if (alreadyReady && state.passAiSlackReady) {
-        await maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
+        const setupResult = await ensurePassAiSlackSetupReady({
+          allowPassTransitionHydration: true
+        });
+        if (!setupResult || setupResult.ok !== true) {
+          const message = normalizePassAiCommentBody(setupResult && (setupResult.error || setupResult.message))
+            || getPassAiSlackBlockedMessage();
+          setStatus("Slack sign-in detected, but ZipTool Slack setup is incomplete: " + message, true);
+          return;
+        }
         setStatus("ZIP is now SLACKTIVATED.", false);
         return;
       }
@@ -10036,10 +10204,18 @@
             allowOpenIdSilentProbe: false,
             allowSlackTabBootstrap: false
           }).catch(() => false);
-          if (!bootstrappedReady && interactiveOpenIdState && !isPassAiSlacktivated()) {
+          if (!bootstrappedReady && interactiveOpenIdState && !isPassAiSlackAuthVerified()) {
             setPassAiSlackAuthState(interactiveOpenIdState);
           }
-          await maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
+          const setupResult = await ensurePassAiSlackSetupReady({
+            allowPassTransitionHydration: true
+          });
+          if (!setupResult || setupResult.ok !== true) {
+            const message = normalizePassAiCommentBody(setupResult && (setupResult.error || setupResult.message))
+              || getPassAiSlackBlockedMessage();
+            setStatus("Slack sign-in detected, but ZipTool Slack setup is incomplete: " + message, true);
+            return;
+          }
           await maybeCloseZipOpenedSlackLoginTab("interactive_openid_ready", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
           setStatus("ZIP is now SLACKTIVATED.", false);
           return;
@@ -10073,7 +10249,15 @@
       slackOpenIdSilentProbeLastAt = 0;
       const readyNow = await refreshPassAiSlackAuth({ silent: true, allowOpenIdSilentProbe: false, allowSlackTabBootstrap: false });
       if (readyNow) {
-        await maybePrimePassTransitionRosterAfterSlacktivation().catch(() => null);
+        const setupResult = await ensurePassAiSlackSetupReady({
+          allowPassTransitionHydration: true
+        });
+        if (!setupResult || setupResult.ok !== true) {
+          const message = normalizePassAiCommentBody(setupResult && (setupResult.error || setupResult.message))
+            || getPassAiSlackBlockedMessage();
+          setStatus("Slack sign-in detected, but ZipTool Slack setup is incomplete: " + message, true);
+          return;
+        }
         await maybeCloseZipOpenedSlackLoginTab("login_flow_ready_now", SLACK_LOGIN_TAB_CLOSE_DELAY_MS).catch(() => {});
         setStatus("ZIP is now SLACKTIVATED.", false);
         return;
@@ -10093,7 +10277,7 @@
 
   async function ensurePassAiSlackSession() {
     if (isPassAiSlacktivated()) return true;
-    throw new Error("Slack sign-in is required. Click the Slack indicator and complete login at adobedx.slack.com.");
+    throw new Error(getPassAiSlackBlockedMessage());
   }
 
   function renderPassAiError(message) {
@@ -13221,13 +13405,20 @@
     if (els.groupMemberSelect) els.groupMemberSelect.value = "";
     setStatus("Hello " + (me.user.name || me.user.email || "agent") + ". Loading assigned tickets...", false);
     await loadTickets(me.user && me.user.id != null ? String(me.user.id) : "");
-    refreshSlacktivatedState({
-      force: true,
-      silent: true,
-      allowOpenIdSilentProbe: true,
-      allowSlackTabBootstrap: true,
-      allowSlackTabBootstrapCreate: false
-    }).catch(() => {});
+    if (state.zipConfigReady) {
+      refreshSlacktivatedState({
+        force: true,
+        silent: true,
+        allowOpenIdSilentProbe: true,
+        allowSlackTabBootstrap: true,
+        allowSlackTabBootstrapCreate: false
+      })
+        .then((ready) => {
+          if (ready) return ensurePassAiSlackSetupReady({ allowPassTransitionHydration: true });
+          return null;
+        })
+        .catch(() => {});
+    }
     setStatus(getTicketTableContextStatusMessage() + " Loading filter menus…", false);
     if (isFirstLogin) {
       try {
@@ -13445,7 +13636,14 @@
           .catch(() => {});
         loadContextMenuUpdateState(false).catch(() => {});
         loadThemeState().catch(() => {});
-        if (state.user) refreshSlacktivatedState({ silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
+        if (state.user && state.zipConfigReady) {
+          refreshSlacktivatedState({ silent: true, allowOpenIdSilentProbe: true })
+            .then((ready) => {
+              if (ready) return ensurePassAiSlackSetupReady({ allowPassTransitionHydration: true });
+              return null;
+            })
+            .catch(() => {});
+        }
         triggerAuthCheckNow();
       });
       window.addEventListener("resize", () => {
@@ -13467,7 +13665,14 @@
             .catch(() => {});
           loadContextMenuUpdateState(false).catch(() => {});
           loadThemeState().catch(() => {});
-          if (state.user) refreshSlacktivatedState({ silent: true, allowOpenIdSilentProbe: true }).catch(() => {});
+          if (state.user && state.zipConfigReady) {
+            refreshSlacktivatedState({ silent: true, allowOpenIdSilentProbe: true })
+              .then((ready) => {
+                if (ready) return ensurePassAiSlackSetupReady({ allowPassTransitionHydration: true });
+                return null;
+              })
+              .catch(() => {});
+          }
           triggerAuthCheckNow();
         }
       });
@@ -13763,6 +13968,10 @@
       els.slacktivatedBtn.addEventListener("click", (e) => {
         e.preventDefault();
         if (!state.user) return;
+        if (!state.zipConfigReady) {
+          setStatus(getZipConfigGateMessage(getZipConfigGateStatus()), true);
+          return;
+        }
         if (state.passAiSlackAuthPolling) {
           stopPassAiSlackAuthPolling();
         }

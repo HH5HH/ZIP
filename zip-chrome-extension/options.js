@@ -464,6 +464,7 @@
       "passTransitionMembersSyncedAt"
     ]));
     const missingFields = [];
+    if (!botToken) missingFields.push("bot_token");
     if (!(userToken || oauthToken)) missingFields.push("user_token");
     if (!singularityChannelId) missingFields.push("singularity_channel_id");
     if (!singularityMention) missingFields.push("singularity_mention");

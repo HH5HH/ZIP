@@ -97,6 +97,7 @@ const MENU_ASK_TEAM_LABEL = "✉ Ask the Team";
 const MENU_APPEARANCE_LABEL = "👁 Appearance";
 const MENU_CLEAR_KEY_LABEL = "⚠ Clear ZIP.KEY (Reset ZIP)";
 const THEME_STORAGE_KEY = "zip.ui.theme.v1";
+const ZIP_REQUIRED_SLACK_BOT_TOKEN_FIELD = "slacktivation.bot_token";
 const ZIP_REQUIRED_SLACK_API_TOKEN_FIELD = "slacktivation.user_token";
 const ZIP_REQUIRED_SECRET_KEYS = [
   ZIP_SLACK_CLIENT_ID_STORAGE_KEY,
@@ -3656,6 +3657,7 @@ function normalizeZipSecretConfig(input) {
   const hasRequired = !!(
     clientId
     && clientSecret
+    && botToken
     && singularityChannelId
     && singularityMention
     && (userToken || oauthToken)
@@ -3714,11 +3716,18 @@ async function removeStorageLocal(keys) {
 function computeZipSecretsStatus(storedValues) {
   const values = storedValues && typeof storedValues === "object" ? storedValues : {};
   const missing = ZIP_REQUIRED_SECRET_KEYS.filter((key) => !String(values[key] || "").trim());
+  const hasBotToken = !!normalizeSlackApiToken(
+    values[ZIP_SLACK_BOT_TOKEN_STORAGE_KEY]
+    || ""
+  );
   const hasUserScopedToken = !!normalizeSlackApiToken(
     values[ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY]
     || values[ZIP_SLACK_LEGACY_USER_TOKEN_STORAGE_KEY]
     || ""
   );
+  if (!hasBotToken) {
+    missing.push(ZIP_REQUIRED_SLACK_BOT_TOKEN_FIELD);
+  }
   if (!hasUserScopedToken) {
     missing.push(ZIP_REQUIRED_SLACK_API_TOKEN_FIELD);
   }
@@ -3733,6 +3742,7 @@ function computeZipSecretsStatus(storedValues) {
 
 async function readZipSecretsStatus() {
   const keys = ZIP_REQUIRED_SECRET_KEYS.concat([
+    ZIP_SLACK_BOT_TOKEN_STORAGE_KEY,
     ZIP_SLACK_LEGACY_USER_TOKEN_STORAGE_KEY,
     ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY,
     ZIP_SLACK_KEY_LOADED_STORAGE_KEY,
@@ -3751,6 +3761,7 @@ async function storeZipSecrets(input, options) {
   const missingFields = [];
   if (!normalized.clientId) missingFields.push("slacktivation.client_id");
   if (!normalized.clientSecret) missingFields.push("slacktivation.client_secret");
+  if (!normalized.botToken) missingFields.push(ZIP_REQUIRED_SLACK_BOT_TOKEN_FIELD);
   if (!(normalized.userToken || normalized.oauthToken)) missingFields.push(ZIP_REQUIRED_SLACK_API_TOKEN_FIELD);
   if (!normalized.singularityChannelId) missingFields.push("slacktivation.singularity_channel_id");
   if (!normalized.singularityMention) missingFields.push("slacktivation.singularity_mention");
@@ -3810,6 +3821,7 @@ async function storeZipSecrets(input, options) {
   const status = computeZipSecretsStatus({
     [ZIP_SLACK_CLIENT_ID_STORAGE_KEY]: normalized.clientId,
     [ZIP_SLACK_CLIENT_SECRET_STORAGE_KEY]: normalized.clientSecret,
+    [ZIP_SLACK_BOT_TOKEN_STORAGE_KEY]: normalized.botToken,
     [ZIP_SLACK_LEGACY_USER_TOKEN_STORAGE_KEY]: normalized.userToken,
     [ZIP_SLACK_OAUTH_TOKEN_STORAGE_KEY]: normalized.oauthToken,
     [ZIP_SINGULARITY_CHANNEL_ID_STORAGE_KEY]: normalized.singularityChannelId,

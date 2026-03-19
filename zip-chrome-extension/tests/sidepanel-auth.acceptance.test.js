@@ -513,6 +513,7 @@ test("ZIP_CHECK_SECRETS reports missing state until ZIP_IMPORT_KEY_PAYLOAD succe
         redirectPath: "slack-user"
       },
       api: {
+        botToken: "SLK_TEST_ZIP_BOT_TOKEN",
         userToken: "SLK_TEST_ZIP_USER_TOKEN"
       },
       singularity: {
@@ -529,6 +530,7 @@ test("ZIP_CHECK_SECRETS reports missing state until ZIP_IMPORT_KEY_PAYLOAD succe
   assert.equal(String(stored.zip_slack_client_id || ""), "zip-client-id");
   assert.equal(String(stored.zip_slack_client_secret || ""), "zip-client-secret");
   assert.equal(stored.zip_slack_key_loaded, true);
+  assert.equal(String(stored.zip_slack_bot_token || ""), "SLK_TEST_ZIP_BOT_TOKEN");
   assert.equal(String(stored.zip_slack_oauth_token || ""), "SLK_TEST_ZIP_USER_TOKEN");
   assert.equal(String(stored.zip_slack_user_token || ""), "SLK_TEST_ZIP_USER_TOKEN");
 
@@ -596,6 +598,7 @@ test("ZIP_IMPORT_KEY_PAYLOAD preserves PASS-TRANSITION cache for load-once membe
         redirectPath: "slack-user"
       },
       api: {
+        botToken: "SLK_TEST_PASS_TRANSITION_BOT_TOKEN-token",
         userToken: "SLK_TEST_PASS_TRANSITION_USER_TOKEN-token"
       },
       singularity: {
@@ -1819,6 +1822,7 @@ test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", 
         redirectPath: "slack-user"
       },
       api: {
+        botToken: "SLK_TEST_MENU_BOT_TOKEN",
         userToken: "SLK_TEST_MENU_USER_TOKEN"
       },
       singularity: {
@@ -2090,10 +2094,13 @@ test("sidepanel loads ZIP.KEY for Slacktivation without gating Zendesk login", (
   assert.match(source, /const ZIP_KEY_FILE_PREFIX = "ZIPKEY1:";/);
   assert.match(source, /const ZIP_CONFIG_META_STORAGE_KEY = "zip\.config\.meta\.v1";/);
   assert.match(source, /const ZIP_SLACKTIVATION_SERVICE_KEY = "slacktivation";/);
+  assert.match(source, /const ZIP_REQUIRED_SLACK_BOT_TOKEN_FIELD = "slacktivation\.bot_token";/);
   assert.match(source, /const ZIP_REQUIRED_SLACK_API_TOKEN_FIELD = "slacktivation\.user_token";/);
   assert.match(source, /"slacktivation\.client_id"/);
   assert.match(source, /"slacktivation\.client_secret"/);
+  assert.match(source, /"slacktivation\.bot_token"/);
   assert.match(source, /"slacktivation\.user_token"/);
+  assert.match(optionsSource, /"bot_token"/);
   assert.match(optionsSource, /"user_token"/);
   assert.match(source, /"slacktivation\.singularity_channel_id"/);
   assert.match(source, /"slacktivation\.singularity_mention"/);
@@ -2112,6 +2119,8 @@ test("sidepanel loads ZIP.KEY for Slacktivation without gating Zendesk login", (
   assert.doesNotMatch(html, /id="zipConfigFileInput"/);
   assert.doesNotMatch(startLoginMatch[0], /enforceZipConfigGate/);
   assert.match(hydrateMatch[0], /enforceZipConfigGate\(\{ reportStatus: false \}\);/);
+  assert.match(source, /if \(state\.zipConfigReady\) \{\s*refreshSlacktivatedState\(/);
+  assert.match(source, /if \(state\.user && state\.zipConfigReady\) \{\s*refreshSlacktivatedState/);
   assert.doesNotMatch(source, /ZIP\.KEY cleared\. Drop the latest ZIP\.KEY file to continue\./);
   assert.doesNotMatch(source, /Supports ZIPKEY1 files \(JSON or KEY=VALUE\)\./);
   assert.doesNotMatch(html, /Supports ZIPKEY1 files\./);
