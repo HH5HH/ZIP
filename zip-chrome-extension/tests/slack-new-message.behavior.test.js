@@ -45,6 +45,7 @@ test("background uses Slack web-session transport for xoxc\/xoxd tokens", () => 
 test("background targeted recipient send requires the requested Slack user", () => {
   const source = fs.readFileSync(BACKGROUND_JS_PATH, "utf8");
   assert.match(source, /async function slackSendMarkdownToUserViaApi\(input\)/);
+  assert.match(source, /preferApiFirst:\s*false/);
   assert.match(source, /preferRequestedUser:\s*true/);
   assert.match(source, /requireRequestedUser:\s*true/);
   assert.match(source, /preferBotDmDelivery:\s*false/);
@@ -68,6 +69,7 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   assert.match(source, /let slackItToMeRequestInFlight = null;/);
   assert.match(source, /async function ensurePassAiSlackIdentityVerifiedForDelivery\(\)/);
+  assert.doesNotMatch(source, /if \(authMode && authMode !== "cached"\) \{\s*return true;\s*\}/);
   assert.match(source, /if \(state\.slackItToMeLoading \|\| state\.slackItToMeButtonState === "ack" \|\| slackItToMeRequestInFlight\) \{/);
   assert.match(source, /slackItToMeRequestInFlight = \(async \(\) => \{/);
   assert.match(source, /if \(!isPassAiSlacktivated\(\)\) \{[\s\S]*setStatus\(SLACKTIVATED_LOGIN_TOOLTIP,\s*true\);/);

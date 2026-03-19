@@ -4533,10 +4533,6 @@
     if (!isPassAiSlacktivated()) {
       throw new Error(SLACKTIVATED_LOGIN_TOOLTIP);
     }
-    const authMode = getPassAiSlackAuthMode();
-    if (authMode && authMode !== "cached") {
-      return true;
-    }
     const ready = await refreshSlacktivatedState({
       force: true,
       silent: true,
@@ -4545,7 +4541,16 @@
       allowSlackTabBootstrapCreate: false
     }).catch(() => false);
     const refreshedAuthMode = getPassAiSlackAuthMode();
-    if (ready && isPassAiSlacktivated() && refreshedAuthMode && refreshedAuthMode !== "cached") {
+    const refreshedUserId = normalizePassAiSlackUserId(state.passAiSlackUserId || "");
+    const refreshedUserName = normalizePassAiSlackDisplayName(state.passAiSlackUserName || "");
+    if (
+      ready
+      && isPassAiSlacktivated()
+      && refreshedAuthMode
+      && refreshedAuthMode !== "cached"
+      && refreshedUserId
+      && refreshedUserName
+    ) {
       return true;
     }
     throw new Error("Slack identity needs verification. Click SLACKTIVATE and sign in as your active Slack user.");

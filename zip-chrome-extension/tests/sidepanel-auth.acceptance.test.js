@@ -1540,6 +1540,7 @@ test("ZIP_SLACK_API_SEND_TO_USER refuses to post when the token author mismatche
     autoBootstrapSlackTab: false,
     preferApiFirst: true,
     preferBotDmDelivery: false,
+    requireNativeNewMessage: false,
     requireBotDelivery: false,
     allowBotDelivery: false,
     skipUnreadMark: true,
@@ -1558,6 +1559,164 @@ test("ZIP_SLACK_API_SEND_TO_USER refuses to post when the token author mismatche
     false,
     "mismatched token must not post a Slack message"
   );
+});
+
+test("ZIP_SLACK_API_SEND_TO_USER prefers the live Slack workspace session before direct API delivery", async () => {
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    slackTabs: [{
+      id: 77,
+      windowId: 7,
+      url: "https://adobedx.slack.com/client/TALICE123/C09NHJCMFC1"
+    }],
+    tabsSendMessage: ({ message }) => {
+      if (!message || message.type !== "ZIP_FROM_BACKGROUND") {
+        return { response: { ok: false, status: 0, payload: null } };
+      }
+      if (message.inner && message.inner.action === "slackAuthTest") {
+        return {
+          response: {
+            type: "ZIP_RESPONSE",
+            requestId: message.requestId,
+            result: {
+              ok: true,
+              ready: true,
+              api_validated: true,
+              user_id: "UALICE123",
+              user_name: "Alice Example",
+              team_id: "TALICE123",
+              session_token: "SLK_TEST_LIVE_SESSION_TOKEN"
+            }
+          }
+        };
+      }
+      if (message.inner && message.inner.action === "slackSendMarkdownToSelf") {
+        assert.equal(String(message.inner.userId || ""), "UBOBUSER1");
+        return {
+          response: {
+            type: "ZIP_RESPONSE",
+            requestId: message.requestId,
+            result: {
+              ok: true,
+              channel: "DTRANSITION1",
+              ts: "1711111111.000200",
+              user_id: "UBOBUSER1",
+              user_name: "Bob Example",
+              avatar_url: "https://example.com/bob.png",
+              unread_marked: false
+            }
+          }
+        };
+      }
+      return { runtimeError: "unexpected_slack_tab_action" };
+    },
+    fetch: ({ url }) => {
+      if (url.endsWith("/api/conversations.open") || url.endsWith("/api/chat.postMessage")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: false, error: "user_not_found" }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  harness.resetCalls();
+  const response = await harness.sendRuntimeMessage({
+    type: "ZIP_SLACK_API_SEND_TO_USER",
+    workspaceOrigin: "https://adobedx.slack.com",
+    userId: "UBOBUSER1",
+    authorUserId: "UALICE123",
+    markdownText: "handoff note",
+    userToken: "SLK_TEST_SHARED_SAMPLE_USER_TOKEN",
+    botToken: "",
+    autoBootstrapSlackTab: false,
+    preferBotDmDelivery: false,
+    requireNativeNewMessage: false,
+    requireBotDelivery: false,
+    allowBotDelivery: false,
+    skipUnreadMark: true,
+    forceNewMessage: true
+  });
+
+  assert.equal(response && response.ok, true);
+  assert.equal(String(response && response.delivery_mode || ""), "workspace_session_dm");
+  assert.equal(
+    harness.calls.tabsSendMessage.some((entry) => entry && entry.message && entry.message.inner && entry.message.inner.action === "slackSendMarkdownToSelf"),
+    true
+  );
+  assert.equal(
+    harness.calls.fetch.some((requestUrl) => String(requestUrl).includes("/api/chat.postMessage")),
+    false,
+    "workspace-session-first delivery should avoid direct API posting when the live Slack tab succeeds"
+  );
+});
+
+test("ZIP_SLACK_API_AUTH_TEST prefers Slack profile identity over stale caller-provided names", async () => {
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    storageSeed: {
+      zip_slack_oauth_token: "SLK_TEST_SHARED_SAMPLE_USER_TOKEN",
+      "zip.slack.openid.session.v1": {
+        userId: "UALICE123",
+        userName: "Old Hardcoded Name",
+        avatarUrl: "https://example.com/stale.png"
+      }
+    },
+    fetch: ({ url, init }) => {
+      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+      const authorization = String(headers.Authorization || headers.authorization || "");
+      if (url.endsWith("/api/auth.test") && authorization === "Bearer SLK_TEST_SHARED_SAMPLE_USER_TOKEN") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "UALICE123", user: "alice" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/users.profile.get") && authorization === "Bearer SLK_TEST_SHARED_SAMPLE_USER_TOKEN") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            profile: {
+              display_name: "Alice Example",
+              real_name: "Alice Example",
+              image_72: "https://example.com/alice-fresh.png"
+            }
+          }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  harness.resetCalls();
+  const response = await harness.sendRuntimeMessage({
+    type: "ZIP_SLACK_API_AUTH_TEST",
+    workspaceOrigin: "https://adobedx.slack.com",
+    expectedUserId: "UALICE123",
+    userName: "Old Hardcoded Name",
+    avatarUrl: "https://example.com/stale.png"
+  });
+
+  assert.equal(response && response.ok, true);
+  assert.equal(String(response && response.user_name || ""), "Alice Example");
+  assert.equal(String(response && response.avatar_url || ""), "https://example.com/alice-fresh.png");
 });
 
 test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", async () => {

@@ -20,5 +20,6 @@ test("runtime Slack delivery paths do not include debug hardcoded payload marker
   assert.doesNotMatch(joined, /Ticket,Subject\s*\r?\n\s*1,Test/i);
   assert.doesNotMatch(joined, /row\s*\t\s*value/i);
   assert.doesNotMatch(joined, /initial_comment\s*:\s*["']\s*test\b/i);
+  assert.doesNotMatch(joined, /@minnick\b/i);
+  assert.doesNotMatch(joined, /\bminnick@adobe\.com\b/i);
 });
-

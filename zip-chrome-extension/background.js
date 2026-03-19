@@ -4699,6 +4699,7 @@ async function slackSendMarkdownToUserViaApi(input) {
     ...body,
     userId: requestedUserId,
     user_id: requestedUserId,
+    preferApiFirst: false,
     preferRequestedUser: true,
     requireRequestedUser: true,
     preferBotDmDelivery: false,
@@ -5892,59 +5893,66 @@ async function slackAuthTestViaApi(input) {
     }
     const userId = normalizeSlackUserId(authUserId || body.userId || body.user_id || expectedUserId);
     const teamId = normalizeSlackTeamId(payload.team_id || payload.team);
-    let userName = normalizeSlackDisplayName(
+    const fallbackUserName = normalizeSlackDisplayName(
       body.userName
       || body.user_name
       || (openIdSession && openIdSession.userName)
       || ""
     );
-    let avatarUrl = normalizeSlackAvatarUrl(
+    const fallbackAvatarUrl = normalizeSlackAvatarUrl(
       body.avatarUrl
       || body.avatar_url
       || (openIdSession && openIdSession.avatarUrl)
       || ""
     );
-    let statusIcon = normalizeSlackStatusIcon(
+    const fallbackStatusIcon = normalizeSlackStatusIcon(
       body.statusIcon
       || body.status_icon
       || ""
     );
-    let statusIconUrl = normalizeSlackStatusIconUrl(
+    const fallbackStatusIconUrl = normalizeSlackStatusIconUrl(
       body.statusIconUrl
       || body.status_icon_url
       || ""
     );
-    let statusMessage = normalizeSlackStatusMessage(
+    const fallbackStatusMessage = normalizeSlackStatusMessage(
       body.statusMessage
       || body.status_message
       || ""
     );
+    let userName = "";
+    let avatarUrl = "";
+    let statusIcon = "";
+    let statusIconUrl = "";
+    let statusMessage = "";
     let avatarErrorCode = "";
     let avatarErrorMessage = "";
-    if (!userName || !avatarUrl || !statusIcon || !statusMessage) {
+    if (userId) {
       const identity = await fetchSlackIdentityViaApi(workspaceOrigin, attemptToken, userId);
-      if (!userName) {
-        userName = normalizeSlackDisplayName(identity.userName || payload.user || "");
-      }
-      if (!avatarUrl) {
-        avatarUrl = normalizeSlackAvatarUrl(identity.avatarUrl || "");
-      }
-      if (!statusIcon) {
-        statusIcon = normalizeSlackStatusIcon(identity.statusIcon || "");
-      }
-      if (!statusIconUrl) {
-        statusIconUrl = normalizeSlackStatusIconUrl(identity.statusIconUrl || "");
-      }
-      if (!statusMessage) {
-        statusMessage = normalizeSlackStatusMessage(identity.statusMessage || "");
-      }
+      userName = normalizeSlackDisplayName(identity.userName || "");
+      avatarUrl = normalizeSlackAvatarUrl(identity.avatarUrl || "");
+      statusIcon = normalizeSlackStatusIcon(identity.statusIcon || "");
+      statusIconUrl = normalizeSlackStatusIconUrl(identity.statusIconUrl || "");
+      statusMessage = normalizeSlackStatusMessage(identity.statusMessage || "");
       if (!avatarUrl) {
         avatarErrorCode = String(identity.avatarErrorCode || "").trim().toLowerCase();
         avatarErrorMessage = String(identity.avatarErrorMessage || "").trim();
       }
     }
     if (!userName) {
-      userName = normalizeSlackDisplayName(payload.user || "");
+      userName = fallbackUserName || normalizeSlackDisplayName(payload.user || "");
+    }
+    if (!avatarUrl) {
+      avatarUrl = fallbackAvatarUrl;
+    }
+    if (!statusIcon) {
+      statusIcon = fallbackStatusIcon;
+    }
+    if (!statusIconUrl) {
+      statusIconUrl = fallbackStatusIconUrl;
+    }
+    if (!statusMessage) {
+      statusMessage = fallbackStatusMessage;
     }
     let directChannelId = requestedDirectChannelId;
     let directChannelErrorCode = "";
