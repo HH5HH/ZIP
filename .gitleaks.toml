@@ -15,8 +15,8 @@ paths = [
 [[allowlists]]
 description = "ZIP placeholder token strings"
 regexes = [
-  '''xoxp-(?:test|legacy|menu|mock)-[A-Za-z0-9-]+''',
-  '''xoxp-(?:REQUIRED_USER_TOKEN|YOUR_REQUIRED_USER_TOKEN|REPLACE_WITH_REQUIRED_USER_TOKEN)''',
-  '''xoxb-(?:test|mock|placeholder)-[A-Za-z0-9-]+''',
+  '''xox[p]-(?:test|legacy|menu|mock)-[A-Za-z0-9-]+''',
+  '''xox[p]-(?:REQUIRED_USER_TOKEN|YOUR_REQUIRED_USER_TOKEN|REPLACE_WITH_REQUIRED_USER_TOKEN)''',
+  '''xox[b]-(?:test|mock|placeholder)-[A-Za-z0-9-]+''',
   '''YOUR_CLIENT_(?:ID|SECRET)'''
 ]

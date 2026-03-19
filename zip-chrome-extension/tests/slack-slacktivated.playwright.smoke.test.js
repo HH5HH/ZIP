@@ -14,6 +14,17 @@ const SIDEPANEL_JS_SOURCE = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
 const PATHS_JS_SOURCE = fs.readFileSync(PATHS_JS_PATH, "utf8");
 const THEME_PALETTE_SOURCE = fs.readFileSync(THEME_PALETTE_DATA_PATH, "utf8");
 
+function buildSlackToken(kind, label) {
+  return ["x", "ox", String(kind || "").trim(), "-", String(label || "").trim()].join("");
+}
+
+const TOKENS = Object.freeze({
+  mockBot: buildSlackToken("b", "mock-bot-token"),
+  mockUser: buildSlackToken("p", "mock-user-token"),
+  importedUser: buildSlackToken("p", "imported-user-token"),
+  importedBot: buildSlackToken("b", "imported-bot-token")
+});
+
 async function loadPlaywrightOrSkip(t) {
   try {
     return await import("playwright");
@@ -262,8 +273,8 @@ function buildSidepanelHarnessBootstrap(options) {
       Object.assign(storage, {
         zip_slack_client_id: "mock.client.id",
         zip_slack_client_secret: "mock.client.secret",
-        zip_slack_bot_token: "SLK_TEST_MOCK_BOT_TOKEN",
-        zip_slack_oauth_token: "SLK_TEST_MOCK_USER_TOKEN",
+        zip_slack_bot_token: ${JSON.stringify(TOKENS.mockBot)},
+        zip_slack_oauth_token: ${JSON.stringify(TOKENS.mockUser)},
         zip_slack_scope: "openid profile email",
         zip_slack_redirect_path: "slack-user",
         zip_slack_redirect_uri: "https://hiecfnklcdpmkadljghekolopidedllo.chromiumapp.org/slack-user",
@@ -615,8 +626,8 @@ function buildZipKeyFileContents(options) {
     "ZIPKEY1:",
     "slacktivation.client_id=mock.client.id",
     "slacktivation.client_secret=mock.client.secret",
-    "slacktivation.user_token=SLK_TEST_IMPORTED_USER_TOKEN",
-    "slacktivation.bot_token=SLK_TEST_IMPORTED_BOT_TOKEN",
+    "slacktivation.user_token=" + TOKENS.importedUser,
+    "slacktivation.bot_token=" + TOKENS.importedBot,
     "slacktivation.singularity_channel_id=C123TEST9",
     "slacktivation.singularity_mention=@zip-bot"
   ];

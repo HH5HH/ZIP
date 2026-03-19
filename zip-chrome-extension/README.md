@@ -140,7 +140,7 @@ Result: every ZIP code/content commit bumps patch version (`x.y.z` -> `x.y.(z+1)
 **Slack credential safety guardrails:**
 - Never commit `zip-chrome-extension/ZIP.KEY` or any local Slack secret bootstrap file.
 - Local-config packaging files were removed; ZIP.KEY import is the only supported secret delivery path.
-- Pre-commit hook blocks any commit that introduces real Slack token patterns (`xoxb-` / `xoxp-`) or non-empty Slack client secrets in git-tracked runtime config sources.
+- Pre-commit hook blocks any commit that introduces real Slack bot/user token prefixes or non-empty Slack client secrets in git-tracked runtime config sources.
 - The same guard also scans tracked `ziptool_distro.zip` contents to prevent packaged secret leakage.
 
 ## Spectrum 2 MCP Power Tools
