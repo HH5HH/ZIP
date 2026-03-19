@@ -67,9 +67,11 @@ test("content self-DM action strips thread fields before chat.postMessage", () =
 test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   assert.match(source, /let slackItToMeRequestInFlight = null;/);
+  assert.match(source, /async function ensurePassAiSlackIdentityVerifiedForDelivery\(\)/);
   assert.match(source, /if \(state\.slackItToMeLoading \|\| state\.slackItToMeButtonState === "ack" \|\| slackItToMeRequestInFlight\) \{/);
   assert.match(source, /slackItToMeRequestInFlight = \(async \(\) => \{/);
   assert.match(source, /if \(!isPassAiSlacktivated\(\)\) \{[\s\S]*setStatus\(SLACKTIVATED_LOGIN_TOOLTIP,\s*true\);/);
+  assert.match(source, /await ensurePassAiSlackIdentityVerifiedForDelivery\(\);[\s\S]*const markdownText = buildSlackItToMeMarkdown\(rows\);/);
   assert.match(source, /const sendPayload = \{[\s\S]*forceNewMessage:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*requireNativeNewMessage:\s*false[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*authorUserId:\s*normalizePassAiSlackUserId\(state\.passAiSlackUserId \|\| ""\)[\s\S]*\};/);
@@ -88,6 +90,8 @@ test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", 
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
   assert.match(source, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition" \}\)/);
   assert.match(source, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS", \{\}\)/);
+  assert.match(source, /await ensurePassAiSlackIdentityVerifiedForDelivery\(\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER"/);
+  assert.match(source, /await ensurePassAiSlackIdentityVerifiedForDelivery\(\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
   assert.match(
     source,
     /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER",\s*\{[\s\S]*botToken:\s*""[\s\S]*preferBotDmDelivery:\s*false[\s\S]*allowBotDelivery:\s*false[\s\S]*\}\);/

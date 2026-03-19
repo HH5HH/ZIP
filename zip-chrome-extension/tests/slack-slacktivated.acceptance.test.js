@@ -117,7 +117,11 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /runPassAiSlackOpenIdAuth\(\{ interactive: false \}\)/);
   assert.match(js, /runPassAiSlackOpenIdAuth\(\{ interactive: true \}\)/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_AUTH_TEST"/);
-  assert.match(js, /const shouldTryApiAuth = !!\(/);
+  assert.match(js, /passAiSlackAuthMode:\s*""/);
+  assert.match(js, /function getPassAiSlackAuthMode\(\)/);
+  assert.match(js, /async function ensurePassAiSlackIdentityVerifiedForDelivery\(\)/);
+  assert.match(js, /state\.passAiSlackAuthMode = state\.passAiSlackReady[\s\S]*requestedMode \|\| ""/);
+  assert.match(js, /const shouldTryApiAuth = !!expectedApiUserId;/);
   assert.match(js, /userCandidates:\s*configuredUserToken \? \[configuredUserToken\] : \[\]/);
   assert.match(js, /existingSlackTabs = await querySlackTabsFromSidepanel\(\{ injectableOnly: true \}\)\.catch/);
   assert.match(js, /existingSlackTabs = await querySlackTabsFromSidepanel\(\{ injectableOnly: false \}\)\.catch/);
@@ -153,8 +157,9 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /parsed\.protocol/);
   assert.doesNotMatch(js, /hostname === "slack-edge\.com"/);
   assert.match(js, /function isTransientSlackAuthProbeFailureMessage\(message\)/);
-  assert.match(js, /if \(wasReady && isTransientSlackAuthProbeFailureMessage\(message\)\) \{/);
+  assert.match(js, /if \(\s*wasReady[\s\S]*priorSlackAuthMode !== "cached"[\s\S]*isTransientSlackAuthProbeFailureMessage\(message\)[\s\S]*\) \{/);
   assert.match(js, /function getPassAiSlacktivatedVerifiedSnapshot\(\)/);
+  assert.match(js, /if \(!isPassAiSlacktivated\(\) \|\| !authMode \|\| authMode === "cached"\) return null;/);
   assert.match(js, /function restorePassAiSlacktivatedVerifiedSnapshot\(snapshot\)/);
   assert.match(js, /const verifiedSnapshot = getPassAiSlacktivatedVerifiedSnapshot\(\);/);
   assert.match(js, /await persistPassAiSlackApiTokenConfig\(\{\s*botToken:\s*configuredBotToken \|\| "",\s*userToken:\s*""\s*\}\)\.catch/);

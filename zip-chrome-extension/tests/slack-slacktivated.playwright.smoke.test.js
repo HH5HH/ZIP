@@ -96,7 +96,7 @@ function buildSidepanelHarnessBootstrap(options) {
           ok: true,
           mode: "openid",
           user_id: "U123TEST",
-          user_name: "Eric Minnick",
+          user_name: "Casey Example",
           avatar_url: "https://avatars.slack-edge.com/2024-01-01/123_abc_192.png",
           team_id: "TMOCKZIP"
         };
@@ -581,7 +581,7 @@ test("Playwright smoke: Slack header never duplicates a status asset into the av
         workspaceOrigin: "https://adobedx.slack.com",
         webReady: true,
         userId: "U123TEST",
-        userName: "Eric Minnick",
+        userName: "Casey Example",
         avatarUrl: duplicatedStatusIconUrl,
         statusIconUrl: duplicatedStatusIconUrl,
         statusMessage: "Accelerating Success",

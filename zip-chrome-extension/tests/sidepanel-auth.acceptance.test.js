@@ -982,9 +982,9 @@ test("PASS-TRANSITION recipients read from the cached roster with no runtime Sla
       zip_pass_transition_recipients: [
         {
           userId: "U999999999",
-          userName: "Minnick Example",
-          label: "Minnick Example (@minnick)",
-          avatarUrl: "https://example.com/minnick.png"
+          userName: "Casey Example",
+          label: "Casey Example (@casey)",
+          avatarUrl: "https://example.com/casey.png"
         },
         {
           userId: "U111111111",
@@ -1012,7 +1012,7 @@ test("PASS-TRANSITION recipients read from the cached roster with no runtime Sla
   );
   assert.deepEqual(
     Array.from(recipients && recipients.members || []).map((entry) => entry.label),
-    ["Minnick Example (@minnick)", "Alice Example (@alice)", "Bob Example (@bob)"]
+    ["Casey Example (@casey)", "Alice Example (@alice)", "Bob Example (@bob)"]
   );
   assert.equal(harness.calls.fetch.length, 0, "cached PASS-TRANSITION recipients should not perform runtime Slack API lookups");
 });
@@ -1353,7 +1353,7 @@ test("ZIP_SLACK_API_AUTH_TEST rejects a stored token when it belongs to a differ
   const harness = createChromeHarness({
     zendeskTabs: [],
     storageSeed: {
-      zip_slack_oauth_token: "SLK_TEST_SHARED_USER_TOKEN",
+      zip_slack_oauth_token: "SLK_TEST_SHARED_SAMPLE_USER_TOKEN",
       "zip.slack.openid.session.v1": {
         userId: "UALICE123",
         userName: "Alice Example",
@@ -1363,11 +1363,11 @@ test("ZIP_SLACK_API_AUTH_TEST rejects a stored token when it belongs to a differ
     fetch: ({ url, init }) => {
       const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
       const authorization = String(headers.Authorization || headers.authorization || "");
-      if (url.endsWith("/api/auth.test") && authorization === "Bearer SLK_TEST_SHARED_USER_TOKEN") {
+      if (url.endsWith("/api/auth.test") && authorization === "Bearer SLK_TEST_SHARED_SAMPLE_USER_TOKEN") {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: async () => ({ ok: true, user_id: "UMINNICK1", user: "minnick" }),
+          json: async () => ({ ok: true, user_id: "UCASEY001", user: "casey" }),
           text: async () => ""
         });
       }
@@ -1503,11 +1503,11 @@ test("ZIP_SLACK_API_SEND_TO_USER refuses to post when the token author mismatche
     fetch: ({ url, init }) => {
       const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
       const authorization = String(headers.Authorization || headers.authorization || "");
-      if (url.endsWith("/api/auth.test") && authorization === "Bearer SLK_TEST_SHARED_USER_TOKEN") {
+      if (url.endsWith("/api/auth.test") && authorization === "Bearer SLK_TEST_SHARED_SAMPLE_USER_TOKEN") {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: async () => ({ ok: true, user_id: "UMINNICK1", user: "minnick" }),
+          json: async () => ({ ok: true, user_id: "UCASEY001", user: "casey" }),
           text: async () => ""
         });
       }
@@ -1535,7 +1535,7 @@ test("ZIP_SLACK_API_SEND_TO_USER refuses to post when the token author mismatche
     userId: "UBOBUSER1",
     authorUserId: "UALICE123",
     markdownText: "handoff note",
-    userToken: "SLK_TEST_SHARED_USER_TOKEN",
+    userToken: "SLK_TEST_SHARED_SAMPLE_USER_TOKEN",
     botToken: "",
     autoBootstrapSlackTab: false,
     preferApiFirst: true,

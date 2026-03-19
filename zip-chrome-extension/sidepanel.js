@@ -153,6 +153,7 @@
     passAiActiveClientId: "",
     passAiSlackReady: false,
     passAiSlackAuthPolling: false,
+    passAiSlackAuthMode: "",
     passAiSlackUserId: "",
     passAiSlackUserName: "",
     passAiSlackAvatarUrl: "",
@@ -3209,6 +3210,7 @@
     syncContextMenuAuthVisibility();
     syncSlackMeDialogUi();
     try {
+      await ensurePassAiSlackIdentityVerifiedForDelivery();
       const slackApiTokens = getPassAiSlackApiTokenConfig();
       await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
       const response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_USER", {
@@ -3290,6 +3292,7 @@
     syncContextMenuAuthVisibility();
     syncSlackMeDialogUi();
     try {
+      await ensurePassAiSlackIdentityVerifiedForDelivery();
       const slackApiTokens = getPassAiSlackApiTokenConfig();
       await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
       const response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", {
@@ -4520,6 +4523,32 @@
 
   function isPassAiSlacktivated() {
     return !!(state.passAiSlackReady && state.passAiSlackWebReady);
+  }
+
+  function getPassAiSlackAuthMode() {
+    return String(state.passAiSlackAuthMode || "").trim().toLowerCase();
+  }
+
+  async function ensurePassAiSlackIdentityVerifiedForDelivery() {
+    if (!isPassAiSlacktivated()) {
+      throw new Error(SLACKTIVATED_LOGIN_TOOLTIP);
+    }
+    const authMode = getPassAiSlackAuthMode();
+    if (authMode && authMode !== "cached") {
+      return true;
+    }
+    const ready = await refreshSlacktivatedState({
+      force: true,
+      silent: true,
+      allowOpenIdSilentProbe: true,
+      allowSlackTabBootstrap: false,
+      allowSlackTabBootstrapCreate: false
+    }).catch(() => false);
+    const refreshedAuthMode = getPassAiSlackAuthMode();
+    if (ready && isPassAiSlacktivated() && refreshedAuthMode && refreshedAuthMode !== "cached") {
+      return true;
+    }
+    throw new Error("Slack identity needs verification. Click SLACKTIVATE and sign in as your active Slack user.");
   }
 
   async function openPassAiPanelForSelectedTicket() {
@@ -5851,7 +5880,6 @@
         updateTicketActionButtons();
         return;
       }
-
       state.slackItToMeLoading = true;
       state.slackItToMeButtonState = "";
       applyGlobalBusyUi();
@@ -5860,6 +5888,7 @@
       setStatus("Sending visible ticket list to ZipTool panel in Slack…", false);
       let delivered = false;
       try {
+        await ensurePassAiSlackIdentityVerifiedForDelivery();
         const markdownText = buildSlackItToMeMarkdown(rows);
         const slackApiTokens = getPassAiSlackApiTokenConfig();
         await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
@@ -9094,7 +9123,8 @@
   }
 
   function getPassAiSlacktivatedVerifiedSnapshot() {
-    if (!isPassAiSlacktivated()) return null;
+    const authMode = getPassAiSlackAuthMode();
+    if (!isPassAiSlacktivated() || !authMode || authMode === "cached") return null;
     return {
       userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
       userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
@@ -9217,6 +9247,9 @@
       )
     );
     state.passAiSlackReady = ready;
+    state.passAiSlackAuthMode = state.passAiSlackReady
+      ? (requestedMode || "")
+      : "";
     state.passAiSlackWebReady = verifiedReady;
     state.passAiSlackSessionOnly = !!(state.passAiSlackReady && !state.passAiSlackWebReady);
     state.passAiSlackUserId = state.passAiSlackReady
@@ -9282,6 +9315,7 @@
     const allowOpenIdSilentProbe = opts.allowOpenIdSilentProbe !== false;
     const allowSlackTabBootstrap = opts.allowSlackTabBootstrap === true;
     const allowSlackTabBootstrapCreate = opts.allowSlackTabBootstrapCreate !== false;
+    const priorSlackAuthMode = getPassAiSlackAuthMode();
     const verifiedSnapshot = getPassAiSlacktivatedVerifiedSnapshot();
     recordSlackProbeEvent("slack_probe_auth_refresh_started", {
       silent,
@@ -9322,45 +9356,58 @@
     // API-level token validation supports auto-SLACKTIVATION without requiring an open Slack tab.
     let apiFailureCode = "";
     let apiFailureMessage = "";
+    const currentVerifiedUserId = priorSlackAuthMode && priorSlackAuthMode !== "cached"
+      ? normalizePassAiSlackUserId(state.passAiSlackUserId || "")
+      : "";
+    const currentVerifiedUserName = priorSlackAuthMode && priorSlackAuthMode !== "cached"
+      ? normalizePassAiSlackDisplayName(state.passAiSlackUserName || "")
+      : "";
+    const currentVerifiedDirectChannelId = priorSlackAuthMode && priorSlackAuthMode !== "cached"
+      ? normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || "")
+      : "";
+    const currentVerifiedStatusIcon = priorSlackAuthMode && priorSlackAuthMode !== "cached"
+      ? normalizePassAiSlackStatusIcon(state.passAiSlackStatusIcon || "")
+      : "";
+    const currentVerifiedStatusIconUrl = priorSlackAuthMode && priorSlackAuthMode !== "cached"
+      ? normalizePassAiSlackStatusIconUrl(state.passAiSlackStatusIconUrl || "")
+      : "";
+    const currentVerifiedStatusMessage = priorSlackAuthMode && priorSlackAuthMode !== "cached"
+      ? normalizePassAiSlackStatusMessage(state.passAiSlackStatusMessage || "")
+      : "";
     const expectedApiUserId = normalizePassAiSlackUserId(
-      state.passAiSlackUserId
+      currentVerifiedUserId
       || (verifiedSnapshot && verifiedSnapshot.userId)
       || ""
     );
     const expectedApiUserName = normalizePassAiSlackDisplayName(
-      state.passAiSlackUserName
+      currentVerifiedUserName
       || (verifiedSnapshot && verifiedSnapshot.userName)
       || ""
     );
     const expectedApiDirectChannelId = normalizePassAiSlackDirectChannelId(
-      state.passAiSlackDirectChannelId
+      currentVerifiedDirectChannelId
       || (verifiedSnapshot && verifiedSnapshot.directChannelId)
       || ""
     );
     const expectedApiStatusIcon = normalizePassAiSlackStatusIcon(
-      state.passAiSlackStatusIcon
+      currentVerifiedStatusIcon
       || (verifiedSnapshot && verifiedSnapshot.statusIcon)
       || ""
     );
     const expectedApiStatusIconUrl = normalizePassAiSlackStatusIconUrl(
-      state.passAiSlackStatusIconUrl
+      currentVerifiedStatusIconUrl
       || (verifiedSnapshot && verifiedSnapshot.statusIconUrl)
       || ""
     );
     const expectedApiStatusMessage = normalizePassAiSlackStatusMessage(
-      state.passAiSlackStatusMessage
+      currentVerifiedStatusMessage
       || (verifiedSnapshot && verifiedSnapshot.statusMessage)
       || ""
     );
     const configuredTokens = getPassAiSlackApiTokenConfig();
     const configuredUserToken = configuredTokens.userToken || "";
     const configuredBotToken = configuredTokens.botToken || "";
-    const shouldTryApiAuth = !!(
-      openIdEnabled
-      || expectedApiUserId
-      || configuredUserToken
-      || (verifiedSnapshot && verifiedSnapshot.userId)
-    );
+    const shouldTryApiAuth = !!expectedApiUserId;
     if (shouldTryApiAuth) {
       try {
         const apiStatus = await sendBackgroundRequest("ZIP_SLACK_API_AUTH_TEST", {
@@ -9730,7 +9777,12 @@
       const wasReady = isPassAiSlacktivated();
       const message = normalizePassAiCommentBody(tabErr && tabErr.message) || "Slack sign-in is required.";
       recordSlackProbeEvent("slack_probe_web_auth_failed", { message });
-      if (wasReady && isTransientSlackAuthProbeFailureMessage(message)) {
+      if (
+        wasReady
+        && priorSlackAuthMode
+        && priorSlackAuthMode !== "cached"
+        && isTransientSlackAuthProbeFailureMessage(message)
+      ) {
         return true;
       }
       setPassAiSlackAuthState({ ready: false, error: message });
