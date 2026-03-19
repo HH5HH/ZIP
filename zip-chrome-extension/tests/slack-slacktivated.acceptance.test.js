@@ -11,6 +11,7 @@ const CONTENT_PATH = path.join(ROOT, "content.js");
 const BACKGROUND_PATH = path.join(ROOT, "background.js");
 const SLACK_TOKEN_BRIDGE_PATH = path.join(ROOT, "slack-token-bridge.js");
 const OPTIONS_PATH = path.join(ROOT, "options.js");
+const OPTIONS_HTML_PATH = path.join(ROOT, "options.html");
 
 test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME composer", () => {
   const html = fs.readFileSync(SIDEPANEL_HTML_PATH, "utf8");
@@ -405,10 +406,18 @@ test("Slack token bridge captures tokens from body and headers", () => {
   assert.match(source, /inspect\(value, 0\);/);
 });
 
-test("options normalizeSlackToken accepts modern Slack user token prefixes", () => {
+test("options page keeps ZIP.KEY hydration avatar-menu only", () => {
   const source = fs.readFileSync(OPTIONS_PATH, "utf8");
-  assert.match(source, /function normalizeSlackToken\(value\)/);
-  assert.match(source, /\^\(\?:xoxe\\\.\)\?xox\[a-z\]-/);
+  const html = fs.readFileSync(OPTIONS_HTML_PATH, "utf8");
+  assert.match(source, /ZIP\.KEY is not loaded\. Open ZipTool and use the avatar menu to SLACKTIVATE when needed\./);
+  assert.match(source, /Stored ZIP\.KEY is incomplete or stale/);
+  assert.doesNotMatch(source, /ZIP_IMPORT_KEY_PAYLOAD/);
+  assert.doesNotMatch(source, /function normalizeSlackToken\(value\)/);
+  assert.doesNotMatch(source, /function parseZipKeyPayload\(rawText\)/);
+  assert.doesNotMatch(html, /Import ZIP\.KEY/);
+  assert.doesNotMatch(html, /id="zipKeyFile"/);
+  assert.doesNotMatch(html, /id="zipKeyText"/);
+  assert.match(html, /Avatar menu only/);
 });
 
 test("background removes legacy Slack OAuth and popup-login handlers", () => {

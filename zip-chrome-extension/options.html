@@ -52,36 +52,6 @@
       font-size: 14px;
     }
 
-    .zip-settings-group {
-      margin-top: 16px;
-    }
-
-    .zip-settings-label {
-      display: block;
-      font-size: 13px;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-
-    .zip-settings-input,
-    .zip-settings-textarea {
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid var(--zip-border);
-      border-radius: 8px;
-      background: #fff;
-      color: var(--zip-text);
-      font-size: 13px;
-      padding: 10px 11px;
-    }
-
-    .zip-settings-textarea {
-      min-height: 180px;
-      resize: vertical;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-      line-height: 1.4;
-    }
-
     .zip-settings-actions {
       display: flex;
       gap: 8px;
@@ -102,15 +72,6 @@
     .zip-btn:disabled {
       opacity: 0.6;
       cursor: default;
-    }
-
-    .zip-btn-primary {
-      background: var(--zip-accent);
-      color: #fff;
-    }
-
-    .zip-btn-primary:hover:enabled {
-      background: var(--zip-accent-hover);
     }
 
     .zip-btn-outline {
@@ -146,25 +107,33 @@
       border-color: #b8dfbd;
       color: #1f6f43;
     }
+
+    .zip-settings-note {
+      margin-top: 16px;
+      border-radius: 8px;
+      padding: 12px 14px;
+      border: 1px solid var(--zip-border);
+      background: #fafafa;
+    }
+
+    .zip-settings-note strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
   </style>
 </head>
 <body class="spectrum spectrum--medium">
   <main class="zip-settings-card">
-    <h1>ZIP.KEY SLACKTIVATION Settings</h1>
-    <p>Import ZIP.KEY to SLACKTIVATE the Slack accelerator bridge in Chrome extension storage. ZIP never shows or echoes secret values.</p>
+    <h1>ZIP.KEY SLACKTIVATION Status</h1>
+    <p>ZIP.KEY hydration now runs only from the ZipTool avatar menu inside the sidepanel. ZIP starts without ZIP.KEY so Zendesk can load first and Slacktivation stays optional until you ask for it.</p>
 
-    <div class="zip-settings-group">
-      <label class="zip-settings-label" for="zipKeyFile">ZIP.KEY file</label>
-      <input id="zipKeyFile" class="zip-settings-input" type="file" accept=".key,.json,.txt,.inc">
-    </div>
-
-    <div class="zip-settings-group">
-      <label class="zip-settings-label" for="zipKeyText">Or paste ZIP.KEY content</label>
-      <textarea id="zipKeyText" class="zip-settings-textarea" placeholder="ZIPKEY1:... or JSON or KEY=VALUE lines"></textarea>
+    <div class="zip-settings-note">
+      <strong>Avatar menu only</strong>
+      <p>Use ZipTool's context menu to load or refresh ZIP.KEY. This page is only for checking stored status or clearing the current SLACKTIVATION payload.</p>
     </div>
 
     <div class="zip-settings-actions">
-      <button id="zipImportBtn" class="zip-btn zip-btn-primary" type="button">Import ZIP.KEY</button>
       <button id="zipClearBtn" class="zip-btn zip-btn-danger" type="button">Clear ZIP.KEY</button>
       <button id="zipRefreshBtn" class="zip-btn zip-btn-outline" type="button">Refresh Status</button>
     </div>

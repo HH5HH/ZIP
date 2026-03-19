@@ -20,7 +20,6 @@
   const SLACK_BRIDGE_MESSAGE_TYPE = "ZIP_SLACK_TOKEN_BRIDGE";
   const SLACK_TOKEN_BRIDGE_SCRIPT_ID = "zip-slack-token-bridge-script";
   const SLACK_TOKEN_BRIDGE_SCRIPT_PATH = "slack-token-bridge.js";
-  const ZIP_KEY_BANNER_ID = "zip-key-required-banner";
   const REQUESTOR_ORG_ENRICHMENT_FLAG_STORAGE_KEY = "zip.feature.requestor_org_enrichment.v1";
   const REQUESTOR_ORG_ENRICHMENT_FLAG_CACHE_TTL_MS = 60 * 1000;
   const REQUESTOR_ORG_TRANSLATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -4280,84 +4279,6 @@
     };
   }
 
-  function openZipOptionsFromContent() {
-    sendRuntimeMessage({ type: "ZIP_OPEN_OPTIONS" });
-  }
-
-  function removeZipKeyBanner() {
-    const existing = document.getElementById(ZIP_KEY_BANNER_ID);
-    if (existing && existing.parentNode) {
-      existing.parentNode.removeChild(existing);
-    }
-  }
-
-  function ensureZipKeyBanner() {
-    if (document.getElementById(ZIP_KEY_BANNER_ID)) return;
-    if (!document || !document.body) return;
-
-    const banner = document.createElement("div");
-    banner.id = ZIP_KEY_BANNER_ID;
-    banner.setAttribute("role", "status");
-    banner.style.position = "fixed";
-    banner.style.top = "12px";
-    banner.style.right = "12px";
-    banner.style.zIndex = "2147483647";
-    banner.style.background = "#f5f5f5";
-    banner.style.color = "#202020";
-    banner.style.border = "1px solid #b8b8b8";
-    banner.style.borderRadius = "8px";
-    banner.style.boxShadow = "0 6px 20px rgba(0,0,0,0.18)";
-    banner.style.fontFamily = "Adobe Clean, Segoe UI, system-ui, sans-serif";
-    banner.style.fontSize = "12px";
-    banner.style.lineHeight = "1.35";
-    banner.style.maxWidth = "320px";
-    banner.style.padding = "10px 12px";
-    banner.style.display = "flex";
-    banner.style.alignItems = "center";
-    banner.style.gap = "8px";
-
-    const text = document.createElement("button");
-    text.type = "button";
-    text.style.all = "unset";
-    text.style.cursor = "pointer";
-    text.style.color = "#1473e6";
-    text.style.textDecoration = "underline";
-    text.textContent = "ZipTool: Please drop ZIP.KEY to SLACKTIVATE";
-    text.addEventListener("click", () => openZipOptionsFromContent());
-
-    const close = document.createElement("button");
-    close.type = "button";
-    close.setAttribute("aria-label", "Dismiss ZIP.KEY banner");
-    close.style.border = "none";
-    close.style.background = "transparent";
-    close.style.color = "#505050";
-    close.style.cursor = "pointer";
-    close.style.fontSize = "14px";
-    close.style.lineHeight = "1";
-    close.textContent = "x";
-    close.addEventListener("click", () => removeZipKeyBanner());
-
-    banner.appendChild(text);
-    banner.appendChild(close);
-    document.body.appendChild(banner);
-  }
-
-  function syncZipKeyBanner() {
-    if (!isZendeskPage()) return;
-    const sent = sendRuntimeMessage({ type: "ZIP_CHECK_SECRETS" }, (response, runtimeError) => {
-      if (runtimeError) {
-        ensureZipKeyBanner();
-        return;
-      }
-      const ok = !!(response && response.ok);
-      if (ok) removeZipKeyBanner();
-      else ensureZipKeyBanner();
-    });
-    if (!sent) {
-      ensureZipKeyBanner();
-    }
-  }
-
   if (isSlackPage()) {
     // Defer bridge injection until a Slack action requires API access.
     readCapturedSlackToken();
@@ -4377,20 +4298,11 @@
 
   if (isZendeskPage()) {
     installZendeskSessionObservers();
-    syncZipKeyBanner();
-    window.addEventListener("focus", () => syncZipKeyBanner());
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) syncZipKeyBanner();
-    });
   }
 
   const runtime = getChromeRuntime();
   if (runtime && runtime.onMessage && typeof runtime.onMessage.addListener === "function") {
     runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg && msg.type === "ZIP_KEY_CLEARED") {
-      syncZipKeyBanner();
-      return;
-    }
     if (msg && msg.type === "ZIP_SESSION_PROBE") {
       // Authoritative Zendesk auth probe used by background/sidepanel coordination.
       probeZendeskSession({

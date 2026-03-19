@@ -7372,24 +7372,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }));
     return true;
   }
-  if (msg.type === "ZIP_OPEN_OPTIONS") {
-    (async () => {
-      try {
-        if (chrome.runtime && typeof chrome.runtime.openOptionsPage === "function") {
-          await chrome.runtime.openOptionsPage();
-        } else if (chrome.tabs && typeof chrome.tabs.create === "function") {
-          await chrome.tabs.create({ url: chrome.runtime.getURL("options.html"), active: true });
-        }
-        return { ok: true };
-      } catch (err) {
-        return {
-          ok: false,
-          error: err && err.message ? err.message : "Unable to open ZIP settings."
-        };
-      }
-    })().then((result) => sendResponse(result));
-    return true;
-  }
   if (msg.type === "ZD_SESSION_OK") {
     if (!isTrustedZendeskContentSender(sender)) {
       sendResponse({ ok: false, error: "Ignoring untrusted session source." });

@@ -9,6 +9,7 @@ const BACKGROUND_PATH = path.join(ROOT, "background.js");
 const SIDEPANEL_PATH = path.join(ROOT, "sidepanel.js");
 const CONTENT_PATH = path.join(ROOT, "content.js");
 const OPTIONS_PATH = path.join(ROOT, "options.js");
+const OPTIONS_HTML_PATH = path.join(ROOT, "options.html");
 const SIDEPANEL_FALLBACK_PATH = path.join(ROOT, "sidepanel-login-fallback.js");
 const MANIFEST_PATH = path.join(ROOT, "manifest.json");
 const ZENDESK_DASHBOARD_URL = "https://adobeprimetime.zendesk.com/agent/dashboard?brand_id=2379046";
@@ -2086,6 +2087,7 @@ test("sidepanel login wiring uses LOGIN_CLICKED with no ZIP local sign-out path"
 test("sidepanel loads ZIP.KEY for Slacktivation without gating Zendesk login", () => {
   const source = fs.readFileSync(SIDEPANEL_PATH, "utf8");
   const optionsSource = fs.readFileSync(OPTIONS_PATH, "utf8");
+  const optionsHtml = fs.readFileSync(OPTIONS_HTML_PATH, "utf8");
   const html = fs.readFileSync(path.join(ROOT, "sidepanel.html"), "utf8");
   const startLoginMatch = source.match(/async function startLogin\(\)\s*\{[\s\S]*?\n  \}/);
   const hydrateMatch = source.match(/async function hydrateAuthStateFromBackground\(options\)\s*\{[\s\S]*?\n  \}/);
@@ -2100,8 +2102,6 @@ test("sidepanel loads ZIP.KEY for Slacktivation without gating Zendesk login", (
   assert.match(source, /"slacktivation\.client_secret"/);
   assert.match(source, /"slacktivation\.bot_token"/);
   assert.match(source, /"slacktivation\.user_token"/);
-  assert.match(optionsSource, /"bot_token"/);
-  assert.match(optionsSource, /"user_token"/);
   assert.match(source, /"slacktivation\.singularity_channel_id"/);
   assert.match(source, /"slacktivation\.singularity_mention"/);
   assert.match(source, /function parseZipKeyPayload\(rawText\)/);
@@ -2124,6 +2124,19 @@ test("sidepanel loads ZIP.KEY for Slacktivation without gating Zendesk login", (
   assert.doesNotMatch(source, /ZIP\.KEY cleared\. Drop the latest ZIP\.KEY file to continue\./);
   assert.doesNotMatch(source, /Supports ZIPKEY1 files \(JSON or KEY=VALUE\)\./);
   assert.doesNotMatch(html, /Supports ZIPKEY1 files\./);
+  assert.match(optionsSource, /ZIP\.KEY is not loaded\. Open ZipTool and use the avatar menu to SLACKTIVATE when needed\./);
+  assert.match(optionsSource, /Stored ZIP\.KEY is incomplete or stale/);
+  assert.match(optionsSource, /ZIP\.KEY is loaded\. Return to ZipTool and use the avatar menu for Slacktivation and Slack login\./);
+  assert.match(optionsSource, /ZIP\.KEY cleared\. Open ZipTool and use the avatar menu to SLACKTIVATE again\./);
+  assert.doesNotMatch(optionsSource, /ZIP_IMPORT_KEY_PAYLOAD/);
+  assert.doesNotMatch(optionsSource, /function parseZipKeyPayload\(rawText\)/);
+  assert.doesNotMatch(optionsSource, /function normalizeZipKeyConfig\(parsedPayload\)/);
+  assert.doesNotMatch(optionsSource, /zipImportBtn/);
+  assert.doesNotMatch(optionsHtml, /Import ZIP\.KEY/);
+  assert.doesNotMatch(optionsHtml, /id="zipKeyFile"/);
+  assert.doesNotMatch(optionsHtml, /id="zipKeyText"/);
+  assert.match(optionsHtml, /ZIP\.KEY hydration now runs only from the ZipTool avatar menu/);
+  assert.match(optionsHtml, /Avatar menu only/);
 });
 
 test("sidepanel ZIP.KEY persistence keeps optional bot config and user-scoped auth", () => {
@@ -2163,6 +2176,8 @@ test("options Clear ZIP.KEY action requires explicit user confirmation", () => {
   assert.match(source, /const ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE = "Clear ZIP\.KEY and reset SLACKTIVATION now\?/);
   assert.match(source, /window\.confirm\(ZIP_CLEAR_KEY_CONFIRMATION_MESSAGE\)/);
   assert.match(source, /setStatus\("Clear ZIP\.KEY canceled\."\)/);
+  assert.match(source, /setClearButtonDisabled\(true\);/);
+  assert.doesNotMatch(source, /ZIP_IMPORT_KEY_PAYLOAD/);
 });
 
 test("startup status waits for filter catalogs before announcing Ready", () => {
@@ -2212,10 +2227,10 @@ test("content script supports authoritative session probe and logout/session eve
   assert.match(source, /type:\s*"ZD_LOGOUT"/);
   assert.match(source, /probeZendeskSession\(\{\s*reason:\s*"auth_page_bootstrap"\s*\}\)/);
   assert.match(source, /emitZendeskLogout\("auth_page_probe_failed",\s*401\)/);
-  assert.match(source, /msg && msg\.type === "ZIP_KEY_CLEARED"/);
-  assert.match(source, /type:\s*"ZIP_CHECK_SECRETS"/);
-  assert.match(source, /type:\s*"ZIP_OPEN_OPTIONS"/);
-  assert.match(source, /ZIP_KEY_BANNER_ID/);
+  assert.doesNotMatch(source, /msg && msg\.type === "ZIP_KEY_CLEARED"/);
+  assert.doesNotMatch(source, /type:\s*"ZIP_CHECK_SECRETS"/);
+  assert.doesNotMatch(source, /type:\s*"ZIP_OPEN_OPTIONS"/);
+  assert.doesNotMatch(source, /ZIP_KEY_BANNER_ID/);
   assert.match(source, /\/api\/v2\/users\/me\/session/);
 });
 

@@ -6,7 +6,6 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..");
 const BACKGROUND_PATH = path.join(ROOT, "background.js");
 const SIDEPANEL_PATH = path.join(ROOT, "sidepanel.js");
-const OPTIONS_PATH = path.join(ROOT, "options.js");
 const ZIP_KEY_TEMPLATE_PATH = path.join(ROOT, "ZIP.KEY.template");
 
 test("ZIP.KEY template documents optional PASS-TRANSITION hydration fields", () => {
@@ -22,9 +21,8 @@ test("ZIP.KEY template documents optional PASS-TRANSITION hydration fields", () 
   assert.match(template, /slacktivation\.pass_transition_members_synced_at=/);
 });
 
-test("sidepanel and options preserve PASS-TRANSITION ZIP.KEY fields during import", () => {
+test("sidepanel preserves PASS-TRANSITION ZIP.KEY fields during import", () => {
   const sidepanel = fs.readFileSync(SIDEPANEL_PATH, "utf8");
-  const options = fs.readFileSync(OPTIONS_PATH, "utf8");
 
   assert.match(sidepanel, /ZIP_PASS_TRANSITION_CHANNEL_ID_STORAGE_KEY/);
   assert.match(sidepanel, /ZIP_PASS_TRANSITION_CHANNEL_NAME_STORAGE_KEY/);
@@ -35,12 +33,6 @@ test("sidepanel and options preserve PASS-TRANSITION ZIP.KEY fields during impor
   assert.match(sidepanel, /pass_transition_member_ids/);
   assert.match(sidepanel, /passTransition:\s*\{/);
   assert.match(sidepanel, /async function persistZipKeyConfig\(config\)[\s\S]*passTransition:\s*buildPassTransitionConfigShape\(normalized\.passTransition\)/);
-
-  assert.match(options, /pass_transition_channel_id/);
-  assert.match(options, /pass_transition_channel_name/);
-  assert.match(options, /pass_transition_member_ids/);
-  assert.match(options, /pass_transition_members_synced_at/);
-  assert.match(options, /passTransition:\s*\{/);
 });
 
 test("background supports cached PASS-TRANSITION member hydration", () => {
