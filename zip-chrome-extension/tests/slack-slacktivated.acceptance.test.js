@@ -13,7 +13,7 @@ const SLACK_TOKEN_BRIDGE_PATH = path.join(ROOT, "slack-token-bridge.js");
 const OPTIONS_PATH = path.join(ROOT, "options.js");
 const OPTIONS_HTML_PATH = path.join(ROOT, "options.html");
 
-test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME composer", () => {
+test("sidepanel uses SLACKTIVATED indicator + Slack DM actions + @SLACK ME composer", () => {
   const html = fs.readFileSync(SIDEPANEL_HTML_PATH, "utf8");
   const js = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
 
@@ -268,11 +268,11 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /authorAvatarUrl:\s*state\.passAiSlackAvatarUrl \|\| ""/);
   assert.match(js, /directChannelId:\s*normalizePassAiSlackDirectChannelId\(state\.passAiSlackDirectChannelId \|\| ""\)/);
   assert.match(js, /preferApiFirst:\s*true/);
-  assert.match(js, /preferBotDmDelivery:\s*true/);
+  assert.match(js, /preferBotDmDelivery:\s*false/);
   assert.match(js, /requireNativeNewMessage:\s*false/);
-  assert.match(js, /requireBotDelivery:\s*true/);
+  assert.match(js, /requireBotDelivery:\s*false/);
   assert.match(js, /autoBootstrapSlackTab:\s*false/);
-  assert.match(js, /allowBotDelivery:\s*true/);
+  assert.match(js, /allowBotDelivery:\s*false/);
   assert.match(js, /skipUnreadMark:\s*true/);
   assert.doesNotMatch(js, /csvFilename:/);
   assert.doesNotMatch(js, /csvContent:/);
@@ -292,10 +292,11 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /function buildZipToolSlackFooterLine\(\)/);
   assert.match(js, /return normalized \+ "\\n\\n" \+ buildZipToolSlackFooterLine\(\);/);
   assert.match(js, /const signatureLine = buildZipToolSlackFooterLine\(\);/);
-  assert.match(js, /SLACK_TO_ZIPTOOL delivered/);
-  assert.match(js, /preferBotDmDelivery:\s*true/);
-  assert.match(js, /allowBotDelivery:\s*true/);
-  assert.match(js, /@SLACK ME sent\./);
+  assert.match(js, /SLACK_IT_TO_ME delivered to your Slack DM/);
+  assert.match(js, /Sending visible ticket list to your Slack DM/);
+  assert.match(js, /preferBotDmDelivery:\s*false/);
+  assert.match(js, /allowBotDelivery:\s*false/);
+  assert.match(js, /@SLACK ME sent to your Slack DM\./);
   assert.doesNotMatch(js, /\*Visible Rows:\*/);
 });
 

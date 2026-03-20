@@ -5135,6 +5135,9 @@ async function slackSendMarkdownToSelfViaApi(input) {
   }
 
   const openIdSession = await readSlackOpenIdSession();
+  const passTransitionSnapshot = buildPassTransitionSnapshot(await readStorageLocal([
+    ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY
+  ]));
   const requestedUserId = normalizeSlackUserId(body.userId || body.user_id);
   const expectedAuthorUserId = resolveExpectedSlackAuthorUserId(body, openIdSession);
   if (requireRequestedUser && !requestedUserId) {
@@ -5214,13 +5217,24 @@ async function slackSendMarkdownToSelfViaApi(input) {
       if (!normalized) return;
       if (!userIdCandidates.includes(normalized)) userIdCandidates.push(normalized);
     };
+    const pushSelfAliasCandidates = () => {
+      collectPassTransitionSelfUserIdCandidates(passTransitionSnapshot, {
+        ...body,
+        userId: requestedUserId || authUserId || openIdUserId,
+        user_id: requestedUserId || authUserId || openIdUserId,
+        userName: resolvedUserName || authFallbackName,
+        user_name: resolvedUserName || authFallbackName
+      }, openIdSession).forEach(pushUserIdCandidate);
+    };
     if (requireRequestedUser) {
       pushUserIdCandidate(requestedUserId);
     } else if (preferRequestedUser) {
       pushUserIdCandidate(requestedUserId);
+      pushSelfAliasCandidates();
       pushUserIdCandidate(authUserId);
       pushUserIdCandidate(openIdUserId);
     } else {
+      pushSelfAliasCandidates();
       pushUserIdCandidate(authUserId);
       pushUserIdCandidate(requestedUserId);
       pushUserIdCandidate(openIdUserId);

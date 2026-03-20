@@ -4143,10 +4143,10 @@
         userToken: slackApiTokens.userToken || "",
         autoBootstrapSlackTab: false,
         preferApiFirst: true,
-        preferBotDmDelivery: true,
+        preferBotDmDelivery: false,
         requireNativeNewMessage: false,
-        requireBotDelivery: true,
-        allowBotDelivery: true,
+        requireBotDelivery: false,
+        allowBotDelivery: false,
         skipUnreadMark: true,
         forceNewMessage: true
       });
@@ -4161,7 +4161,7 @@
       }
       const deliveryMode = String(response && response.delivery_mode || "").trim();
       const deliverySuffix = deliveryMode ? (" Delivery mode: " + deliveryMode + ".") : "";
-      setStatus("@SLACK ME sent." + deliverySuffix, false);
+      setStatus("@SLACK ME sent to your Slack DM." + deliverySuffix, false);
       shouldCloseSlackMeDialog = true;
     } catch (err) {
       const message = normalizePassAiCommentBody(err && err.message) || "Slack send failed.";
@@ -7117,7 +7117,7 @@
       applyGlobalBusyUi();
       updateTicketActionButtons();
       syncContextMenuAuthVisibility();
-      setStatus("Sending visible ticket list to ZipTool panel in Slack…", false);
+      setStatus("Sending visible ticket list to your Slack DM…", false);
       let delivered = false;
       try {
         await ensurePassAiSlackIdentityVerifiedForDelivery();
@@ -7140,15 +7140,15 @@
           userToken: slackApiTokens.userToken || "",
           autoBootstrapSlackTab: false,
           preferApiFirst: true,
-          preferBotDmDelivery: true,
+          preferBotDmDelivery: false,
           requireNativeNewMessage: false,
-          requireBotDelivery: true,
-          allowBotDelivery: true,
+          requireBotDelivery: false,
+          allowBotDelivery: false,
           skipUnreadMark: true,
           forceNewMessage: true
         };
 
-        setStatus("Sending visible ticket list to ZipTool panel via Slack API…", false);
+        setStatus("Sending visible ticket list to your Slack DM via Slack API…", false);
         let response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", sendPayload);
 
         if (!response || response.ok !== true) {
@@ -7195,7 +7195,7 @@
         const deliverySuffix = deliveryMode ? (" Delivery mode: " + deliveryMode + ".") : "";
         delivered = true;
         state.slackItToMeButtonState = "ack";
-        setStatus("SLACK_TO_ZIPTOOL delivered to your ZipTool panel" + summarySuffix + "." + unreadSuffix + unconfirmedSuffix + deliverySuffix, false);
+        setStatus("SLACK_IT_TO_ME delivered to your Slack DM" + summarySuffix + "." + unreadSuffix + unconfirmedSuffix + deliverySuffix, false);
       } catch (err) {
         const message = normalizePassAiCommentBody(err && err.message) || "Unable to send visible ticket list.";
         setStatus("SLACK_IT_TO_ME failed: " + message, true);
