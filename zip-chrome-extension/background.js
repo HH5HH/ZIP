@@ -1435,6 +1435,22 @@ async function queryInjectableSlackTabs(workspaceOrigin) {
   return filtered;
 }
 
+async function tryInjectSlackContentScript(tabId) {
+  if (!chrome.scripting || typeof chrome.scripting.executeScript !== "function") return false;
+  const tab = await getTabById(tabId);
+  const tabUrl = String(tab && tab.url || "");
+  if (!isSlackInjectableUrl(tabUrl)) return false;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: [ZIP_CONTENT_SCRIPT_FILE]
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function sendSlackInnerRequestToTab(tabId, inner) {
   return new Promise((resolve, reject) => {
     const numericTabId = Number(tabId);
@@ -1470,6 +1486,37 @@ function sendSlackInnerRequestToTab(tabId, inner) {
       }
     );
   });
+}
+
+async function sendSlackInnerRequestToTabWithRecovery(tabId, inner, options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const requireDeliveryConfirmation = opts.requireDeliveryConfirmation === true;
+  const attemptSend = async () => {
+    const result = await sendSlackInnerRequestToTab(tabId, inner);
+    if (requireDeliveryConfirmation) {
+      const confirmedDelivery = extractConfirmedSlackDelivery(
+        result,
+        result && (result.channel || result.channel_id || result.channelId || ""),
+        result && (result.direct_channel_id || result.directChannelId || "")
+      );
+      if (!confirmedDelivery) {
+        throw new Error("Slack workspace session send did not return delivery confirmation.");
+      }
+    }
+    return result;
+  };
+
+  try {
+    return await attemptSend();
+  } catch (err) {
+    const errorMessage = String(err && err.message || "");
+    const shouldRetryAfterInjection = isContentScriptUnavailableError(errorMessage)
+      || (requireDeliveryConfirmation && errorMessage.toLowerCase().includes("delivery confirmation"));
+    if (!shouldRetryAfterInjection) throw err;
+    const injected = await tryInjectSlackContentScript(tabId);
+    if (!injected) throw err;
+    return attemptSend();
+  }
 }
 
 function sleepMs(ms) {
@@ -1625,7 +1672,7 @@ async function captureSlackRuntimeUserTokenFromWorkspaceSession(options) {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         let authResult = null;
         try {
-          authResult = await sendSlackInnerRequestToTab(tab.id, {
+          authResult = await sendSlackInnerRequestToTabWithRecovery(tab.id, {
             action: "slackAuthTest",
             workspaceOrigin
           });
@@ -1725,6 +1772,34 @@ function buildSlackNewMessageFields(fields) {
   return source;
 }
 
+function extractConfirmedSlackDelivery(source, fallbackChannelId, fallbackDirectChannelId) {
+  const payload = source && typeof source === "object" ? source : {};
+  const channel = normalizeSlackChannelId(
+    payload.channel
+    || payload.channel_id
+    || payload.channelId
+    || fallbackChannelId
+  );
+  const ts = String(
+    payload.ts
+    || payload.message_ts
+    || payload.messageTs
+    || (payload.message && payload.message.ts)
+    || ""
+  ).trim();
+  if (!channel || !ts) return null;
+  return {
+    channel,
+    directChannelId: normalizeSlackDirectChannelId(
+      payload.direct_channel_id
+      || payload.directChannelId
+      || fallbackDirectChannelId
+      || channel
+    ),
+    ts
+  };
+}
+
 async function slackSendMarkdownToSelfViaWorkspaceSession(input, reasonCode) {
   const body = input && typeof input === "object" ? input : {};
   const workspaceOrigin = normalizeSlackWorkspaceOrigin(body.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
@@ -1760,12 +1835,12 @@ async function slackSendMarkdownToSelfViaWorkspaceSession(input, reasonCode) {
       if (!tab || tab.id == null) continue;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          await sendSlackInnerRequestToTab(tab.id, {
+          await sendSlackInnerRequestToTabWithRecovery(tab.id, {
             action: "slackAuthTest",
             workspaceOrigin
           }).catch(() => null);
 
-          const result = await sendSlackInnerRequestToTab(tab.id, {
+          const result = await sendSlackInnerRequestToTabWithRecovery(tab.id, {
             action: "slackSendMarkdownToSelf",
             workspaceOrigin,
             userId: body.userId || body.user_id || "",
@@ -1773,16 +1848,24 @@ async function slackSendMarkdownToSelfViaWorkspaceSession(input, reasonCode) {
             avatarUrl: body.avatarUrl || body.avatar_url || "",
             markdownText: body.markdownText || body.text || body.messageText || "",
             forceNewMessage: true
+          }, {
+            requireDeliveryConfirmation: true
           });
           if (result && result.ok === true) {
-            const deliveredChannel = String(result.channel || "").trim();
-            const deliveredTs = String(result.ts || "").trim();
-            const directChannelId = normalizeSlackDirectChannelId(deliveredChannel);
+            const confirmedDelivery = extractConfirmedSlackDelivery(
+              result,
+              result.channel || "",
+              result.direct_channel_id || result.directChannelId || ""
+            );
+            if (!confirmedDelivery) {
+              lastError = String((result && result.error) || "Slack workspace session send did not return delivery confirmation.");
+              continue;
+            }
             return {
               ok: true,
-              channel: deliveredChannel,
-              direct_channel_id: directChannelId,
-              ts: deliveredTs,
+              channel: confirmedDelivery.channel,
+              direct_channel_id: confirmedDelivery.directChannelId,
+              ts: confirmedDelivery.ts,
               user_id: String(result.user_id || body.userId || body.user_id || "").trim(),
               team_id: String(result.team_id || "").trim(),
               user_name: String(result.user_name || body.userName || body.user_name || "").trim(),
@@ -1862,7 +1945,7 @@ async function slackMarkUnreadViaWorkspaceSession(input, reasonCode) {
       if (!tab || tab.id == null) continue;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const result = await sendSlackInnerRequestToTab(tab.id, {
+          const result = await sendSlackInnerRequestToTabWithRecovery(tab.id, {
             action: "slackMarkUnread",
             workspaceOrigin,
             channelId,
@@ -1948,7 +2031,7 @@ async function postSlackApiViaWorkspaceSession(input) {
       if (!tab || tab.id == null) continue;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const result = await sendSlackInnerRequestToTab(tab.id, {
+          const result = await sendSlackInnerRequestToTabWithRecovery(tab.id, {
             action: "slackApiProxy",
             workspaceOrigin,
             apiPath,
@@ -2601,7 +2684,7 @@ async function hydratePassTransitionRecipientsViaWorkspaceSession(options) {
       };
     }
 
-    const callSlackApiProxy = async (tabId, apiPath, fields) => sendSlackInnerRequestToTab(tabId, {
+    const callSlackApiProxy = async (tabId, apiPath, fields) => sendSlackInnerRequestToTabWithRecovery(tabId, {
       action: "slackApiProxy",
       workspaceOrigin: SLACK_WORKSPACE_ORIGIN,
       apiPath,
@@ -4695,13 +4778,17 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
         continue;
       }
       const postPayload = post.payload && typeof post.payload === "object" ? post.payload : {};
-      const postedTs = String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim();
-      const directChannelId = normalizeSlackDirectChannelId(postPayload.channel || postChannel || "");
+      const confirmedDelivery = extractConfirmedSlackDelivery(postPayload, postChannel, postChannel);
+      if (!confirmedDelivery) {
+        lastFailureCode = "slack_delivery_unconfirmed";
+        lastFailureError = "Slack message post returned no delivery confirmation.";
+        continue;
+      }
       return {
         ok: true,
-        channel: String(postPayload.channel || postChannel || userId).trim(),
-        direct_channel_id: directChannelId || normalizeSlackDirectChannelId(postChannel),
-        ts: postedTs,
+        channel: confirmedDelivery.channel,
+        direct_channel_id: confirmedDelivery.directChannelId || normalizeSlackDirectChannelId(postChannel),
+        ts: confirmedDelivery.ts,
         user_id: userId,
         team_id: teamId || "",
         user_name: resolvedUserName,
@@ -5091,21 +5178,26 @@ async function slackSendMarkdownToSelfViaApi(input) {
         continue;
       }
       const postPayload = post.payload && typeof post.payload === "object" ? post.payload : {};
-      const postedTs = String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim();
+      const confirmedDelivery = extractConfirmedSlackDelivery(postPayload, postChannel, postChannel);
+      if (!confirmedDelivery) {
+        lastFailureCode = "slack_delivery_unconfirmed";
+        lastFailureError = "Slack message post returned no delivery confirmation.";
+        continue;
+      }
       let unreadMarked = false;
-      if (!skipUnreadMark && postChannel && postedTs) {
+      if (!skipUnreadMark && confirmedDelivery.channel && confirmedDelivery.ts) {
         unreadMarked = await markSlackMessageUnreadViaApiToken(
           webApiOrigin,
           attemptToken,
-          postChannel,
-          postedTs,
+          confirmedDelivery.channel,
+          confirmedDelivery.ts,
           prePostCursorTs
         );
         if (!unreadMarked) {
           const workspaceUnreadFallback = await slackMarkUnreadViaWorkspaceSession({
             workspaceOrigin: webApiOrigin,
-            channelId: postChannel,
-            ts: postedTs,
+            channelId: confirmedDelivery.channel,
+            ts: confirmedDelivery.ts,
             autoBootstrapSlackTab: allowWorkspaceTabBootstrap
           }, "workspace_mark_unread_fallback");
           unreadMarked = !!(workspaceUnreadFallback && workspaceUnreadFallback.ok && workspaceUnreadFallback.unread_marked === true);
@@ -5120,9 +5212,9 @@ async function slackSendMarkdownToSelfViaApi(input) {
       }
       return {
         ok: true,
-        channel: String(postPayload.channel || postChannel || userId).trim(),
-        direct_channel_id: normalizeSlackDirectChannelId(postPayload.channel || postChannel || ""),
-        ts: postedTs,
+        channel: confirmedDelivery.channel,
+        direct_channel_id: confirmedDelivery.directChannelId,
+        ts: confirmedDelivery.ts,
         user_id: userId,
         team_id: teamId || "",
         user_name: resolvedUserName,

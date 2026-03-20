@@ -3349,6 +3349,9 @@
         const responseCodeLabel = responseCode ? ("[" + responseCode + "] ") : "";
         throw new Error(responseCodeLabel + responseMessage);
       }
+      if (!getConfirmedPassAiSlackDelivery(response)) {
+        throw new Error("[slack_delivery_unconfirmed] Slack share returned no delivery confirmation.");
+      }
       const recipientLabel = deliveryRecipient.label || deliveryRecipient.userName || deliveryRecipient.userId;
       const sentRows = Math.min(rows.length, SLACK_IT_TO_ME_MAX_ROWS);
       const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
@@ -3431,6 +3434,9 @@
         const responseMessage = normalizePassAiCommentBody(response && (response.error || response.message)) || "Slack send failed.";
         const responseCodeLabel = responseCode ? ("[" + responseCode + "] ") : "";
         throw new Error(responseCodeLabel + responseMessage);
+      }
+      if (!getConfirmedPassAiSlackDelivery(response)) {
+        throw new Error("[slack_delivery_unconfirmed] Slack send returned no delivery confirmation.");
       }
       const deliveryMode = String(response && response.delivery_mode || "").trim();
       const deliverySuffix = deliveryMode ? (" Delivery mode: " + deliveryMode + ".") : "";
@@ -6212,6 +6218,33 @@
     return normalized + "\n\n" + buildZipToolSlackFooterLine();
   }
 
+  function getConfirmedPassAiSlackDelivery(response) {
+    const payload = response && typeof response === "object" ? response : {};
+    const channel = normalizePassAiSlackChannelId(
+      payload.channel
+      || payload.channel_id
+      || payload.channelId
+      || payload.direct_channel_id
+      || payload.directChannelId
+    );
+    const ts = String(
+      payload.ts
+      || payload.message_ts
+      || payload.messageTs
+      || ""
+    ).trim();
+    if (!channel || !ts) return null;
+    return {
+      channel,
+      directChannelId: normalizePassAiSlackDirectChannelId(
+        payload.direct_channel_id
+        || payload.directChannelId
+        || channel
+      ),
+      ts
+    };
+  }
+
   function buildSlackItToMeMarkdown(rows) {
     const ticketRows = Array.isArray(rows) ? rows : [];
     const cappedRows = ticketRows.slice(0, SLACK_IT_TO_ME_MAX_ROWS);
@@ -6353,6 +6386,10 @@
             throw new Error(responseCodeLabel + responseMessage);
           }
         }
+        const confirmedDelivery = getConfirmedPassAiSlackDelivery(response);
+        if (!confirmedDelivery) {
+          throw new Error("[slack_delivery_unconfirmed] Slack send returned no delivery confirmation.");
+        }
 
         setPassAiSlackAuthState({
           ready: true,
@@ -6361,7 +6398,7 @@
           userId: response.user_id || response.userId || state.passAiSlackUserId || "",
           userName: response.user_name || response.userName || state.passAiSlackUserName || "",
           avatarUrl: response.avatar_url || response.avatarUrl || state.passAiSlackAvatarUrl || "",
-          directChannelId: response.direct_channel_id || response.directChannelId || state.passAiSlackDirectChannelId || "",
+          directChannelId: confirmedDelivery.directChannelId || state.passAiSlackDirectChannelId || "",
           teamId: response.team_id || response.teamId || "",
           enterpriseId: response.enterprise_id || response.enterpriseId || ""
         });

@@ -20,6 +20,7 @@ test("runtime Slack paths avoid chat.update for ticket notifications", () => {
 test("background sanitizes Slack self-DM payloads to always send new messages", () => {
   const source = fs.readFileSync(BACKGROUND_JS_PATH, "utf8");
   assert.match(source, /function buildSlackNewMessageFields\(fields\)/);
+  assert.match(source, /function extractConfirmedSlackDelivery\(source,\s*fallbackChannelId,\s*fallbackDirectChannelId\)/);
   assert.match(source, /async function slackSendMarkdownToSelfViaBotApi\(input,\s*resolvedTokens\)/);
   assert.match(source, /delete source\.thread_ts;/);
   assert.match(source, /delete source\.reply_broadcast;/);
@@ -27,6 +28,7 @@ test("background sanitizes Slack self-DM payloads to always send new messages", 
   assert.match(source, /mrkdwn:\s*true,/);
   assert.match(source, /parse:\s*"none"/);
   assert.match(source, /postSlackApiWithBearerToken\(webApiOrigin,\s*"\/api\/chat\.postMessage",\s*postFields,\s*attemptToken\)/);
+  assert.match(source, /slack_delivery_unconfirmed/);
   assert.match(source, /delivery_mode:\s*"bot_direct_channel"/);
 });
 
@@ -63,6 +65,7 @@ test("content self-DM action strips thread fields before chat.postMessage", () =
   assert.match(source, /mrkdwn:\s*true,/);
   assert.match(source, /parse:\s*"none"/);
   assert.match(source, /postSlackApi\(workspaceOrigin,\s*"\/api\/chat\.postMessage",\s*postFields\)/);
+  assert.match(source, /code:\s*"slack_delivery_unconfirmed"/);
 });
 
 test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", () => {
@@ -133,7 +136,7 @@ test("workspace deeplinks route through the redirect URL back into the Zendesk-h
   assert.match(background, /chrome\.runtime\.sendMessage\(\{\s*type:\s*ZIP_APPLY_WORKSPACE_DEEPLINK_MESSAGE_TYPE,/);
   assert.match(background, /await closeZipWorkspaceDeeplinkSourceTab\(sourceTabId\);/);
   assert.match(background, /function maybeRouteZipWorkspaceDeeplinkTab\(tabId,\s*url\)/);
-  assert.match(background, /chrome\.tabs\.onUpdated\.addListener\(\(tabId,\s*_info,\s*tab\) => \{[\s\S]*if \(maybeRouteZipWorkspaceDeeplinkTab\(tabId,\s*tab\.url\)\) return;/);
+  assert.match(background, /chrome\.tabs\.onUpdated\.addListener\(\(tabId,\s*(?:_info|info),\s*tab\) => \{[\s\S]*if \(maybeRouteZipWorkspaceDeeplinkTab\(tabId,\s*tab\.url\)\) return;/);
   assert.match(background, /await routeZipWorkspaceDeeplinkToZendeskClient\(parsed\.payload,\s*numericTabId\);/);
   assert.doesNotMatch(background, /chrome\.tabs\.update\(numericTabId,\s*\{\s*url:\s*workspaceUrl\s*\}/);
 

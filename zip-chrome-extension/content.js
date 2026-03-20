@@ -3665,9 +3665,17 @@
     }
     const postPayload = post.payload && typeof post.payload === "object" ? post.payload : {};
     const postedTs = String(postPayload.ts || (postPayload.message && postPayload.message.ts) || "").trim();
+    const deliveredChannel = String(postPayload.channel || channelId || userId).trim();
+    if (!deliveredChannel || !postedTs) {
+      return {
+        ok: false,
+        code: "slack_delivery_unconfirmed",
+        error: "Slack DM send returned no delivery confirmation."
+      };
+    }
     return {
       ok: true,
-      channel: String(postPayload.channel || channelId || userId).trim(),
+      channel: deliveredChannel,
       ts: postedTs,
       user_id: userId,
       team_id: teamId,
