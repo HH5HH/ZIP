@@ -2057,6 +2057,97 @@ test("ZIP_SLACK_API_SEND_TO_SELF falls back to bot delivery when the primary pos
   assert.equal(seenAuthorizations.includes(bearer(TOKENS.directBot)), true);
 });
 
+test("ZIP_SLACK_API_SEND_TO_SELF resolves self bot delivery from the live user token when the cached user id is stale", async () => {
+  const seenAuthorizations = [];
+  const seenConversationUsers = [];
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    fetch: ({ url, init }) => {
+      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+      const authorization = String(headers.Authorization || headers.authorization || "");
+      const body = init && typeof init.body === "string" ? String(init.body) : "";
+      const params = new URLSearchParams(body);
+      seenAuthorizations.push(authorization);
+      if (url.endsWith("/api/auth.test") && authorization === bearer(TOKENS.directUser)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "UALICE123", user: "alice", team_id: "TALICE123" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/auth.test") && authorization === bearer(TOKENS.directBot)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, team_id: "TALICE123" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/conversations.open") && authorization === bearer(TOKENS.directBot)) {
+        seenConversationUsers.push(String(params.get("users") || ""));
+        const targetUserId = String(params.get("users") || "");
+        if (targetUserId === "USTALE999") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: false, error: "user_not_found" }),
+            text: async () => ""
+          });
+        }
+        if (targetUserId === "UALICE123") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: true, channel: { id: "DBOTSELF1" } }),
+            text: async () => ""
+          });
+        }
+      }
+      if (url.endsWith("/api/chat.postMessage") && authorization === bearer(TOKENS.directBot)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, channel: "DBOTSELF1", ts: "1711111111.000500" }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  harness.resetCalls();
+  const response = await harness.sendRuntimeMessage({
+    type: "ZIP_SLACK_API_SEND_TO_SELF",
+    workspaceOrigin: "https://adobedx.slack.com",
+    userId: "USTALE999",
+    authorUserId: "USTALE999",
+    markdownText: "note to self",
+    userToken: TOKENS.directUser,
+    botToken: TOKENS.directBot,
+    autoBootstrapSlackTab: false,
+    preferApiFirst: true,
+    preferBotDmDelivery: true,
+    requireNativeNewMessage: false,
+    requireBotDelivery: true,
+    allowBotDelivery: true,
+    skipUnreadMark: true,
+    forceNewMessage: true
+  });
+
+  assert.equal(response && response.ok, true);
+  assert.equal(String(response && response.delivery_mode || ""), "bot_direct_channel");
+  assert.equal(response && response.user_id, "UALICE123");
+  assert.equal(seenAuthorizations.includes(bearer(TOKENS.directUser)), true);
+  assert.equal(seenAuthorizations.includes(bearer(TOKENS.directBot)), true);
+  assert.deepEqual(seenConversationUsers, ["UALICE123"]);
+});
+
 test("ZIP_SLACK_API_AUTH_TEST prefers Slack profile identity over stale caller-provided names", async () => {
   const harness = createChromeHarness({
     zendeskTabs: [],

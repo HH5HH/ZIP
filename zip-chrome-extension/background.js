@@ -4588,6 +4588,7 @@ async function invalidateStoredSlackToken(token) {
 
 async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
   const body = input && typeof input === "object" ? input : {};
+  const workspaceOrigin = normalizeSlackWorkspaceOrigin(body.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
   const tokens = resolvedTokens && typeof resolvedTokens === "object" ? resolvedTokens : {};
   const webApiOrigin = SLACK_WEB_API_ORIGIN;
   const requestedDirectChannelId = normalizeSlackDirectChannelId(
@@ -4622,6 +4623,25 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
     };
   }
   const openIdUserId = normalizeSlackUserId(openIdSession && openIdSession.userId);
+  const liveUserCandidates = Array.isArray(tokens && tokens.userCandidates)
+    ? tokens.userCandidates.map((token) => normalizeSlackApiToken(token)).filter(Boolean)
+    : [normalizeSlackApiToken(tokens && tokens.userToken)].filter(Boolean);
+  let resolvedSelfUserId = "";
+  let resolvedSelfUserName = "";
+  if (!requireRequestedUser) {
+    for (let i = 0; i < liveUserCandidates.length; i += 1) {
+      const candidateToken = normalizeSlackApiToken(liveUserCandidates[i]);
+      if (!candidateToken || !isSlackUserOAuthToken(candidateToken)) continue;
+      const auth = await postSlackApiWithBearerToken(workspaceOrigin, "/api/auth.test", {
+        _x_reason: "zip-slack-it-to-me-auth-user-for-bot-bg"
+      }, candidateToken);
+      if (!auth || !auth.ok) continue;
+      const authPayload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
+      resolvedSelfUserId = normalizeSlackUserId(authPayload.user_id || authPayload.user);
+      resolvedSelfUserName = normalizeSlackDisplayName(authPayload.user || "");
+      if (resolvedSelfUserId) break;
+    }
+  }
   const userIdCandidates = [];
   const pushUserIdCandidate = (value) => {
     const normalized = normalizeSlackUserId(value);
@@ -4631,6 +4651,7 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
   if (requireRequestedUser) {
     pushUserIdCandidate(requestedUserId);
   } else {
+    pushUserIdCandidate(resolvedSelfUserId);
     pushUserIdCandidate(requestedUserId);
     pushUserIdCandidate(openIdUserId);
   }
@@ -4643,7 +4664,7 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
   }
 
   const resolvedUserName = normalizeSlackDisplayName(
-    body.userName || body.user_name || (openIdSession && openIdSession.userName) || ""
+    body.userName || body.user_name || resolvedSelfUserName || (openIdSession && openIdSession.userName) || ""
   );
   const resolvedAvatarUrl = normalizeSlackAvatarUrl(
     body.avatarUrl
