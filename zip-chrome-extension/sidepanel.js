@@ -4046,7 +4046,7 @@
         preferApiFirst: true,
         preferBotDmDelivery: false,
         requireNativeNewMessage: false,
-        requireBotDelivery: false,
+        requireBotDelivery: true,
         allowBotDelivery: true,
         skipUnreadMark: true,
         forceNewMessage: true
@@ -7132,9 +7132,9 @@
           userToken: slackApiTokens.userToken || "",
           autoBootstrapSlackTab: false,
           preferApiFirst: true,
-          preferBotDmDelivery: false,
+          preferBotDmDelivery: true,
           requireNativeNewMessage: false,
-          requireBotDelivery: false,
+          requireBotDelivery: true,
           allowBotDelivery: true,
           skipUnreadMark: true,
           forceNewMessage: true
