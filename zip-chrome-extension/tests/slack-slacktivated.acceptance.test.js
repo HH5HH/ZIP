@@ -374,13 +374,16 @@ test("sidepanel ships ZIP DEBUG INFO footer icon and hidden console snapshot", (
   assert.match(js, /pushZipDebugSection\(lines,\s*"slacktivation",\s*\[/);
   assert.match(js, /pushZipDebugSection\(\s*lines,\s*"recent_slack_probe",/);
   assert.match(js, /showToast\(ZIP_DEBUG_COPY_TOAST_MESSAGE,\s*1800,\s*\{\s*tone:\s*"success"\s*\}\);/);
+  assert.match(js, /document\.body\.classList\.toggle\("zip-debug-open",\s*open\);/);
   assert.match(js, /els\.debugToggleBtn\.addEventListener\("click",\s*\(event\)\s*=>\s*\{[\s\S]*if \(event\.shiftKey\) \{[\s\S]*setDebugConsoleCollapsed\(!state\.debugConsoleCollapsed\);[\s\S]*void copyDebugConsoleToClipboard\(\);/);
 
   assert.match(css, /\.zip-footer-debug-btn\s*\{/);
   assert.match(css, /\.zip-footer-debug-btn\[data-state="expanded"\]\s*\{/);
-  assert.match(css, /\.zip-debug-console\s*\{/);
+  assert.match(css, /body\.zip-debug-open \.body\s*\{/);
+  assert.match(css, /\.zip-debug-console\s*\{[\s\S]*position:\s*fixed;[\s\S]*bottom:\s*calc\(var\(--zip-footer-height\)\s*-\s*1px\);/);
+  assert.match(css, /\.zip-debug-console\.is-open\s*\{/);
   assert.match(css, /\.zip-debug-console-status\s*\{/);
-  assert.match(css, /\.zip-debug-console-output\s*\{/);
+  assert.match(css, /\.zip-debug-console-output\s*\{[\s\S]*inline-size:\s*100%;/);
 });
 
 test("sidepanel styles avoid custom Slack header spinner overlay", () => {

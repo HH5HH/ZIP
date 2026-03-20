@@ -2126,12 +2126,13 @@
 
   function renderDebugConsole() {
     const collapsed = state.debugConsoleCollapsed === true;
+    const open = !collapsed;
     if (els.debugConsole) {
-      els.debugConsole.classList.toggle("hidden", collapsed);
-      els.debugConsole.setAttribute("aria-hidden", collapsed ? "true" : "false");
+      els.debugConsole.classList.toggle("is-open", open);
+      els.debugConsole.setAttribute("aria-hidden", open ? "false" : "true");
     }
     if (els.debugConsoleBody) {
-      els.debugConsoleBody.hidden = collapsed;
+      els.debugConsoleBody.setAttribute("aria-hidden", open ? "false" : "true");
     }
     if (els.debugToggleBtn) {
       const nextLabel = collapsed
@@ -2160,6 +2161,12 @@
     const snapshot = getZipDebugConsoleSnapshot();
     if (typeof window !== "undefined") {
       window.ZIP_DEBUG_INFO_SNAPSHOT = snapshot;
+    }
+    if (typeof document !== "undefined" && document.body) {
+      document.body.classList.toggle("zip-debug-open", open);
+    }
+    if (els.debugLogOutput) {
+      els.debugLogOutput.tabIndex = open ? 0 : -1;
     }
     setTextOutput(els.debugLogOutput, snapshot);
   }
@@ -7858,6 +7865,9 @@
     if (els.rawTitle) els.rawTitle.textContent = "GET /api/v2/users/me";
     updateRawDownloadLink();
     if (els.ticketBody) els.ticketBody.innerHTML = "";
+    state.debugConsoleCollapsed = true;
+    state.debugCopyStatus = "";
+    renderDebugConsole();
     updateTicketActionButtons();
     syncStatusFilterOptions();
     els.loginScreen.classList.remove("hidden");
@@ -7874,6 +7884,7 @@
     document.body.classList.remove("zip-logged-out");
     els.loginScreen.classList.add("hidden");
     els.appScreen.classList.remove("hidden");
+    renderDebugConsole();
     syncContextMenuAuthVisibility();
   }
 
