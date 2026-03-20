@@ -99,6 +99,7 @@ test("sidepanel uses SLACKTIVATED indicator + Slack DM actions + @SLACK ME compo
   assert.match(js, /function loadPassTransitionRecipients\(options\)/);
   assert.match(js, /function buildPassTransitionShareMarkdown\(rows,\s*noteText,\s*recipient\)/);
   assert.match(js, /function sendPassTransitionShareFromDialog\(\)/);
+  assert.match(js, /function isPassTransitionRecipientCurrentSlackUser\(recipient\)/);
   assert.match(js, /function syncSlackMeRecipientIdentity\(\)/);
   assert.match(js, /function normalizeSlackMeDraftText\(value\)/);
   assert.match(js, /function convertSlackMeDraftToMrkdwn\(value\)/);
@@ -236,6 +237,7 @@ test("sidepanel uses SLACKTIVATED indicator + Slack DM actions + @SLACK ME compo
   assert.match(js, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: true\s*\}\)/);
   assert.match(js, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS"/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER"/);
+  assert.match(js, /const sendingToSelf = isPassTransitionRecipientCurrentSlackUser\(targetRecipient\);/);
   assert.doesNotMatch(js, /sendBackgroundRequest\("ZIP_SLACK_API_QAI_SEND"/);
   assert.doesNotMatch(js, /sendBackgroundRequest\("ZIP_SLACK_API_QAI_POLL"/);
   assert.match(js, /Q&AI primary send transport=slack_web/);
@@ -294,6 +296,7 @@ test("sidepanel uses SLACKTIVATED indicator + Slack DM actions + @SLACK ME compo
   assert.match(js, /const signatureLine = buildZipToolSlackFooterLine\(\);/);
   assert.match(js, /SLACK_IT_TO_ME delivered to your Slack DM/);
   assert.match(js, /Sending visible ticket list to your Slack DM/);
+  assert.match(js, /PASS-TRANSITION self-share sent to your Slack DM/);
   assert.match(js, /preferBotDmDelivery:\s*false/);
   assert.match(js, /allowBotDelivery:\s*false/);
   assert.match(js, /@SLACK ME sent to your Slack DM\./);

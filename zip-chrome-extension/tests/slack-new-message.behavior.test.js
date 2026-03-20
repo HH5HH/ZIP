@@ -105,14 +105,16 @@ test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", 
   assert.match(source, /if \(e\.shiftKey\) \{[\s\S]*openSlackMeDialog\(\{ mode: "transition" \}\)/);
   assert.match(source, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS", \{\}\)/);
   assert.match(source, /async function refreshPassTransitionRecipientAfterUserNotFound\(referenceRecipient\)/);
+  assert.match(source, /function isPassTransitionRecipientCurrentSlackUser\(recipient\)/);
   assert.match(source, /sendBackgroundRequest\("ZIP_REHYDRATE_PASS_TRANSITION_MEMBERS", \{\s*force: true,\s*allowCreateTab: true\s*\}\)/);
   assert.match(source, /if \(\(!response \|\| response\.ok !== true\) && responseCode === "user_not_found"\) \{/);
   assert.match(source, /await ensurePassAiSlackIdentityVerifiedForDelivery\(\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER"/);
   assert.match(source, /await ensurePassAiSlackIdentityVerifiedForDelivery\(\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
   assert.match(
     source,
-    /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER",\s*\{[\s\S]*botToken:\s*slackApiTokens\.botToken \|\| ""[\s\S]*preferBotDmDelivery:\s*false[\s\S]*allowBotDelivery:\s*true[\s\S]*\}\);/
+    /const sendingToSelf = isPassTransitionRecipientCurrentSlackUser\(targetRecipient\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER",\s*\{[\s\S]*botToken:\s*slackApiTokens\.botToken \|\| ""[\s\S]*preferBotDmDelivery:\s*false[\s\S]*requireBotDelivery:\s*!sendingToSelf[\s\S]*allowBotDelivery:\s*!sendingToSelf[\s\S]*\}\);/
   );
+  assert.match(source, /PASS-TRANSITION self-share sent to your Slack DM/);
 });
 
 test("sidepanel routes RE-SLACKTIVATE through the shared context-menu Slacktivation action", () => {

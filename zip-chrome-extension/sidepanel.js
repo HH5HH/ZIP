@@ -3272,6 +3272,22 @@
     return null;
   }
 
+  function isPassTransitionRecipientCurrentSlackUser(recipient) {
+    const normalizedRecipient = normalizePassTransitionRecipientShape(recipient);
+    if (!normalizedRecipient) return false;
+    const selfReference = {
+      userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+      userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || "") || getSlacktivatedDisplayName(),
+      displayName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || "") || getSlacktivatedDisplayName(),
+      realName: normalizePassAiSlackDisplayName(String(state.user && state.user.name || "").trim()),
+      email: normalizeEmailAddress(state.user && state.user.email || "")
+    };
+    const selfKeys = collectPassTransitionRecipientMatchKeys(selfReference);
+    if (!selfKeys.length) return false;
+    const recipientKeys = collectPassTransitionRecipientMatchKeys(normalizedRecipient);
+    return recipientKeys.some((key) => selfKeys.includes(key));
+  }
+
   function normalizePassTransitionRecipientList(value) {
     let rows = value;
     if (typeof rows === "string") {
@@ -4034,7 +4050,9 @@
       await ensurePassAiSlackIdentityVerifiedForDelivery();
       const slackApiTokens = getPassAiSlackApiTokenConfig();
       await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
-      const sendPassTransitionShare = async (targetRecipient) => sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_USER", {
+      const sendPassTransitionShare = async (targetRecipient) => {
+        const sendingToSelf = isPassTransitionRecipientCurrentSlackUser(targetRecipient);
+        return sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_USER", {
         workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
         userId: targetRecipient.userId,
         userName: targetRecipient.userName || targetRecipient.label || targetRecipient.userId,
@@ -4050,11 +4068,12 @@
         preferApiFirst: true,
         preferBotDmDelivery: false,
         requireNativeNewMessage: false,
-        requireBotDelivery: true,
-        allowBotDelivery: true,
+        requireBotDelivery: !sendingToSelf,
+        allowBotDelivery: !sendingToSelf,
         skipUnreadMark: true,
         forceNewMessage: true
-      });
+        });
+      };
       let deliveryRecipient = recipient;
       let response = await sendPassTransitionShare(deliveryRecipient);
       let responseCode = String(response && response.code || "").trim().toLowerCase();
@@ -4076,7 +4095,11 @@
       const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
       const deliveryMode = String(response && response.delivery_mode || "").trim();
       const deliverySuffix = deliveryMode ? (" Delivery mode: " + deliveryMode + ".") : "";
-      setStatus("PASS-TRANSITION share sent to " + recipientLabel + summarySuffix + "." + deliverySuffix, false);
+      if (isPassTransitionRecipientCurrentSlackUser(deliveryRecipient)) {
+        setStatus("PASS-TRANSITION self-share sent to your Slack DM" + summarySuffix + "." + deliverySuffix, false);
+      } else {
+        setStatus("PASS-TRANSITION share sent to " + recipientLabel + summarySuffix + "." + deliverySuffix, false);
+      }
       shouldCloseSlackMeDialog = true;
     } catch (err) {
       const message = normalizePassAiCommentBody(err && err.message) || "Slack share failed.";
