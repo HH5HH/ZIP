@@ -4591,13 +4591,6 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
   const workspaceOrigin = normalizeSlackWorkspaceOrigin(body.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
   const tokens = resolvedTokens && typeof resolvedTokens === "object" ? resolvedTokens : {};
   const webApiOrigin = SLACK_WEB_API_ORIGIN;
-  const requestedDirectChannelId = normalizeSlackDirectChannelId(
-    body.directChannelId
-    || body.direct_channel_id
-    || body.channelId
-    || body.channel_id
-    || body.channel
-  );
   const botDeliveryToken = normalizeSlackApiToken(tokens.botToken);
   const botCandidates = Array.isArray(tokens && tokens.botCandidates)
     ? tokens.botCandidates
@@ -4748,28 +4741,23 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
         return { ok: true, channelId };
       };
 
-      let postChannel = requestedDirectChannelId;
-      if (!postChannel) {
-        const dmOpen = await openDirectChannel("zip-slack-it-to-me-open-dm-bot-bg");
-        if (!dmOpen.ok) {
-          lastFailureCode = dmOpen.code || "slack_open_dm_failed";
-          lastFailureError = dmOpen.error || "Unable to open Slack DM channel.";
-          if (isSlackTokenInvalidationCode(lastFailureCode)) {
-            markSlackTokenBackoff(attemptToken);
-            tokenInvalidated = true;
-            break;
-          }
-          continue;
+      // Always re-open the live DM for bot delivery instead of trusting a cached channel ID.
+      // Stale cached self-DM channels can silently post into another user's historical bot DM.
+      const dmOpen = await openDirectChannel("zip-slack-it-to-me-open-dm-bot-bg");
+      if (!dmOpen.ok) {
+        lastFailureCode = dmOpen.code || "slack_open_dm_failed";
+        lastFailureError = dmOpen.error || "Unable to open Slack DM channel.";
+        if (isSlackTokenInvalidationCode(lastFailureCode)) {
+          markSlackTokenBackoff(attemptToken);
+          tokenInvalidated = true;
+          break;
         }
-        postChannel = String(dmOpen.channelId || "").trim();
+        continue;
       }
+      let postChannel = String(dmOpen.channelId || "").trim();
 
       let post = await sendViaChannel(postChannel, "zip-slack-it-to-me-bot-bg");
-      if (
-        (!post || !post.ok)
-        && requestedDirectChannelId
-        && postChannel === requestedDirectChannelId
-      ) {
+      if (!post || !post.ok) {
         const postCode = String(post && post.code || "").trim().toLowerCase();
         const shouldRecoverWithDmOpen = postCode === "channel_not_found" || postCode === "not_in_channel";
         if (shouldRecoverWithDmOpen) {
@@ -6114,9 +6102,9 @@ async function slackAuthTestViaApi(input) {
     if (!statusMessage) {
       statusMessage = fallbackStatusMessage;
     }
-    let directChannelId = requestedDirectChannelId;
+    let directChannelId = "";
     let directChannelErrorCode = "";
-    if (!directChannelId && userId && botCandidates.length) {
+    if (userId && botCandidates.length) {
       for (let botIdx = 0; botIdx < botCandidates.length; botIdx += 1) {
         const botToken = normalizeSlackApiToken(botCandidates[botIdx]);
         if (!botToken) continue;

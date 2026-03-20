@@ -2060,6 +2060,7 @@ test("ZIP_SLACK_API_SEND_TO_SELF falls back to bot delivery when the primary pos
 test("ZIP_SLACK_API_SEND_TO_SELF resolves self bot delivery from the live user token when the cached user id is stale", async () => {
   const seenAuthorizations = [];
   const seenConversationUsers = [];
+  const seenPostChannels = [];
   const harness = createChromeHarness({
     zendeskTabs: [],
     fetch: ({ url, init }) => {
@@ -2105,6 +2106,7 @@ test("ZIP_SLACK_API_SEND_TO_SELF resolves self bot delivery from the live user t
         }
       }
       if (url.endsWith("/api/chat.postMessage") && authorization === bearer(TOKENS.directBot)) {
+        seenPostChannels.push(String(params.get("channel") || ""));
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -2127,6 +2129,7 @@ test("ZIP_SLACK_API_SEND_TO_SELF resolves self bot delivery from the live user t
     workspaceOrigin: "https://adobedx.slack.com",
     userId: "USTALE999",
     authorUserId: "USTALE999",
+    directChannelId: "DSTALESELF1",
     markdownText: "note to self",
     userToken: TOKENS.directUser,
     botToken: TOKENS.directBot,
@@ -2146,6 +2149,7 @@ test("ZIP_SLACK_API_SEND_TO_SELF resolves self bot delivery from the live user t
   assert.equal(seenAuthorizations.includes(bearer(TOKENS.directUser)), true);
   assert.equal(seenAuthorizations.includes(bearer(TOKENS.directBot)), true);
   assert.deepEqual(seenConversationUsers, ["UALICE123"]);
+  assert.deepEqual(seenPostChannels, ["DBOTSELF1"]);
 });
 
 test("ZIP_SLACK_API_SEND_TO_SELF falls back to user direct delivery when bot-preferred self DM returns user_not_found", async () => {
@@ -2295,6 +2299,73 @@ test("ZIP_SLACK_API_AUTH_TEST prefers Slack profile identity over stale caller-p
   assert.equal(response && response.ok, true);
   assert.equal(String(response && response.user_name || ""), "Alice Example");
   assert.equal(String(response && response.avatar_url || ""), "https://example.com/alice-fresh.png");
+});
+
+test("ZIP_SLACK_API_AUTH_TEST refreshes the live self DM instead of trusting a stale cached direct channel", async () => {
+  const seenConversationUsers = [];
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    fetch: ({ url, init }) => {
+      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+      const authorization = String(headers.Authorization || headers.authorization || "");
+      const body = init && typeof init.body === "string" ? String(init.body) : "";
+      const params = new URLSearchParams(body);
+      if (url.endsWith("/api/auth.test") && authorization === bearer(TOKENS.directUser)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "UALICE123", user: "alice", team_id: "TALICE123" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/users.profile.get") && authorization === bearer(TOKENS.directUser)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            profile: {
+              display_name: "Alice Example",
+              real_name: "Alice Example",
+              image_72: "https://example.com/alice-fresh.png"
+            }
+          }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/conversations.open") && authorization === bearer(TOKENS.directBot)) {
+        seenConversationUsers.push(String(params.get("users") || ""));
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, channel: { id: "DBOTSELFLIVE1" } }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  harness.resetCalls();
+  const response = await harness.sendRuntimeMessage({
+    type: "ZIP_SLACK_API_AUTH_TEST",
+    workspaceOrigin: "https://adobedx.slack.com",
+    expectedUserId: "UALICE123",
+    userId: "UALICE123",
+    userName: "Alice Example",
+    directChannelId: "DSTALESELF1",
+    userToken: TOKENS.directUser,
+    botToken: TOKENS.directBot
+  });
+
+  assert.equal(response && response.ok, true);
+  assert.equal(String(response && response.direct_channel_id || ""), "DBOTSELFLIVE1");
+  assert.deepEqual(seenConversationUsers, ["UALICE123"]);
 });
 
 test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", async () => {
