@@ -371,6 +371,10 @@ test("sidepanel ships ZIP DEBUG INFO footer icon and hidden console snapshot", (
   assert.match(js, /function renderDebugConsole\(\)/);
   assert.match(js, /function setDebugConsoleCollapsed\(collapsed\)/);
   assert.match(js, /async function copyDebugConsoleToClipboard\(\)/);
+  assert.match(js, /"preferBotDmDelivery"/);
+  assert.match(js, /"requireBotDelivery"/);
+  assert.match(js, /"allowBotDelivery"/);
+  assert.match(js, /summary\.directChannelIdPresent = true;/);
   assert.match(js, /pushZipDebugSection\(lines,\s*"slacktivation",\s*\[/);
   assert.match(js, /pushZipDebugSection\(\s*lines,\s*"recent_slack_probe",/);
   assert.match(js, /showToast\(ZIP_DEBUG_COPY_TOAST_MESSAGE,\s*1800,\s*\{\s*tone:\s*"success"\s*\}\);/);

@@ -1835,12 +1835,22 @@
       "ticket_id",
       "userId",
       "user_id",
+      "authorUserId",
+      "author_user_id",
       "channel",
       "teamId",
       "team_id",
+      "code",
+      "delivery_mode",
       "downloadStarted",
       "downloadTabOpened",
       "extensionsOpened",
+      "preferApiFirst",
+      "preferBotDmDelivery",
+      "requireBotDelivery",
+      "allowBotDelivery",
+      "requireNativeNewMessage",
+      "skipUnreadMark",
       "recipientCount",
       "memberCount",
       "openedNewTab"
@@ -1848,6 +1858,16 @@
       if (raw[field] == null || raw[field] === "") return;
       summary[field] = sanitizeZipDebugInfoValue(raw[field], { keyName: field, seen: new WeakSet() });
     });
+    const hasDirectChannelId = !!normalizePassAiSlackDirectChannelId(
+      raw.directChannelId
+      || raw.direct_channel_id
+      || raw.channelId
+      || raw.channel_id
+      || ""
+    );
+    if (hasDirectChannelId) {
+      summary.directChannelIdPresent = true;
+    }
     [
       "text",
       "note",
@@ -4119,7 +4139,7 @@
         preferApiFirst: true,
         preferBotDmDelivery: true,
         requireNativeNewMessage: false,
-        requireBotDelivery: true,
+        requireBotDelivery: false,
         allowBotDelivery: true,
         skipUnreadMark: true,
         forceNewMessage: true
