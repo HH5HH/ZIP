@@ -4279,9 +4279,26 @@
     };
   }
 
+  function removeLegacyZipKeyBanner() {
+    if (!document || typeof document.querySelectorAll !== "function") return;
+    const legacyBanners = document.querySelectorAll("#zip-key-required-banner");
+    for (let i = 0; i < legacyBanners.length; i += 1) {
+      const banner = legacyBanners[i];
+      if (banner && typeof banner.remove === "function") {
+        banner.remove();
+      } else if (banner && banner.parentNode) {
+        banner.parentNode.removeChild(banner);
+      }
+    }
+  }
+
   if (isSlackPage()) {
     // Defer bridge injection until a Slack action requires API access.
     readCapturedSlackToken();
+  }
+
+  if (isZendeskPage() || isZendeskAuthPage()) {
+    removeLegacyZipKeyBanner();
   }
 
   // Login/sign-in Zendesk pages do not need ZIP runtime wiring and can have

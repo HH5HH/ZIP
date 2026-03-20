@@ -82,6 +82,10 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /contextMenuSlacktivateSection:\s*\$\("zipContextMenuSlacktivateSection"\)/);
   assert.match(js, /contextMenuSlacktivateContent:\s*\$\("zipContextMenuSlacktivateContent"\)/);
   assert.match(js, /contextMenuSlacktivateInput:\s*\$\("zipContextMenuSlacktivateInput"\)/);
+  assert.match(js, /Load ZIP\.KEY to SLACKTIVATE/);
+  assert.match(js, /LOAD ZIP\.KEY/);
+  assert.doesNotMatch(js, /Please drop ZIP\.KEY to SLACKTIVATE/);
+  assert.doesNotMatch(js, /DROP ZIP\.KEY TO SLACKTIVATE/);
   assert.match(js, /contextMenuSlackMe:\s*\$\("zipContextMenuSlackMe"\)/);
   assert.doesNotMatch(js, /contextMenuClearKey:\s*\$\("zipContextMenuClearKey"\)/);
   assert.doesNotMatch(js, /contextMenuRehydrateZip:\s*\$\("zipContextMenuRehydrateZip"\)/);

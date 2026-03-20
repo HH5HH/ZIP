@@ -2148,7 +2148,10 @@ test("sidepanel loads ZIP.KEY for Slacktivation without gating Zendesk login", (
   assert.match(source, /ZIP\.KEY is loaded\. Use the avatar menu to RE-SLACKTIVATE ZIP actions\./);
   assert.match(source, /ZipTool starts without ZIP\.KEY\. Load ZIP\.KEY from the avatar menu when you need Slack actions\./);
   assert.match(source, /ZIP\.KEY cleared\. Zendesk is still live; load a new ZIP\.KEY from the avatar menu to re-SLACKTIVATE\./);
-  assert.match(source, /DROP ZIP\.KEY TO SLACKTIVATE/);
+  assert.match(source, /Load ZIP\.KEY to SLACKTIVATE/);
+  assert.match(source, /LOAD ZIP\.KEY/);
+  assert.doesNotMatch(source, /Please drop ZIP\.KEY to SLACKTIVATE/);
+  assert.doesNotMatch(source, /DROP ZIP\.KEY TO SLACKTIVATE/);
   assert.doesNotMatch(html, /Please drop ZIP\.KEY to SLACKTIVATE/);
   assert.doesNotMatch(html, /DROP ZIP\.KEY TO SLACKTIVATE/);
   assert.doesNotMatch(html, /id="zipConfigGate"/);
@@ -2262,6 +2265,8 @@ test("content script supports authoritative session probe and logout/session eve
   assert.match(source, /type === "ZIP_SESSION_PROBE"/);
   assert.match(source, /type:\s*"ZD_SESSION_OK"/);
   assert.match(source, /type:\s*"ZD_LOGOUT"/);
+  assert.match(source, /function removeLegacyZipKeyBanner\(\)/);
+  assert.match(source, /querySelectorAll\("#zip-key-required-banner"\)/);
   assert.match(source, /probeZendeskSession\(\{\s*reason:\s*"auth_page_bootstrap"\s*\}\)/);
   assert.match(source, /emitZendeskLogout\("auth_page_probe_failed",\s*401\)/);
   assert.doesNotMatch(source, /msg && msg\.type === "ZIP_KEY_CLEARED"/);
@@ -2269,6 +2274,15 @@ test("content script supports authoritative session probe and logout/session eve
   assert.doesNotMatch(source, /type:\s*"ZIP_OPEN_OPTIONS"/);
   assert.doesNotMatch(source, /ZIP_KEY_BANNER_ID/);
   assert.match(source, /\/api\/v2\/users\/me\/session/);
+});
+
+test("background scrubs the legacy ZIP.KEY banner from open Zendesk tabs", () => {
+  const source = fs.readFileSync(BACKGROUND_PATH, "utf8");
+  assert.match(source, /const LEGACY_ZIP_KEY_BANNER_SELECTOR = "#zip-key-required-banner";/);
+  assert.match(source, /async function clearLegacyZipKeyBannerFromZendeskTab\(tabId\)/);
+  assert.match(source, /async function clearLegacyZipKeyBannersFromZendeskTabs\(\)/);
+  assert.match(source, /await clearLegacyZipKeyBannersFromZendeskTabs\(\)\.catch\(\(\) => \{\}\);/);
+  assert.match(source, /if \(info && info\.status === "complete" && isZendeskUrl\(tab\.url\)\) \{/);
 });
 
 test("manifest enables storage permission and options page", () => {

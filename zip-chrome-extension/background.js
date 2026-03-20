@@ -53,6 +53,7 @@ const ZIP_PANEL_PATH = "sidepanel.html";
 const ZIP_WORKSPACE_DEEPLINK_QUERY_PARAM = "zipdeeplink";
 const ZIP_APPLY_WORKSPACE_DEEPLINK_MESSAGE_TYPE = "ZIP_APPLY_WORKSPACE_DEEPLINK";
 const ZIP_CONTENT_SCRIPT_FILE = "content.js";
+const LEGACY_ZIP_KEY_BANNER_SELECTOR = "#zip-key-required-banner";
 const ZENDESK_SUBDOMAIN = (() => {
   try {
     const hostname = new URL(ZENDESK_ORIGIN).hostname;
@@ -546,6 +547,37 @@ async function queryZendeskTabs() {
     return Array.isArray(tabs) ? tabs : [];
   } catch (_) {
     return [];
+  }
+}
+
+async function clearLegacyZipKeyBannerFromZendeskTab(tabId) {
+  if (!chrome.scripting || typeof chrome.scripting.executeScript !== "function") return false;
+  if (tabId == null) return false;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (selector) => {
+        try {
+          const nodes = document.querySelectorAll(selector);
+          nodes.forEach((node) => {
+            if (node && typeof node.remove === "function") node.remove();
+          });
+        } catch (_) {}
+      },
+      args: [LEGACY_ZIP_KEY_BANNER_SELECTOR]
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function clearLegacyZipKeyBannersFromZendeskTabs() {
+  const tabs = await queryZendeskTabs();
+  for (let i = 0; i < tabs.length; i += 1) {
+    const tabId = tabs[i] && tabs[i].id;
+    if (tabId == null) continue;
+    await clearLegacyZipKeyBannerFromZendeskTab(tabId);
   }
 }
 
@@ -7129,6 +7161,7 @@ async function bootstrap() {
   await configureSidePanelDefaults();
   await refreshLayoutState();
   await syncAllTabOptions();
+  await clearLegacyZipKeyBannersFromZendeskTabs().catch(() => {});
   await ensureThemeStateLoaded().catch(() => {
     themeState.selectedId = DEFAULT_THEME_ID;
     themeState.loaded = true;
@@ -7159,10 +7192,13 @@ setInterval(() => {
     .catch(() => {});
 }, UPDATE_CHECK_TTL_MS);
 
-chrome.tabs.onUpdated.addListener((tabId, _info, tab) => {
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (!tab?.url) return;
   if (maybeRouteZipWorkspaceDeeplinkTab(tabId, tab.url)) return;
   setOptionsForTab(tabId, tab.url).catch(() => {});
+  if (info && info.status === "complete" && isZendeskUrl(tab.url)) {
+    clearLegacyZipKeyBannerFromZendeskTab(tabId).catch(() => {});
+  }
 });
 
 chrome.tabs.onActivated.addListener(({ tabId }) => {

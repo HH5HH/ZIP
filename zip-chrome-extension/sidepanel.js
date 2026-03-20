@@ -8998,14 +8998,14 @@
     const actionBusy = zipSlacktivationActionBusy === true;
     const disabled = actionBusy ? "disabled" : "";
     const processingClass = actionBusy ? " is-processing" : "";
-    const dropActionLabel = actionBusy ? "SLACKTIVATING ZIP.KEY…" : "DROP ZIP.KEY TO SLACKTIVATE";
+    const dropActionLabel = actionBusy ? "SLACKTIVATING ZIP.KEY…" : "LOAD ZIP.KEY";
     const inlineStatus = normalizePassAiCommentBody(state.passAiSlackAuthError || "");
     const metaText = getZipConfigGateMetaText(gateStatus);
     return (
       "<div class=\"zip-context-menu-slacktivate-state\" data-state=\"pending\">"
       + "<section class=\"zip-config-gate underpar-slacktivate-gate\" aria-live=\"polite\">"
-      + "<h2 class=\"zip-config-gate-title\">Please drop ZIP.KEY to SLACKTIVATE</h2>"
-      + "<p class=\"zip-config-gate-message\">Drag and drop your ZIP.KEY file onto the target below.</p>"
+      + "<h2 class=\"zip-config-gate-title\">Load ZIP.KEY to SLACKTIVATE</h2>"
+      + "<p class=\"zip-config-gate-message\">Drag and drop your ZIP.KEY file onto the target below, or click to choose it.</p>"
       + "<button"
       + " type=\"button\""
       + " class=\"zip-config-dropzone spectrum-Button spectrum-Button--outline spectrum-Button--sizeM" + processingClass + "\""
