@@ -2983,8 +2983,10 @@ test("sidepanel loads ZIP.KEY for Slacktivation without gating Zendesk login", (
   assert.match(source, /ZIP\.KEY is loaded\. Use the avatar menu to RE-SLACKTIVATE ZIP actions\./);
   assert.match(source, /ZipTool starts without ZIP\.KEY\. Load ZIP\.KEY from the avatar menu when you need Slack actions\./);
   assert.match(source, /ZIP\.KEY cleared\. Zendesk is still live; load a new ZIP\.KEY from the avatar menu to re-SLACKTIVATE\./);
-  assert.match(source, /Load ZIP\.KEY to SLACKTIVATE/);
-  assert.match(source, /LOAD ZIP\.KEY/);
+  assert.match(source, /SLACKTIVATE/);
+  assert.match(source, /LOAD NEW ZIP\.KEY/);
+  assert.match(source, /zip-context-menu-slacktivate-channel-link/);
+  assert.match(source, /data-slacktivate-recipient/);
   assert.doesNotMatch(source, /Please drop ZIP\.KEY to SLACKTIVATE/);
   assert.doesNotMatch(source, /DROP ZIP\.KEY TO SLACKTIVATE/);
   assert.doesNotMatch(html, /Please drop ZIP\.KEY to SLACKTIVATE/);

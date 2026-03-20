@@ -3941,6 +3941,7 @@
   async function openSlackMeDialog(options) {
     const opts = options && typeof options === "object" ? options : {};
     const mode = opts.mode === "transition" ? "transition" : "self";
+    const requestedRecipientId = normalizePassAiSlackUserId(opts.selectedRecipientId || "");
     const activeBeforeOpen = typeof document !== "undefined" ? document.activeElement : null;
     hideContextMenu();
     if (!state.user) return;
@@ -3965,6 +3966,8 @@
     }
     if (mode !== "transition") {
       setSelectedPassTransitionRecipient("");
+    } else if (requestedRecipientId) {
+      setSelectedPassTransitionRecipient(requestedRecipientId);
     }
     els.slackMeDialogBackdrop.classList.remove("hidden");
     els.slackMeDialogBackdrop.setAttribute("aria-hidden", "false");
@@ -3973,6 +3976,12 @@
       loadPassTransitionRecipients({
         force: false,
         preserveExisting: true
+      }).then((recipients) => {
+        if (!requestedRecipientId) return;
+        if (!Array.isArray(recipients)) return;
+        if (!recipients.some((entry) => entry && entry.userId === requestedRecipientId)) return;
+        setSelectedPassTransitionRecipient(requestedRecipientId);
+        syncSlackMeDialogUi();
       }).catch(() => {});
     }
     const focusTarget = (
@@ -4052,34 +4061,72 @@
       await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
       const sendPassTransitionShare = async (targetRecipient) => {
         const sendingToSelf = isPassTransitionRecipientCurrentSlackUser(targetRecipient);
-        return sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_USER", {
-        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
-        userId: targetRecipient.userId,
-        userName: targetRecipient.userName || targetRecipient.label || targetRecipient.userId,
-        avatarUrl: targetRecipient.avatarUrl || "",
-        authorUserId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
-        authorUserName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
-        authorAvatarUrl: state.passAiSlackAvatarUrl || "",
-        directChannelId: "",
-        markdownText: buildPassTransitionShareMarkdown(rows, noteText, targetRecipient),
-        botToken: slackApiTokens.botToken || "",
-        userToken: slackApiTokens.userToken || "",
-        autoBootstrapSlackTab: false,
-        preferApiFirst: true,
-        preferBotDmDelivery: false,
-        requireNativeNewMessage: false,
-        requireBotDelivery: !sendingToSelf,
-        allowBotDelivery: !sendingToSelf,
-        skipUnreadMark: true,
-        forceNewMessage: true
+        const markdownText = buildPassTransitionShareMarkdown(rows, noteText, targetRecipient);
+        if (sendingToSelf) {
+          const selfResponse = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", {
+            workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+            userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+            userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+            userEmail: normalizeEmailAddress(state.user && state.user.email || ""),
+            avatarUrl: state.passAiSlackAvatarUrl || "",
+            authorUserId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+            authorUserName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+            authorEmail: normalizeEmailAddress(state.user && state.user.email || ""),
+            authorAvatarUrl: state.passAiSlackAvatarUrl || "",
+            directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
+            markdownText,
+            botToken: slackApiTokens.botToken || "",
+            userToken: slackApiTokens.userToken || "",
+            autoBootstrapSlackTab: false,
+            preferApiFirst: true,
+            preferBotDmDelivery: false,
+            requireNativeNewMessage: false,
+            requireBotDelivery: false,
+            allowBotDelivery: false,
+            skipUnreadMark: true,
+            forceNewMessage: true
+          });
+          return {
+            sendingToSelf: true,
+            response: selfResponse
+          };
+        }
+        const targetedResponse = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_USER", {
+          workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
+          userId: targetRecipient.userId,
+          userName: targetRecipient.userName || targetRecipient.label || targetRecipient.userId,
+          avatarUrl: targetRecipient.avatarUrl || "",
+          authorUserId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+          authorUserName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
+          authorAvatarUrl: state.passAiSlackAvatarUrl || "",
+          directChannelId: "",
+          markdownText,
+          botToken: slackApiTokens.botToken || "",
+          userToken: slackApiTokens.userToken || "",
+          autoBootstrapSlackTab: false,
+          preferApiFirst: true,
+          preferBotDmDelivery: false,
+          requireNativeNewMessage: false,
+          requireBotDelivery: true,
+          allowBotDelivery: true,
+          skipUnreadMark: true,
+          forceNewMessage: true
         });
+        return {
+          sendingToSelf: false,
+          response: targetedResponse
+        };
       };
       let deliveryRecipient = recipient;
-      let response = await sendPassTransitionShare(deliveryRecipient);
+      let deliveryAttempt = await sendPassTransitionShare(deliveryRecipient);
+      let response = deliveryAttempt && typeof deliveryAttempt === "object" ? deliveryAttempt.response : deliveryAttempt;
+      let sendingToSelf = !!(deliveryAttempt && deliveryAttempt.sendingToSelf);
       let responseCode = String(response && response.code || "").trim().toLowerCase();
-      if ((!response || response.ok !== true) && responseCode === "user_not_found") {
+      if ((!response || response.ok !== true) && !sendingToSelf && responseCode === "user_not_found") {
         deliveryRecipient = await refreshPassTransitionRecipientAfterUserNotFound(recipient);
-        response = await sendPassTransitionShare(deliveryRecipient);
+        deliveryAttempt = await sendPassTransitionShare(deliveryRecipient);
+        response = deliveryAttempt && typeof deliveryAttempt === "object" ? deliveryAttempt.response : deliveryAttempt;
+        sendingToSelf = !!(deliveryAttempt && deliveryAttempt.sendingToSelf);
         responseCode = String(response && response.code || "").trim().toLowerCase();
       }
       if (!response || response.ok !== true) {
@@ -4095,7 +4142,7 @@
       const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
       const deliveryMode = String(response && response.delivery_mode || "").trim();
       const deliverySuffix = deliveryMode ? (" Delivery mode: " + deliveryMode + ".") : "";
-      if (isPassTransitionRecipientCurrentSlackUser(deliveryRecipient)) {
+      if (sendingToSelf) {
         setStatus("PASS-TRANSITION self-share sent to your Slack DM" + summarySuffix + "." + deliverySuffix, false);
       } else {
         setStatus("PASS-TRANSITION share sent to " + recipientLabel + summarySuffix + "." + deliverySuffix, false);
@@ -9804,39 +9851,62 @@
     return null;
   }
 
-  function buildContextMenuSlacktivateRosterMarkup() {
+  function buildContextMenuSlacktivateRosterMarkup(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const slackReady = opts.slackReady === true;
     const passTransition = state.zipSecretConfig && state.zipSecretConfig.passTransition
       ? buildPassTransitionConfigShape(state.zipSecretConfig.passTransition)
       : null;
     const recipients = normalizePassTransitionRecipientList(passTransition && passTransition.recipients || []);
+    const channelId = normalizePassAiSlackChannelId(passTransition && passTransition.channelId || "");
+    const channelName = normalizePassAiSlackChannelName(passTransition && passTransition.channelName || "");
     const memberCount = Math.max(0, Number(
       (passTransition && (passTransition.recipientCount || passTransition.memberCount))
       || recipients.length
       || 0
     ));
     const syncedAt = String(passTransition && passTransition.membersSyncedAt || "").trim();
-    if (!passTransition || !passTransition.channelId) return "";
-    const rosterItems = recipients.slice(0, 4).map((entry) => {
+    if (!passTransition || !channelId) return "";
+    const channelUrl = sanitizeSlackLinkTarget(buildPassAiSlackChannelUrlForBootstrap(channelId));
+    const channelLabel = channelName || ("#" + channelId);
+    const rosterButtonDisabled = slackReady ? "" : " disabled";
+    const rosterItems = recipients.map((entry) => {
       const label = normalizePassAiSlackDisplayName(entry.label || entry.userName || "") || ("@" + entry.userId);
+      const secondary = entry.handle
+        ? ("@" + String(entry.handle || "").replace(/^@+/, ""))
+        : "";
       return (
         "<li class=\"zip-context-menu-slacktivate-roster-item\">"
+        + "<button"
+        + " type=\"button\""
+        + " class=\"zip-context-menu-slacktivate-roster-btn\""
+        + " data-slacktivate-recipient=\"" + escapeHtml(entry.userId) + "\""
+        + rosterButtonDisabled
+        + ">"
         + "<span class=\"zip-context-menu-slacktivate-roster-name\">" + escapeHtml(label) + "</span>"
-        + "<span class=\"zip-context-menu-slacktivate-roster-id\">" + escapeHtml(entry.userId) + "</span>"
+        + (secondary
+          ? ("<span class=\"zip-context-menu-slacktivate-roster-secondary\">" + escapeHtml(secondary) + "</span>")
+          : "")
+        + "</button>"
         + "</li>"
       );
     }).join("");
     return (
       "<section class=\"zip-context-menu-slacktivate-roster\">"
-      + "<p class=\"zip-context-menu-slacktivate-roster-title\">PASS-TRANSITION</p>"
+      + "<div class=\"zip-context-menu-slacktivate-roster-head\">"
+      + "<a class=\"zip-context-menu-slacktivate-channel-link\" href=\"" + escapeHtml(channelUrl) + "\" target=\"_blank\" rel=\"noreferrer noopener\">" + escapeHtml(channelLabel) + "</a>"
       + "<p class=\"zip-context-menu-slacktivate-roster-meta\">"
       + escapeHtml(
-        "#" + (passTransition.channelName || passTransition.channelId)
-        + " | " + memberCount + " cached"
-        + (syncedAt ? " | " + formatDateTime(syncedAt) : "")
+        String(memberCount) + " members"
+        + (syncedAt ? (" | " + formatDateTime(syncedAt)) : "")
       )
       + "</p>"
+      + "</div>"
       + (rosterItems
         ? ("<ol class=\"zip-context-menu-slacktivate-roster-list\">" + rosterItems + "</ol>")
+        : "<p class=\"zip-context-menu-slacktivate-roster-empty\">No cached members yet.</p>")
+      + (!slackReady
+        ? "<p class=\"zip-context-menu-slacktivate-roster-empty\">Click the Z avatar to finish Slack login before opening the Blondie share dialog.</p>"
         : "")
       + "</section>"
     );
@@ -9847,24 +9917,24 @@
     const actionBusy = zipSlacktivationActionBusy === true;
     const disabled = actionBusy ? "disabled" : "";
     const processingClass = actionBusy ? " is-processing" : "";
-    const dropActionLabel = actionBusy ? "SLACKTIVATING ZIP.KEY…" : "LOAD ZIP.KEY";
+    const dropActionLabel = actionBusy ? "SLACKTIVATING…" : "SLACKTIVATE";
     const inlineStatus = normalizePassAiCommentBody(state.passAiSlackAuthError || "");
     const metaText = getZipConfigGateMetaText(gateStatus);
     return (
       "<div class=\"zip-context-menu-slacktivate-state\" data-state=\"pending\">"
-      + "<section class=\"zip-config-gate underpar-slacktivate-gate\" aria-live=\"polite\">"
-      + "<h2 class=\"zip-config-gate-title\">Load ZIP.KEY to SLACKTIVATE</h2>"
-      + "<p class=\"zip-config-gate-message\">Drag and drop your ZIP.KEY file onto the target below, or click to choose it.</p>"
+      + "<section class=\"zip-config-gate underpar-slacktivate-gate zip-context-menu-slacktivate-shell\" aria-live=\"polite\">"
       + "<button"
       + " type=\"button\""
-      + " class=\"zip-config-dropzone spectrum-Button spectrum-Button--outline spectrum-Button--sizeM" + processingClass + "\""
+      + " class=\"zip-config-dropzone zip-context-menu-slacktivate-hero spectrum-Button spectrum-Button--outline spectrum-Button--sizeM" + processingClass + "\""
       + " data-slacktivate-trigger=\"file\""
       + " data-slacktivate-dropzone=\"true\""
       + " " + disabled
       + ">"
       + "<span class=\"spectrum-Button-label\">" + escapeHtml(dropActionLabel) + "</span>"
       + "</button>"
-      + "<p class=\"zip-config-gate-meta" + (metaText ? "" : " hidden") + "\">" + escapeHtml(metaText) + "</p>"
+      + (metaText
+        ? ("<p class=\"zip-context-menu-slacktivate-summaryline\">" + escapeHtml(metaText) + "</p>")
+        : "")
       + "</section>"
       + (inlineStatus
         ? ("<p class=\"zip-context-menu-slacktivate-inline-status\" data-tone=\"error\">" + escapeHtml(inlineStatus) + "</p>")
@@ -9879,32 +9949,31 @@
     const disabled = actionBusy ? "disabled" : "";
     const importedAt = String(state.zipSecretConfig && state.zipSecretConfig.meta && state.zipSecretConfig.meta.importedAt || "").trim();
     const lastError = normalizePassAiCommentBody(state.passAiSlackAuthError || "");
-    const title = slackReady ? "ZIP is SLACKTIVATED." : "ZIP.KEY is hydrated.";
+    const title = slackReady ? "SLACKTIVATED" : "ZIP.KEY READY";
     const message = slackReady
-      ? (
-        normalizePassAiSlackStatusMessage(state.passAiSlackStatusMessage || "")
-        || ("Use RE-SLACKTIVATE to refresh the stored Slack identity against " + PASS_AI_SLACK_WORKSPACE_ORIGIN + ".")
-      )
-      : SLACKTIVATION_PHASE1_SUCCESS_MESSAGE;
-    const rosterMarkup = buildContextMenuSlacktivateRosterMarkup();
+      ? "Slack actions are ready."
+      : "Click the Z avatar to finish Slack login.";
+    const rosterMarkup = buildContextMenuSlacktivateRosterMarkup({ slackReady });
     return (
       "<div class=\"zip-context-menu-slacktivate-state\" data-state=\"" + (slackReady ? "ready" : "loaded") + "\">"
-      + "<section class=\"zip-config-gate underpar-slacktivate-gate\" aria-live=\"polite\">"
-      + "<h2 class=\"zip-config-gate-title\">" + escapeHtml(title) + "</h2>"
-      + "<p class=\"zip-config-gate-message\">" + escapeHtml(message) + "</p>"
+      + "<section class=\"zip-config-gate underpar-slacktivate-gate zip-context-menu-slacktivate-shell\" aria-live=\"polite\">"
+      + "<button type=\"button\" class=\"zip-config-dropzone zip-context-menu-slacktivate-hero spectrum-Button spectrum-Button--outline spectrum-Button--sizeM\" data-slacktivate-action=\"refresh\" " + disabled + ">"
+      + "<span class=\"spectrum-Button-label\">" + escapeHtml(title) + "</span>"
+      + "</button>"
+      + "<p class=\"zip-context-menu-slacktivate-summaryline\">" + escapeHtml(message) + "</p>"
+      + "<div class=\"zip-context-menu-slacktivate-meta-row\">"
+      + (importedAt
+        ? ("<span class=\"zip-context-menu-slacktivate-meta-chip\">Key imported " + escapeHtml(formatDateTime(importedAt)) + "</span>")
+        : "<span class=\"zip-context-menu-slacktivate-meta-chip\">Stored Slacktivation config ready.</span>")
+      + "</div>"
       + "<div class=\"zip-context-menu-slacktivate-actions\">"
-      + "<button type=\"button\" class=\"zip-context-menu-slacktivate-action-btn\" data-slacktivate-action=\"refresh\" " + disabled + ">RE-SLACKTIVATE</button>"
       + "<button type=\"button\" class=\"zip-context-menu-slacktivate-action-btn\" data-slacktivate-trigger=\"file\" " + disabled + ">LOAD NEW ZIP.KEY</button>"
       + "</div>"
-      + "<p class=\"zip-config-gate-meta\">"
-      + escapeHtml(importedAt ? ("Key imported " + formatDateTime(importedAt) + ".") : "Stored Slacktivation config ready.")
-      + "</p>"
       + "</section>"
       + rosterMarkup
       + (lastError
         ? ("<p class=\"zip-context-menu-slacktivate-inline-status\" data-tone=\"error\">" + escapeHtml(lastError) + "</p>")
         : "")
-      + "<p class=\"zip-context-menu-slacktivate-footnote\">Shift+Click Blondie Button uses this cached PASS-TRANSITION roster. Slack actions stay disabled until the Z avatar completes Slack sign-in.</p>"
       + "</div>"
     );
   }
@@ -14812,6 +14881,19 @@
     }
     if (els.contextMenuSlacktivateContent) {
       els.contextMenuSlacktivateContent.addEventListener("click", (event) => {
+        const recipientButton = event.target instanceof Element ? event.target.closest("[data-slacktivate-recipient]") : null;
+        if (recipientButton) {
+          event.preventDefault();
+          const selectedRecipientId = normalizePassAiSlackUserId(
+            recipientButton.getAttribute("data-slacktivate-recipient") || ""
+          );
+          if (!selectedRecipientId) return;
+          openSlackMeDialog({
+            mode: "transition",
+            selectedRecipientId
+          });
+          return;
+        }
         const trigger = event.target instanceof Element ? event.target.closest("[data-slacktivate-trigger]") : null;
         if (trigger) {
           event.preventDefault();

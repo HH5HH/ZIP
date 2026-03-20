@@ -82,8 +82,8 @@ test("sidepanel uses SLACKTIVATED indicator + Slack DM actions + @SLACK ME compo
   assert.match(js, /contextMenuSlacktivateSection:\s*\$\("zipContextMenuSlacktivateSection"\)/);
   assert.match(js, /contextMenuSlacktivateContent:\s*\$\("zipContextMenuSlacktivateContent"\)/);
   assert.match(js, /contextMenuSlacktivateInput:\s*\$\("zipContextMenuSlacktivateInput"\)/);
-  assert.match(js, /Load ZIP\.KEY to SLACKTIVATE/);
-  assert.match(js, /LOAD ZIP\.KEY/);
+  assert.match(js, /SLACKTIVATE/);
+  assert.match(js, /LOAD NEW ZIP\.KEY/);
   assert.doesNotMatch(js, /Please drop ZIP\.KEY to SLACKTIVATE/);
   assert.doesNotMatch(js, /DROP ZIP\.KEY TO SLACKTIVATE/);
   assert.match(js, /contextMenuSlackMe:\s*\$\("zipContextMenuSlackMe"\)/);
@@ -209,7 +209,7 @@ test("sidepanel uses SLACKTIVATED indicator + Slack DM actions + @SLACK ME compo
   assert.match(js, /function renderContextMenuSlacktivation\(\)/);
   assert.match(js, /function buildContextMenuSlacktivatePendingMarkup\(status\)/);
   assert.match(js, /function buildContextMenuSlacktivateReadyMarkup\(\)/);
-  assert.match(js, /<section class=\\\"zip-config-gate underpar-slacktivate-gate\\\" aria-live=\\\"polite\\\">/);
+  assert.match(js, /<section class=\\\"zip-config-gate underpar-slacktivate-gate zip-context-menu-slacktivate-shell\\\" aria-live=\\\"polite\\\">/);
   assert.match(js, /async function refreshContextMenuSlacktivationState\(\)/);
   assert.match(js, /async function importZipKeyFromFile\(file\)/);
   assert.match(js, /async function performContextMenuSlacktivateAction\(action,\s*detail,\s*messages\)/);
@@ -238,6 +238,9 @@ test("sidepanel uses SLACKTIVATED indicator + Slack DM actions + @SLACK ME compo
   assert.match(js, /sendBackgroundRequest\("ZIP_GET_PASS_TRANSITION_RECIPIENTS"/);
   assert.match(js, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER"/);
   assert.match(js, /const sendingToSelf = isPassTransitionRecipientCurrentSlackUser\(targetRecipient\);/);
+  assert.match(js, /openSlackMeDialog\(\{\s*mode: "transition",\s*selectedRecipientId\s*\}\);/);
+  assert.match(js, /data-slacktivate-recipient/);
+  assert.match(js, /zip-context-menu-slacktivate-channel-link/);
   assert.doesNotMatch(js, /sendBackgroundRequest\("ZIP_SLACK_API_QAI_SEND"/);
   assert.doesNotMatch(js, /sendBackgroundRequest\("ZIP_SLACK_API_QAI_POLL"/);
   assert.match(js, /Q&AI primary send transport=slack_web/);
@@ -297,9 +300,12 @@ test("sidepanel uses SLACKTIVATED indicator + Slack DM actions + @SLACK ME compo
   assert.match(js, /SLACK_IT_TO_ME delivered to your Slack DM/);
   assert.match(js, /Sending visible ticket list to your Slack DM/);
   assert.match(js, /PASS-TRANSITION self-share sent to your Slack DM/);
+  assert.match(js, /Click the Z avatar to finish Slack login\./);
   assert.match(js, /preferBotDmDelivery:\s*false/);
   assert.match(js, /allowBotDelivery:\s*false/);
   assert.match(js, /@SLACK ME sent to your Slack DM\./);
+  assert.doesNotMatch(js, /Use RE-SLACKTIVATE to refresh the stored Slack identity against/);
+  assert.doesNotMatch(js, /Shift\+Click Blondie Button uses this cached PASS-TRANSITION roster/);
   assert.doesNotMatch(js, /\*Visible Rows:\*/);
 });
 
