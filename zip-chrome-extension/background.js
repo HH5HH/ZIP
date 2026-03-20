@@ -3231,6 +3231,103 @@ function buildPassTransitionSnapshot(input) {
   };
 }
 
+function normalizeSlackComparableIdentityText(value) {
+  const normalized = normalizeSlackDisplayName(
+    String(value || "")
+      .replace(/\s*\(@[^)]+\)\s*$/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+  return normalized ? normalized.toLowerCase() : "";
+}
+
+function collectPassTransitionSelfUserIdCandidates(snapshot, input, openIdSession) {
+  const passTransition = snapshot && typeof snapshot === "object" ? snapshot : buildPassTransitionSnapshot({});
+  const recipients = Array.isArray(passTransition.recipients) ? passTransition.recipients : [];
+  if (!recipients.length) return [];
+  const body = input && typeof input === "object" ? input : {};
+  const session = openIdSession && typeof openIdSession === "object" ? openIdSession : {};
+  const userIdHints = new Set();
+  const emailHints = new Set();
+  const handleHints = new Set();
+  const nameHints = new Set();
+  const pushUserIdHint = (value) => {
+    const normalized = normalizeSlackUserId(value);
+    if (normalized) userIdHints.add(normalized);
+  };
+  const pushEmailHint = (value) => {
+    const normalized = normalizeSlackEmailAddress(value);
+    if (normalized) emailHints.add(normalized);
+  };
+  const pushHandleHint = (value) => {
+    const normalized = normalizeSlackHandleLoose(value);
+    if (normalized) handleHints.add(normalized);
+  };
+  const pushNameHint = (value) => {
+    const normalized = normalizeSlackComparableIdentityText(value);
+    if (normalized) nameHints.add(normalized);
+  };
+  [
+    body.userId,
+    body.user_id,
+    body.authorUserId,
+    body.author_user_id,
+    session.userId
+  ].forEach(pushUserIdHint);
+  [
+    body.userEmail,
+    body.user_email,
+    body.authorEmail,
+    body.author_email,
+    session.email
+  ].forEach(pushEmailHint);
+  [
+    body.userName,
+    body.user_name,
+    body.authorUserName,
+    body.author_user_name,
+    session.userName
+  ].forEach((value) => {
+    pushHandleHint(value);
+    pushNameHint(value);
+  });
+  const output = [];
+  const seen = new Set();
+  const pushRecipient = (recipient) => {
+    const userId = normalizeSlackUserId(recipient && recipient.userId);
+    if (!userId || seen.has(userId)) return;
+    seen.add(userId);
+    output.push(userId);
+  };
+  recipients.forEach((recipient) => {
+    if (userIdHints.has(normalizeSlackUserId(recipient && recipient.userId))) {
+      pushRecipient(recipient);
+    }
+  });
+  recipients.forEach((recipient) => {
+    if (emailHints.has(normalizeSlackEmailAddress(recipient && recipient.email))) {
+      pushRecipient(recipient);
+    }
+  });
+  recipients.forEach((recipient) => {
+    if (handleHints.has(normalizeSlackHandleLoose(recipient && recipient.handle))) {
+      pushRecipient(recipient);
+    }
+  });
+  recipients.forEach((recipient) => {
+    const recipientNames = [
+      recipient && recipient.userName,
+      recipient && recipient.displayName,
+      recipient && recipient.realName,
+      recipient && recipient.label
+    ];
+    if (recipientNames.some((value) => nameHints.has(normalizeSlackComparableIdentityText(value)))) {
+      pushRecipient(recipient);
+    }
+  });
+  return output;
+}
+
 function normalizeZipRedirectPath(value) {
   const raw = String(value || "").trim().replace(/^\/+/, "");
   if (!raw) return SLACK_OPENID_DEFAULT_REDIRECT_PATH;
@@ -4606,6 +4703,9 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
   }
 
   const openIdSession = await readSlackOpenIdSession();
+  const passTransitionSnapshot = buildPassTransitionSnapshot(await readStorageLocal([
+    ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY
+  ]));
   const requestedUserId = normalizeSlackUserId(body.userId || body.user_id);
   const requireRequestedUser = body.requireRequestedUser === true;
   if (requireRequestedUser && !requestedUserId) {
@@ -4645,6 +4745,7 @@ async function slackSendMarkdownToSelfViaBotApi(input, resolvedTokens) {
     pushUserIdCandidate(requestedUserId);
   } else {
     pushUserIdCandidate(resolvedSelfUserId);
+    collectPassTransitionSelfUserIdCandidates(passTransitionSnapshot, body, openIdSession).forEach(pushUserIdCandidate);
     pushUserIdCandidate(requestedUserId);
     pushUserIdCandidate(openIdUserId);
   }
@@ -5972,6 +6073,9 @@ async function slackAuthTestViaApi(input) {
   const body = input && typeof input === "object" ? input : {};
   const workspaceOrigin = normalizeSlackWorkspaceOrigin(body.workspaceOrigin || SLACK_WORKSPACE_ORIGIN);
   const tokens = await resolveSlackApiTokens(body);
+  const passTransitionSnapshot = buildPassTransitionSnapshot(await readStorageLocal([
+    ZIP_PASS_TRANSITION_RECIPIENTS_STORAGE_KEY
+  ]));
   const userCandidates = Array.isArray(tokens && tokens.userCandidates)
     ? tokens.userCandidates.map((token) => normalizeSlackApiToken(token)).filter(Boolean)
     : [normalizeSlackApiToken(tokens && tokens.userToken)].filter(Boolean);
@@ -6105,6 +6209,20 @@ async function slackAuthTestViaApi(input) {
     let directChannelId = "";
     let directChannelErrorCode = "";
     if (userId && botCandidates.length) {
+      const directChannelUserIds = [];
+      const pushDirectChannelUserId = (value) => {
+        const normalized = normalizeSlackUserId(value);
+        if (!normalized) return;
+        if (!directChannelUserIds.includes(normalized)) directChannelUserIds.push(normalized);
+      };
+      pushDirectChannelUserId(userId);
+      collectPassTransitionSelfUserIdCandidates(passTransitionSnapshot, {
+        ...body,
+        userId,
+        user_id: userId,
+        userName,
+        user_name: userName
+      }, openIdSession).forEach(pushDirectChannelUserId);
       for (let botIdx = 0; botIdx < botCandidates.length; botIdx += 1) {
         const botToken = normalizeSlackApiToken(botCandidates[botIdx]);
         if (!botToken) continue;
@@ -6112,33 +6230,43 @@ async function slackAuthTestViaApi(input) {
           directChannelErrorCode = "slack_bot_token_backoff";
           continue;
         }
-        const dmOpen = await postSlackApiWithBearerToken(SLACK_WEB_API_ORIGIN, "/api/conversations.open", {
-          users: userId,
-          return_im: "true",
-          _x_reason: "zip-slacktivation-open-dm-bot-bg"
-        }, botToken);
-        if (!dmOpen || !dmOpen.ok) {
-          directChannelErrorCode = String(dmOpen && dmOpen.code || "slack_open_dm_failed").trim().toLowerCase();
-          if (isSlackTokenInvalidationCode(directChannelErrorCode)) {
-            markSlackTokenBackoff(botToken);
+        for (let candidateIdx = 0; candidateIdx < directChannelUserIds.length; candidateIdx += 1) {
+          const directChannelUserId = directChannelUserIds[candidateIdx];
+          const dmOpen = await postSlackApiWithBearerToken(SLACK_WEB_API_ORIGIN, "/api/conversations.open", {
+            users: directChannelUserId,
+            return_im: "true",
+            _x_reason: "zip-slacktivation-open-dm-bot-bg"
+          }, botToken);
+          if (!dmOpen || !dmOpen.ok) {
+            directChannelErrorCode = String(dmOpen && dmOpen.code || "slack_open_dm_failed").trim().toLowerCase();
+            if (isSlackTokenInvalidationCode(directChannelErrorCode)) {
+              markSlackTokenBackoff(botToken);
+              break;
+            }
+            continue;
           }
+          const dmPayload = dmOpen.payload && typeof dmOpen.payload === "object" ? dmOpen.payload : {};
+          const dmChannel = dmPayload.channel && typeof dmPayload.channel === "object" ? dmPayload.channel : {};
+          const candidateChannelId = normalizeSlackDirectChannelId(
+            dmChannel.id
+            || dmPayload.channel_id
+            || dmPayload.channel
+          );
+          if (!candidateChannelId) {
+            directChannelErrorCode = "slack_dm_channel_missing";
+            continue;
+          }
+          clearSlackTokenBackoff(botToken);
+          directChannelId = candidateChannelId;
+          directChannelErrorCode = "";
+          break;
+        }
+        if (directChannelId) {
+          break;
+        }
+        if (directChannelErrorCode === "slack_bot_token_backoff") {
           continue;
         }
-        const dmPayload = dmOpen.payload && typeof dmOpen.payload === "object" ? dmOpen.payload : {};
-        const dmChannel = dmPayload.channel && typeof dmPayload.channel === "object" ? dmPayload.channel : {};
-        const candidateChannelId = normalizeSlackDirectChannelId(
-          dmChannel.id
-          || dmPayload.channel_id
-          || dmPayload.channel
-        );
-        if (!candidateChannelId) {
-          directChannelErrorCode = "slack_dm_channel_missing";
-          continue;
-        }
-        clearSlackTokenBackoff(botToken);
-        directChannelId = candidateChannelId;
-        directChannelErrorCode = "";
-        break;
       }
     }
     return {

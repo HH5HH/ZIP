@@ -264,12 +264,13 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /botToken:\s*slackApiTokens\.botToken \|\| ""/);
   assert.match(js, /authorUserId:\s*normalizePassAiSlackUserId\(state\.passAiSlackUserId \|\| ""\)/);
   assert.match(js, /authorUserName:\s*normalizePassAiSlackDisplayName\(state\.passAiSlackUserName \|\| ""\)/);
+  assert.match(js, /authorEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)/);
   assert.match(js, /authorAvatarUrl:\s*state\.passAiSlackAvatarUrl \|\| ""/);
   assert.match(js, /directChannelId:\s*normalizePassAiSlackDirectChannelId\(state\.passAiSlackDirectChannelId \|\| ""\)/);
   assert.match(js, /preferApiFirst:\s*true/);
-  assert.match(js, /preferBotDmDelivery:\s*false/);
+  assert.match(js, /preferBotDmDelivery:\s*true/);
   assert.match(js, /requireNativeNewMessage:\s*false/);
-  assert.match(js, /requireBotDelivery:\s*false/);
+  assert.match(js, /requireBotDelivery:\s*true/);
   assert.match(js, /autoBootstrapSlackTab:\s*false/);
   assert.match(js, /allowBotDelivery:\s*true/);
   assert.match(js, /skipUnreadMark:\s*true/);
@@ -292,7 +293,7 @@ test("sidepanel uses SLACKTIVATED indicator + ZipTool panel action + @SLACK ME c
   assert.match(js, /return normalized \+ "\\n\\n" \+ buildZipToolSlackFooterLine\(\);/);
   assert.match(js, /const signatureLine = buildZipToolSlackFooterLine\(\);/);
   assert.match(js, /SLACK_TO_ZIPTOOL delivered/);
-  assert.match(js, /preferBotDmDelivery:\s*false/);
+  assert.match(js, /preferBotDmDelivery:\s*true/);
   assert.match(js, /allowBotDelivery:\s*true/);
   assert.match(js, /@SLACK ME sent\./);
   assert.doesNotMatch(js, /\*Visible Rows:\*/);

@@ -81,6 +81,7 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
   assert.match(source, /const sendPayload = \{[\s\S]*requireNativeNewMessage:\s*false[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*authorUserId:\s*normalizePassAiSlackUserId\(state\.passAiSlackUserId \|\| ""\)[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*authorUserName:\s*normalizePassAiSlackDisplayName\(state\.passAiSlackUserName \|\| ""\)[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*authorEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*authorAvatarUrl:\s*state\.passAiSlackAvatarUrl \|\| ""[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*preferBotDmDelivery:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*requireBotDelivery:\s*true[\s\S]*\};/);
@@ -93,7 +94,7 @@ test("sidepanel explicitly requests new-message delivery for SLACK_IT_TO_ME", ()
 
 test("sidepanel routes @SLACK ME through the guaranteed bot self-DM path", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
-  assert.match(source, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF",\s*\{[\s\S]*directChannelId:\s*normalizePassAiSlackDirectChannelId\(state\.passAiSlackDirectChannelId \|\| ""\)[\s\S]*preferBotDmDelivery:\s*true[\s\S]*requireBotDelivery:\s*true[\s\S]*allowBotDelivery:\s*true[\s\S]*\}\)/);
+  assert.match(source, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF",\s*\{[\s\S]*userEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)[\s\S]*authorEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)[\s\S]*markdownText:\s*buildSlackMeNoteMarkdown\(noteText\)[\s\S]*preferBotDmDelivery:\s*true[\s\S]*requireBotDelivery:\s*true[\s\S]*allowBotDelivery:\s*true[\s\S]*\}\)/);
 });
 
 test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", () => {

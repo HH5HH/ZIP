@@ -2368,6 +2368,214 @@ test("ZIP_SLACK_API_AUTH_TEST refreshes the live self DM instead of trusting a s
   assert.deepEqual(seenConversationUsers, ["UALICE123"]);
 });
 
+test("ZIP_SLACK_API_AUTH_TEST resolves the live self DM through the cached PASS-TRANSITION self alias", async () => {
+  const seenConversationUsers = [];
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    storageSeed: {
+      zip_pass_transition_recipients: [
+        {
+          userId: "WSELFALIAS1",
+          userName: "Alice Example",
+          displayName: "Alice Example",
+          realName: "Alice Example",
+          handle: "alice",
+          email: "alice@example.com",
+          label: "Alice Example (@alice)"
+        }
+      ],
+      "zip.slack.openid.session.v1": {
+        userId: "UALICE123",
+        userName: "Alice Example",
+        email: "alice@example.com",
+        avatarUrl: "https://example.com/alice.png"
+      }
+    },
+    fetch: ({ url, init }) => {
+      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+      const authorization = String(headers.Authorization || headers.authorization || "");
+      const body = init && typeof init.body === "string" ? String(init.body) : "";
+      const params = new URLSearchParams(body);
+      if (url.endsWith("/api/auth.test") && authorization === bearer(TOKENS.directUser)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "UALICE123", user: "alice", team_id: "TALICE123" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/users.profile.get") && authorization === bearer(TOKENS.directUser)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            profile: {
+              display_name: "Alice Example",
+              real_name: "Alice Example",
+              image_72: "https://example.com/alice-fresh.png"
+            }
+          }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/conversations.open") && authorization === bearer(TOKENS.directBot)) {
+        seenConversationUsers.push(String(params.get("users") || ""));
+        const targetUserId = String(params.get("users") || "");
+        if (targetUserId === "UALICE123") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: false, error: "user_not_found" }),
+            text: async () => ""
+          });
+        }
+        if (targetUserId === "WSELFALIAS1") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: true, channel: { id: "DBOTSELFALIAS1" } }),
+            text: async () => ""
+          });
+        }
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  harness.resetCalls();
+  const response = await harness.sendRuntimeMessage({
+    type: "ZIP_SLACK_API_AUTH_TEST",
+    workspaceOrigin: "https://adobedx.slack.com",
+    expectedUserId: "UALICE123",
+    userId: "UALICE123",
+    userName: "Alice Example",
+    userEmail: "alice@example.com",
+    directChannelId: "",
+    userToken: TOKENS.directUser,
+    botToken: TOKENS.directBot
+  });
+
+  assert.equal(response && response.ok, true);
+  assert.equal(String(response && response.direct_channel_id || ""), "DBOTSELFALIAS1");
+  assert.deepEqual(seenConversationUsers, ["UALICE123", "WSELFALIAS1"]);
+});
+
+test("ZIP_SLACK_API_SEND_TO_SELF resolves bot self delivery through the cached PASS-TRANSITION self alias", async () => {
+  const seenConversationUsers = [];
+  const harness = createChromeHarness({
+    zendeskTabs: [],
+    storageSeed: {
+      zip_pass_transition_recipients: [
+        {
+          userId: "WSELFALIAS1",
+          userName: "Alice Example",
+          displayName: "Alice Example",
+          realName: "Alice Example",
+          handle: "alice",
+          email: "alice@example.com",
+          label: "Alice Example (@alice)"
+        }
+      ],
+      "zip.slack.openid.session.v1": {
+        userId: "UALICE123",
+        userName: "Alice Example",
+        email: "alice@example.com",
+        avatarUrl: "https://example.com/alice.png"
+      }
+    },
+    fetch: ({ url, init }) => {
+      const headers = init && init.headers && typeof init.headers === "object" ? init.headers : {};
+      const authorization = String(headers.Authorization || headers.authorization || "");
+      const body = init && typeof init.body === "string" ? String(init.body) : "";
+      const params = new URLSearchParams(body);
+      if (url.endsWith("/api/auth.test") && authorization === bearer(TOKENS.directUser)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, user_id: "UALICE123", user: "alice", team_id: "TALICE123" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/auth.test") && authorization === bearer(TOKENS.directBot)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, team_id: "TALICE123" }),
+          text: async () => ""
+        });
+      }
+      if (url.endsWith("/api/conversations.open") && authorization === bearer(TOKENS.directBot)) {
+        seenConversationUsers.push(String(params.get("users") || ""));
+        const targetUserId = String(params.get("users") || "");
+        if (targetUserId === "UALICE123") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: false, error: "user_not_found" }),
+            text: async () => ""
+          });
+        }
+        if (targetUserId === "WSELFALIAS1") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: true, channel: { id: "DBOTSELFALIAS1" } }),
+            text: async () => ""
+          });
+        }
+      }
+      if (url.endsWith("/api/chat.postMessage") && authorization === bearer(TOKENS.directBot)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, channel: "DBOTSELFALIAS1", ts: "1711111111.000900" }),
+          text: async () => ""
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({ ok: false, error: "unexpected_request" }),
+        text: async () => ""
+      });
+    }
+  });
+
+  harness.resetCalls();
+  const response = await harness.sendRuntimeMessage({
+    type: "ZIP_SLACK_API_SEND_TO_SELF",
+    workspaceOrigin: "https://adobedx.slack.com",
+    userId: "UALICE123",
+    userName: "Alice Example",
+    userEmail: "alice@example.com",
+    authorUserId: "UALICE123",
+    authorUserName: "Alice Example",
+    authorEmail: "alice@example.com",
+    markdownText: "note to self",
+    userToken: TOKENS.directUser,
+    botToken: TOKENS.directBot,
+    autoBootstrapSlackTab: false,
+    preferApiFirst: true,
+    preferBotDmDelivery: true,
+    requireNativeNewMessage: false,
+    requireBotDelivery: true,
+    allowBotDelivery: true,
+    skipUnreadMark: true,
+    forceNewMessage: true
+  });
+
+  assert.equal(response && response.ok, true);
+  assert.equal(String(response && response.delivery_mode || ""), "bot_direct_channel");
+  assert.equal(String(response && response.user_id || ""), "WSELFALIAS1");
+  assert.deepEqual(seenConversationUsers, ["UALICE123", "WSELFALIAS1"]);
+});
+
 test("ZIP_CONTEXT_MENU_ACTION clearZipKey clears canonical ZIP secret storage", async () => {
   const harness = createChromeHarness({ zendeskTabs: [] });
   harness.resetCalls();
