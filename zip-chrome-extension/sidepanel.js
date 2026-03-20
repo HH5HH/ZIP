@@ -64,6 +64,19 @@
   const SLACKTIVATION_PHASE2_WAIT_MESSAGE = "Waiting for Slack sign-in in adobedx.slack.com…";
   const SLACKTIVATION_PHASE2_FINALIZING_MESSAGE = "Finalizing Slack API validation…";
   const SLACKTIVATION_PHASE2_SUCCESS_MESSAGE = "SLACKTIVATED! Slack login confirmed. Slack actions are ready.";
+  const ZIP_DEBUG_TOGGLE_LABEL = "DEBUG INFO";
+  const ZIP_DEBUG_TOGGLE_META = "Click copies. Shift+click toggles details.";
+  const ZIP_DEBUG_COPY_STATUS = "Copied to clipboard";
+  const ZIP_DEBUG_COPY_TOAST_MESSAGE = "ZIP DEBUG INFO copied.";
+  const ZIP_DEBUG_COPY_RESET_DELAY_MS = 1600;
+  const ZIP_DEBUG_TEXT_PREVIEW_LIMIT = 24000;
+  const ZIP_DEBUG_ACTIVITY_LIMIT = 180;
+  const ZIP_DEBUG_STATUS_HISTORY_LIMIT = 80;
+  const ZIP_DEBUG_STATUS_OUTPUT_LIMIT = 10;
+  const ZIP_DEBUG_FAILURE_OUTPUT_LIMIT = 8;
+  const ZIP_DEBUG_ACTIVITY_OUTPUT_LIMIT = 12;
+  const ZIP_DEBUG_SLACK_PROBE_OUTPUT_LIMIT = 10;
+  const ZIP_DEBUG_API_PREVIEW_LIMIT = 720;
   const BLONDIE_BUTTON_STATES = new Set(["inactive", "ready", "active", "ack"]);
   const BLONDIE_BUTTON_ACK_RESET_MS = 2000;
   const BLONDIE_BUTTON_ICON_URLS = Object.freeze({
@@ -192,6 +205,10 @@
     slacktivationStatusStep: "",
     slacktivationStatusTone: "",
     slacktivationStatusMessage: "",
+    debugConsoleCollapsed: true,
+    debugCopyStatus: "",
+    debugEvents: [],
+    debugStatusHistory: [],
     zipConfigReady: false,
     zipConfigReason: "",
     zipConfigMissingFields: [],
@@ -263,6 +280,8 @@
   let passTransitionRecipientsRequestInFlight = null;
   let passTransitionRecipientsRequestToken = 0;
   let passTransitionRecipientsResolvedKey = "";
+  let debugCopyResetTimerId = null;
+  let debugConsoleRenderQueued = false;
   let eventsWired = false;
   const AUTH_CHECK_INTERVAL_ACTIVE_MS = 60 * 1000;
   const AUTH_CHECK_INTERVAL_LOGGED_OUT_MS = 15 * 1000;
@@ -834,6 +853,13 @@
     loginCtaText: $("zipLoginCtaText"),
     docsMenu: $("zipDocsMenu"),
     appVersionLink: $("zipAppVersionLink"),
+    debugConsole: $("zipDebugConsole"),
+    debugConsoleBody: $("zipDebugConsoleBody"),
+    debugConsoleTitle: $("zipDebugConsoleTitle"),
+    debugConsoleMeta: $("zipDebugConsoleMeta"),
+    debugToggleBtn: $("zipDebugToggleBtn"),
+    debugToggleStatus: $("zipDebugToggleStatus"),
+    debugLogOutput: $("zipDebugLogOutput"),
     appVersion: $("zipAppVersion"),
     loginAppVersion: $("zipLoginAppVersion"),
     contextMenuBackdrop: $("zipContextMenuBackdrop"),
@@ -1248,16 +1274,34 @@
 
   function sendBackgroundRequest(type, payload) {
     const body = payload && typeof payload === "object" ? payload : {};
+    recordZipDebugEvent("background", "request " + type, {
+      type,
+      payload: summarizeZipDebugTransportPayload(body)
+    });
     return new Promise((resolve, reject) => {
       if (!chrome || !chrome.runtime || typeof chrome.runtime.sendMessage !== "function") {
-        reject(new Error("Extension runtime is unavailable."));
+        const error = new Error("Extension runtime is unavailable.");
+        recordZipDebugEvent("background", "request failed", {
+          type,
+          error: error.message
+        }, "error");
+        reject(error);
         return;
       }
       chrome.runtime.sendMessage({ type, ...body }, (response) => {
         if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message || "Extension request failed."));
+          const error = new Error(chrome.runtime.lastError.message || "Extension request failed.");
+          recordZipDebugEvent("background", "request failed", {
+            type,
+            error: error.message
+          }, "error");
+          reject(error);
           return;
         }
+        recordZipDebugEvent("background", "request resolved", {
+          type,
+          response: summarizeZipDebugTransportPayload(response)
+        });
         resolve(response || {});
       });
     });
@@ -1512,6 +1556,7 @@
     });
     syncContextMenuZdApiToggleLabel();
     if (persist) writeZdApiVisibilityPreference(next);
+    queueDebugConsoleRender();
   }
 
   function initializeZdApiContainerVisibility() {
@@ -1520,6 +1565,646 @@
 
   function toggleZdApiContainerVisibility() {
     applyZdApiContainerVisibility(!state.showZdApiContainers, true);
+  }
+
+  function queueDebugConsoleRender() {
+    if (debugConsoleRenderQueued) return;
+    debugConsoleRenderQueued = true;
+    const flush = () => {
+      debugConsoleRenderQueued = false;
+      renderDebugConsole();
+    };
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(flush);
+      return;
+    }
+    setTimeout(flush, 0);
+  }
+
+  function normalizeZipDebugLevel(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    return normalized === "error" || normalized === "warn" ? normalized : "info";
+  }
+
+  function truncateZipDebugText(value, maxLength) {
+    const normalized = String(value == null ? "" : value).trim();
+    const limit = Math.max(24, Number(maxLength) || 420);
+    if (!normalized) return "";
+    return normalized.length > limit ? (normalized.slice(0, limit - 3) + "...") : normalized;
+  }
+
+  function isZipDebugSensitiveKeyName(keyName) {
+    const normalized = String(keyName || "").trim().toLowerCase();
+    if (!normalized) return false;
+    return normalized.includes("token")
+      || normalized.includes("secret")
+      || normalized.includes("password")
+      || normalized.includes("cookie")
+      || normalized.includes("authorization")
+      || normalized.includes("authenticity")
+      || normalized.includes("bearer");
+  }
+
+  function sanitizeZipDebugString(value, keyName) {
+    const raw = String(value == null ? "" : value);
+    const trimmed = raw.trim();
+    if (!trimmed) return "";
+    if (isZipDebugSensitiveKeyName(keyName)) {
+      return "[redacted len=" + trimmed.length + "]";
+    }
+    const sanitized = trimmed
+      .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, "$1[redacted]")
+      .replace(/\bxox(?:[aboprs]-[A-Za-z0-9-]+|e\.xox[aboprs]-[A-Za-z0-9._-]+)\b/gi, "[redacted-slack-token]")
+      .replace(/([?&](?:access_token|refresh_token|client_secret|authenticity_token|oauth_token|token)=)[^&#\s]+/gi, "$1[redacted]");
+    return truncateZipDebugText(sanitized, ZIP_DEBUG_TEXT_PREVIEW_LIMIT);
+  }
+
+  function sanitizeZipDebugInfoValue(value, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const keyName = String(opts.keyName || "").trim();
+    const seen = opts.seen instanceof WeakSet ? opts.seen : new WeakSet();
+    const depth = Number(opts.depth || 0);
+    if (value == null) return null;
+    if (typeof value === "string") return sanitizeZipDebugString(value, keyName);
+    if (typeof value === "number") return Number.isFinite(value) ? value : String(value);
+    if (typeof value === "boolean") return value;
+    if (typeof value === "bigint") return String(value);
+    if (value instanceof Date) {
+      const time = value.getTime();
+      return Number.isFinite(time) ? value.toISOString() : String(value);
+    }
+    if (value instanceof Error) {
+      return {
+        name: String(value.name || "Error"),
+        message: sanitizeZipDebugString(value.message || "", "message")
+      };
+    }
+    if (Array.isArray(value)) {
+      const limit = 12;
+      const output = value.slice(0, limit).map((entry, index) => sanitizeZipDebugInfoValue(entry, {
+        keyName: keyName || ("item_" + index),
+        seen,
+        depth: depth + 1
+      }));
+      if (value.length > limit) output.push("[+" + (value.length - limit) + " more]");
+      return output;
+    }
+    if (typeof value === "object") {
+      if (seen.has(value)) return "[circular]";
+      seen.add(value);
+      if (depth >= 3) {
+        return "[object]";
+      }
+      const output = {};
+      const keys = Object.keys(value).slice(0, 18);
+      keys.forEach((childKey) => {
+        const childValue = sanitizeZipDebugInfoValue(value[childKey], {
+          keyName: childKey,
+          seen,
+          depth: depth + 1
+        });
+        if (childValue == null || childValue === "") return;
+        output[childKey] = childValue;
+      });
+      const extraCount = Math.max(0, Object.keys(value).length - keys.length);
+      if (extraCount > 0) {
+        output.__truncatedKeys = extraCount;
+      }
+      return output;
+    }
+    return truncateZipDebugText(String(value), 240);
+  }
+
+  function stringifyZipDebugInfoValue(value, maxLength) {
+    const sanitized = sanitizeZipDebugInfoValue(value, { seen: new WeakSet() });
+    if (sanitized == null || sanitized === "") return "";
+    if (typeof sanitized === "string") {
+      return truncateZipDebugText(sanitized, maxLength);
+    }
+    try {
+      return truncateZipDebugText(JSON.stringify(sanitized), maxLength);
+    } catch (_) {
+      return truncateZipDebugText(String(sanitized), maxLength);
+    }
+  }
+
+  function formatZipDebugTimestamp(value) {
+    const raw = value instanceof Date ? value.getTime() : value;
+    const numeric = typeof raw === "string" ? Date.parse(raw) : Number(raw || 0);
+    if (!Number.isFinite(numeric) || numeric <= 0) return "n/a";
+    try {
+      return new Date(numeric).toLocaleTimeString();
+    } catch (_) {
+      return "n/a";
+    }
+  }
+
+  function appendZipDebugStatusHistoryEntry(message, type, source) {
+    const normalizedMessage = normalizePassAiCommentBody(message || "");
+    if (!normalizedMessage || normalizedMessage === DEFAULT_FOOTER_HINT) return;
+    state.debugStatusHistory.unshift({
+      at: Date.now(),
+      type: String(type || "info").trim().toLowerCase() || "info",
+      source: String(source || "status").trim().toLowerCase() || "status",
+      message: sanitizeZipDebugString(normalizedMessage, "message")
+    });
+    state.debugStatusHistory = state.debugStatusHistory.slice(0, ZIP_DEBUG_STATUS_HISTORY_LIMIT);
+    queueDebugConsoleRender();
+  }
+
+  function recordZipDebugEvent(channel, message, details, level) {
+    const normalizedMessage = normalizePassAiCommentBody(message || "");
+    if (!normalizedMessage) return;
+    const entry = {
+      at: Date.now(),
+      channel: String(channel || "app").trim().toLowerCase() || "app",
+      level: normalizeZipDebugLevel(level),
+      message: sanitizeZipDebugString(normalizedMessage, "message"),
+      details: sanitizeZipDebugInfoValue(details, { seen: new WeakSet() })
+    };
+    if (!Array.isArray(state.debugEvents)) {
+      state.debugEvents = [];
+    }
+    state.debugEvents.unshift(entry);
+    state.debugEvents = state.debugEvents.slice(0, ZIP_DEBUG_ACTIVITY_LIMIT);
+    if (typeof window !== "undefined") {
+      window.ZIP_DEBUG_EVENTS = state.debugEvents.slice();
+    }
+    queueDebugConsoleRender();
+  }
+
+  function compactZipRecentActivityEntries(entries, limit) {
+    const rows = Array.isArray(entries) ? entries : [];
+    const max = Math.max(1, Number(limit) || ZIP_DEBUG_ACTIVITY_OUTPUT_LIMIT);
+    return rows.slice(0, max).map((entry) => {
+      const parts = [
+        formatZipDebugTimestamp(entry && entry.at),
+        String(entry && entry.channel || "app").trim() || "app",
+        String(entry && entry.level || "info").trim() || "info",
+        String(entry && entry.message || "").trim()
+      ].filter(Boolean);
+      const detailsText = stringifyZipDebugInfoValue(entry && entry.details, 220);
+      if (detailsText) parts.push(detailsText);
+      return truncateZipDebugText(parts.join(" | "), 420);
+    });
+  }
+
+  function compactZipRecentStatusEntries(entries, limit) {
+    const rows = Array.isArray(entries) ? entries : [];
+    const max = Math.max(1, Number(limit) || ZIP_DEBUG_STATUS_OUTPUT_LIMIT);
+    return rows.slice(0, max).map((entry) => {
+      const parts = [
+        formatZipDebugTimestamp(entry && entry.at),
+        String(entry && entry.source || "status").trim() || "status",
+        String(entry && entry.type || "info").trim() || "info",
+        String(entry && entry.message || "").trim()
+      ].filter(Boolean);
+      return truncateZipDebugText(parts.join(" | "), 420);
+    });
+  }
+
+  function compactZipSlackProbeEntries(entries, limit) {
+    const rows = Array.isArray(entries) ? entries : [];
+    const max = Math.max(1, Number(limit) || ZIP_DEBUG_SLACK_PROBE_OUTPUT_LIMIT);
+    return rows
+      .slice(Math.max(0, rows.length - max))
+      .reverse()
+      .map((entry) => {
+        const payload = entry && typeof entry === "object" ? { ...entry } : {};
+        const timestamp = formatZipDebugTimestamp(payload.at);
+        const type = String(payload.type || "probe").trim() || "probe";
+        delete payload.at;
+        delete payload.type;
+        const details = stringifyZipDebugInfoValue(payload, 220);
+        const parts = [timestamp, type];
+        if (details) parts.push(details);
+        return truncateZipDebugText(parts.join(" | "), 420);
+      });
+  }
+
+  function getLatestZipDebugStatusEntry(predicate) {
+    const rows = Array.isArray(state.debugStatusHistory) ? state.debugStatusHistory : [];
+    if (typeof predicate !== "function") return rows[0] || null;
+    return rows.find((entry) => {
+      try {
+        return predicate(entry);
+      } catch (_) {
+        return false;
+      }
+    }) || null;
+  }
+
+  function getRecentZipDebugEntries(predicate, limit) {
+    const rows = Array.isArray(state.debugEvents) ? state.debugEvents : [];
+    const filtered = typeof predicate === "function"
+      ? rows.filter((entry) => {
+          try {
+            return predicate(entry);
+          } catch (_) {
+            return false;
+          }
+        })
+      : rows.slice();
+    return filtered.slice(0, Math.max(1, Number(limit) || ZIP_DEBUG_ACTIVITY_OUTPUT_LIMIT));
+  }
+
+  function summarizeZipDebugTransportPayload(value) {
+    if (value == null) return null;
+    if (typeof value === "string") {
+      return truncateZipDebugText(sanitizeZipDebugString(value, "message"), 180);
+    }
+    if (typeof value !== "object") {
+      return sanitizeZipDebugInfoValue(value, { seen: new WeakSet() });
+    }
+    const raw = value;
+    const summary = {};
+    const keys = Object.keys(raw);
+    if (keys.length) summary.keys = keys.slice(0, 12);
+    [
+      "type",
+      "action",
+      "mode",
+      "status",
+      "ok",
+      "ready",
+      "force",
+      "reason",
+      "tabId",
+      "windowId",
+      "ticketId",
+      "ticket_id",
+      "userId",
+      "user_id",
+      "channel",
+      "teamId",
+      "team_id",
+      "downloadStarted",
+      "downloadTabOpened",
+      "extensionsOpened",
+      "recipientCount",
+      "memberCount",
+      "openedNewTab"
+    ].forEach((field) => {
+      if (raw[field] == null || raw[field] === "") return;
+      summary[field] = sanitizeZipDebugInfoValue(raw[field], { keyName: field, seen: new WeakSet() });
+    });
+    [
+      "text",
+      "note",
+      "markdown",
+      "mrkdwn",
+      "body",
+      "message",
+      "selection"
+    ].forEach((field) => {
+      if (typeof raw[field] !== "string" || !raw[field].trim()) return;
+      summary[field + "Length"] = raw[field].trim().length;
+    });
+    if (Array.isArray(raw.members)) summary.membersCount = raw.members.length;
+    if (Array.isArray(raw.recipients)) summary.recipientsCount = raw.recipients.length;
+    if (Array.isArray(raw.tickets)) summary.ticketsCount = raw.tickets.length;
+    if (summary.ok === false && !summary.error) {
+      const errorText = normalizePassAiCommentBody(raw.error || raw.message || "");
+      if (errorText) summary.error = sanitizeZipDebugString(errorText, "error");
+    }
+    return summary;
+  }
+
+  function buildZipDebugCurrentView() {
+    return state.user ? "authenticated" : "logged_out";
+  }
+
+  function buildZipDebugSummaryLine() {
+    const gateStatus = getZipConfigGateStatus();
+    const setupStatus = getPassAiSlackSetupStatus();
+    const selectedTicketId = normalizeZendeskTicketId(getSelectedPassAiTicketId());
+    const parts = [
+      buildZipDebugCurrentView(),
+      (state.busy || state.ticketTableLoading || state.passAiLoading || state.passAiConversationInFlight) ? "busy" : "idle",
+      gateStatus.ready ? "zip.key ready" : ("zip.key " + (gateStatus.reason || "missing")),
+      isPassAiSlackAuthVerified() ? "slack login ok" : "slack login pending",
+      setupStatus.ready ? "slack actions ready" : ("slack actions " + (setupStatus.reason || "blocked"))
+    ];
+    if (selectedTicketId != null) parts.push("ticket #" + selectedTicketId);
+    return parts.join(" | ");
+  }
+
+  function pushZipDebugSection(lines, label, entries) {
+    lines.push("[" + label + "]");
+    entries.forEach((entry) => {
+      lines.push(entry);
+    });
+    lines.push("");
+  }
+
+  function composeZipDebugConsoleOutput() {
+    const lines = [];
+    const gateStatus = getZipConfigGateStatus();
+    const gateMeta = readZipConfigMeta();
+    const setupStatus = getPassAiSlackSetupStatus();
+    const rosterStatus = getPassAiSlackRosterStatus();
+    const selectedTicketId = normalizeZendeskTicketId(getSelectedPassAiTicketId());
+    const selectedRecipient = getSelectedPassTransitionRecipient();
+    const latestStatusEntry = getLatestZipDebugStatusEntry();
+    const latestErrorStatusEntry = getLatestZipDebugStatusEntry((entry) => String(entry && entry.type || "").trim().toLowerCase() === "error");
+    const recentStatusEntries = compactZipRecentStatusEntries(state.debugStatusHistory, ZIP_DEBUG_STATUS_OUTPUT_LIMIT);
+    const recentFailureEntries = compactZipRecentActivityEntries(
+      getRecentZipDebugEntries((entry) => String(entry && entry.level || "").trim().toLowerCase() === "error", ZIP_DEBUG_FAILURE_OUTPUT_LIMIT),
+      ZIP_DEBUG_FAILURE_OUTPUT_LIMIT
+    );
+    const recentActivityEntries = compactZipRecentActivityEntries(state.debugEvents, ZIP_DEBUG_ACTIVITY_OUTPUT_LIMIT);
+    const recentSlackProbeEntries = compactZipSlackProbeEntries(state.passAiSlackDebugEvents, ZIP_DEBUG_SLACK_PROBE_OUTPUT_LIMIT);
+    const lastActivity = recentActivityEntries[0] || "n/a";
+    const lastFailure = recentFailureEntries[0] || "n/a";
+    const lastSlackProbe = recentSlackProbeEntries[0] || "n/a";
+    const globalStatus = normalizePassAiCommentBody(els.status && els.status.textContent || "");
+    const lastApiRequest = state.lastApiRequest && typeof state.lastApiRequest === "object"
+      ? summarizeZipDebugTransportPayload(state.lastApiRequest)
+      : null;
+    const lastApiPayloadKind = state.lastApiPayload == null
+      ? "none"
+      : (Array.isArray(state.lastApiPayload) ? "array" : typeof state.lastApiPayload);
+    const lastApiPayloadChars = String(state.lastApiPayloadString || "").length;
+    const lastApiPayloadPreview = state.lastApiPayloadString
+      ? truncateZipDebugText(sanitizeZipDebugString(state.lastApiPayloadString, "payload"), ZIP_DEBUG_API_PREVIEW_LIMIT)
+      : "n/a";
+    const slackStatus = getSlacktivatedStatusSnapshot();
+    const secretConfig = state.zipSecretConfig && typeof state.zipSecretConfig === "object"
+      ? state.zipSecretConfig
+      : null;
+    const enrichmentMetrics = stringifyZipDebugInfoValue(state.ticketEnrichmentMetrics, 320) || "n/a";
+    const threadContext = stringifyZipDebugInfoValue(state.passAiLastThreadContext, 320) || "n/a";
+
+    lines.push("ZIP DEBUG INFO");
+    lines.push("captured_at=" + new Date().toISOString());
+    lines.push("summary=" + buildZipDebugSummaryLine());
+    lines.push("");
+
+    pushZipDebugSection(lines, "app", [
+      "build=" + (getCurrentZipBuildVersion() || "unknown"),
+      "view=" + buildZipDebugCurrentView(),
+      "url=" + (String(window.location.href || "").trim() || "n/a"),
+      "global_status=" + (globalStatus || "n/a"),
+      "busy=" + (state.busy ? "yes" : "no"),
+      "ticket_table_loading=" + (state.ticketTableLoading ? "yes" : "no"),
+      "pass_ai_loading=" + (state.passAiLoading ? "yes" : "no"),
+      "pass_ai_conversation_in_flight=" + (state.passAiConversationInFlight ? "yes" : "no"),
+      "slack_auth_polling=" + (state.passAiSlackAuthPolling ? "yes" : "no"),
+      "slacktivation_footer_phase=" + (String(state.slacktivationStatusPhase || "").trim() || "n/a"),
+      "slacktivation_footer_step=" + (String(state.slacktivationStatusStep || "").trim() || "n/a"),
+      "slacktivation_footer_tone=" + (String(state.slacktivationStatusTone || "").trim() || "n/a"),
+      "debug_panel=" + (state.debugConsoleCollapsed ? "collapsed" : "expanded"),
+      "theme=" + (String(state.themeId || "").trim() || "n/a")
+    ]);
+
+    pushZipDebugSection(lines, "zendesk", [
+      "logged_in=" + (state.user ? "yes" : "no"),
+      "agent_id=" + (String(state.user && state.user.id || "").trim() || "n/a"),
+      "agent_name=" + (String(state.user && state.user.name || "").trim() || "n/a"),
+      "agent_email=" + (String(state.user && state.user.email || "").trim() || "n/a"),
+      "default_group_id=" + (String(state.userProfile && state.userProfile.default_group_id || "").trim() || "n/a"),
+      "organization_id=" + (String(state.userProfile && state.userProfile.organization_id || "").trim() || "n/a"),
+      "ticket_source=" + (String(state.ticketSource || "").trim() || "n/a"),
+      "selected_ticket_id=" + (selectedTicketId == null ? "n/a" : String(selectedTicketId)),
+      "selected_org_id=" + (String(state.selectedOrgId || "").trim() || "n/a"),
+      "selected_view_id=" + (String(state.selectedViewId || "").trim() || "n/a"),
+      "selected_group_value=" + (String(state.selectedByGroupValue || "").trim() || "n/a"),
+      "sidepanel_layout=" + (String(state.sidePanelLayout || "").trim() || "n/a"),
+      "zendesk_tab_id=" + (state.zendeskTabId == null ? "n/a" : String(state.zendeskTabId))
+    ]);
+
+    pushZipDebugSection(lines, "slacktivation", [
+      "zip_key_ready=" + (gateStatus.ready ? "yes" : "no"),
+      "zip_key_reason=" + (String(gateStatus.reason || "").trim() || "n/a"),
+      "zip_key_services=" + (stringifyZipDebugInfoValue(gateMeta && gateMeta.services, 220) || "n/a"),
+      "zip_key_imported_at=" + (String(gateMeta && gateMeta.importedAt || "").trim() || "n/a"),
+      "zip_key_source=" + (String(gateMeta && gateMeta.source || "").trim() || "n/a"),
+      "bot_token_present=" + (normalizePassAiSlackApiToken(secretConfig && secretConfig.botToken || "") ? "yes" : "no"),
+      "user_token_present=" + (
+        normalizePassAiSlackApiToken(secretConfig && secretConfig.userToken || "")
+        || normalizePassAiSlackApiToken(secretConfig && secretConfig.oauthToken || "")
+          ? "yes"
+          : "no"
+      ),
+      "slack_setup_ready=" + (setupStatus.ready ? "yes" : "no"),
+      "slack_setup_reason=" + (String(setupStatus.reason || "").trim() || "n/a"),
+      "slack_auth_verified=" + (isPassAiSlackAuthVerified() ? "yes" : "no"),
+      "slack_auth_mode=" + (String(state.passAiSlackAuthMode || "").trim() || "n/a"),
+      "slack_web_ready=" + (state.passAiSlackWebReady ? "yes" : "no"),
+      "slack_session_only=" + (state.passAiSlackSessionOnly ? "yes" : "no"),
+      "slack_user_id=" + (String(state.passAiSlackUserId || "").trim() || "n/a"),
+      "slack_user_name=" + (String(state.passAiSlackUserName || "").trim() || "n/a"),
+      "slack_team_id=" + (String(state.passAiSlackTeamId || "").trim() || "n/a"),
+      "slack_direct_channel_cached=" + (String(state.passAiSlackDirectChannelId || "").trim() ? "yes" : "no"),
+      "slack_status=" + (buildSlacktivatedStatusLabel(slackStatus) || "n/a"),
+      "slack_status_icon_url=" + (String(slackStatus && slackStatus.iconUrl || "").trim() ? "present" : "n/a"),
+      "roster_required=" + (rosterStatus.required ? "yes" : "no"),
+      "roster_ready=" + (rosterStatus.ready ? "yes" : "no"),
+      "roster_recipient_count=" + String(rosterStatus.recipientCount || 0),
+      "roster_selected_recipient=" + (String(selectedRecipient && selectedRecipient.label || "").trim() || "n/a"),
+      "roster_synced_at=" + (String(rosterStatus.passTransition && rosterStatus.passTransition.membersSyncedAt || "").trim() || "n/a")
+    ]);
+
+    pushZipDebugSection(lines, "tickets", [
+      "ticket_count=" + String(Array.isArray(state.tickets) ? state.tickets.length : 0),
+      "filtered_ticket_count=" + String(Array.isArray(state.filteredTickets) ? state.filteredTickets.length : 0),
+      "sort=" + ((String(state.sortKey || "").trim() || "updated_at") + ":" + (String(state.sortDir || "").trim() || "desc")),
+      "status_filter=" + (String(state.statusFilter || "").trim() || "n/a"),
+      "search_mode=" + (String(state.ticketSearchMode || "").trim() || "n/a"),
+      "local_query=" + (String(state.ticketLocalSearchQuery || "").trim() || "n/a"),
+      "cloud_query=" + (String(state.ticketApiSearchQuery || "").trim() || "n/a"),
+      "pass_ai_panel_visible=" + (state.passAiPanelVisible ? "yes" : "no"),
+      "pass_ai_delete_in_flight=" + (state.passAiDeleteInFlight ? "yes" : "no"),
+      "ticket_enrichment_metrics=" + enrichmentMetrics,
+      "pass_ai_thread_context=" + threadContext
+    ]);
+
+    pushZipDebugSection(lines, "api", [
+      "last_api_path=" + (String(state.lastApiPath || "").trim() || "n/a"),
+      "last_api_request=" + (stringifyZipDebugInfoValue(lastApiRequest, 320) || "n/a"),
+      "last_api_payload_kind=" + lastApiPayloadKind,
+      "last_api_payload_chars=" + String(lastApiPayloadChars),
+      "last_api_payload_preview=" + lastApiPayloadPreview
+    ]);
+
+    pushZipDebugSection(lines, "diagnostics", [
+      "last_status=" + (latestStatusEntry ? compactZipRecentStatusEntries([latestStatusEntry], 1)[0] : "n/a"),
+      "last_error_status=" + (latestErrorStatusEntry ? compactZipRecentStatusEntries([latestErrorStatusEntry], 1)[0] : "n/a"),
+      "last_activity=" + lastActivity,
+      "last_failure=" + lastFailure,
+      "last_slack_probe=" + lastSlackProbe
+    ]);
+
+    pushZipDebugSection(lines, "runtime", [
+      "extension_id=" + (String(chrome && chrome.runtime && chrome.runtime.id || "").trim() || "n/a"),
+      "browser_language=" + (String(navigator && navigator.language || "").trim() || "n/a"),
+      "browser_timezone=" + (String(Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim() || "n/a"),
+      "workspace_mode=" + (IS_WORKSPACE_MODE ? "yes" : "no"),
+      "pending_workspace_deeplink=" + (state.pendingWorkspaceDeeplink ? "yes" : "no"),
+      "applying_workspace_deeplink=" + (state.applyingWorkspaceDeeplink ? "yes" : "no"),
+      "slack_tab_id=" + (state.slackTabId == null ? "n/a" : String(state.slackTabId)),
+      "slack_worker_tab_id=" + (state.slackWorkerTabId == null ? "n/a" : String(state.slackWorkerTabId)),
+      "slack_worker_window_id=" + (state.slackWorkerWindowId == null ? "n/a" : String(state.slackWorkerWindowId))
+    ]);
+
+    pushZipDebugSection(
+      lines,
+      "recent_status",
+      recentStatusEntries.length
+        ? recentStatusEntries.map((entry, index) => "event_" + String(index + 1).padStart(2, "0") + "=" + entry)
+        : ["event_01=Waiting for status."]
+    );
+
+    pushZipDebugSection(
+      lines,
+      "recent_failures",
+      recentFailureEntries.length
+        ? recentFailureEntries.map((entry, index) => "event_" + String(index + 1).padStart(2, "0") + "=" + entry)
+        : ["event_01=Waiting for failures."]
+    );
+
+    pushZipDebugSection(
+      lines,
+      "recent_activity",
+      recentActivityEntries.length
+        ? recentActivityEntries.map((entry, index) => "event_" + String(index + 1).padStart(2, "0") + "=" + entry)
+        : ["event_01=Waiting for activity."]
+    );
+
+    pushZipDebugSection(
+      lines,
+      "recent_slack_probe",
+      recentSlackProbeEntries.length
+        ? recentSlackProbeEntries.map((entry, index) => "event_" + String(index + 1).padStart(2, "0") + "=" + entry)
+        : ["event_01=Waiting for Slack probe activity."]
+    );
+
+    return lines.join("\n");
+  }
+
+  function composeZipDebugConsoleFallback(error) {
+    const lines = ["ZIP DEBUG INFO", ""];
+    const recentActivityEntries = compactZipRecentActivityEntries(state.debugEvents, ZIP_DEBUG_ACTIVITY_OUTPUT_LIMIT);
+    const errorLabel = error instanceof Error
+      ? ((error.name || "Error") + ": " + (error.message || "Unknown error"))
+      : String(error || "").trim();
+    pushZipDebugSection(lines, "summary", [
+      "build=" + (getCurrentZipBuildVersion() || "unknown"),
+      "view=" + buildZipDebugCurrentView(),
+      "busy=" + ((state.busy || state.ticketTableLoading || state.passAiLoading) ? "yes" : "no"),
+      "zip_key_ready=" + (getZipConfigGateStatus().ready ? "yes" : "no"),
+      "debug_panel=" + (state.debugConsoleCollapsed ? "collapsed" : "expanded"),
+      "render_error=" + (sanitizeZipDebugString(errorLabel, "message") || "none")
+    ]);
+    pushZipDebugSection(
+      lines,
+      "recent_activity",
+      recentActivityEntries.length
+        ? recentActivityEntries.map((entry, index) => "event_" + String(index + 1).padStart(2, "0") + "=" + entry)
+        : ["event_01=Waiting for activity."]
+    );
+    return lines.join("\n");
+  }
+
+  function getZipDebugConsoleSnapshot() {
+    try {
+      return composeZipDebugConsoleOutput();
+    } catch (error) {
+      try { console.error("[ZIP] Unable to compose DEBUG INFO snapshot", error); } catch (_) {}
+      return composeZipDebugConsoleFallback(error);
+    }
+  }
+
+  function setTextOutput(textarea, value) {
+    if (!textarea) return;
+    const next = String(value == null ? "" : value);
+    if (textarea.value === next) return;
+    const scrollTop = textarea.scrollTop;
+    textarea.value = next;
+    textarea.scrollTop = scrollTop;
+  }
+
+  function renderDebugConsole() {
+    const collapsed = state.debugConsoleCollapsed === true;
+    if (els.debugConsole) {
+      els.debugConsole.classList.toggle("hidden", collapsed);
+      els.debugConsole.setAttribute("aria-hidden", collapsed ? "true" : "false");
+    }
+    if (els.debugConsoleBody) {
+      els.debugConsoleBody.hidden = collapsed;
+    }
+    if (els.debugToggleBtn) {
+      const nextLabel = collapsed
+        ? "DEBUG INFO. Click to copy debug info. Shift+click to expand."
+        : "DEBUG INFO. Click to copy debug info. Shift+click to collapse.";
+      els.debugToggleBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      els.debugToggleBtn.setAttribute("aria-label", nextLabel);
+      els.debugToggleBtn.title = nextLabel;
+      els.debugToggleBtn.dataset.state = collapsed ? "collapsed" : "expanded";
+      if (state.debugCopyStatus) {
+        els.debugToggleBtn.dataset.copied = "true";
+      } else {
+        delete els.debugToggleBtn.dataset.copied;
+      }
+    }
+    if (els.debugConsoleTitle) {
+      els.debugConsoleTitle.textContent = ZIP_DEBUG_TOGGLE_LABEL;
+    }
+    if (els.debugConsoleMeta) {
+      els.debugConsoleMeta.textContent = ZIP_DEBUG_TOGGLE_META;
+    }
+    if (els.debugToggleStatus) {
+      els.debugToggleStatus.hidden = !state.debugCopyStatus;
+      els.debugToggleStatus.textContent = state.debugCopyStatus || ZIP_DEBUG_COPY_STATUS;
+    }
+    const snapshot = getZipDebugConsoleSnapshot();
+    if (typeof window !== "undefined") {
+      window.ZIP_DEBUG_INFO_SNAPSHOT = snapshot;
+    }
+    setTextOutput(els.debugLogOutput, snapshot);
+  }
+
+  function setDebugConsoleCollapsed(collapsed) {
+    const next = collapsed === true;
+    if (state.debugConsoleCollapsed === next) return;
+    state.debugConsoleCollapsed = next;
+    recordZipDebugEvent("debug", next ? "debug console collapsed" : "debug console expanded", {
+      visible: !next
+    });
+    renderDebugConsole();
+  }
+
+  function setDebugCopyStatus(message) {
+    state.debugCopyStatus = String(message || "").trim();
+    renderDebugConsole();
+    if (debugCopyResetTimerId != null) {
+      window.clearTimeout(debugCopyResetTimerId);
+      debugCopyResetTimerId = null;
+    }
+    if (!state.debugCopyStatus) return;
+    debugCopyResetTimerId = window.setTimeout(() => {
+      debugCopyResetTimerId = null;
+      state.debugCopyStatus = "";
+      renderDebugConsole();
+    }, ZIP_DEBUG_COPY_RESET_DELAY_MS);
+  }
+
+  async function copyDebugConsoleToClipboard() {
+    const snapshot = String(els.debugLogOutput && els.debugLogOutput.value || getZipDebugConsoleSnapshot()).trim();
+    if (!snapshot) return;
+    try {
+      await copyTextToClipboard(snapshot);
+      setDebugCopyStatus(ZIP_DEBUG_COPY_STATUS);
+      showToast(ZIP_DEBUG_COPY_TOAST_MESSAGE, 1800, { tone: "success" });
+      recordZipDebugEvent("debug", "debug snapshot copied", {
+        characters: snapshot.length
+      });
+    } catch (err) {
+      const message = err && err.message ? err.message : "Unknown error";
+      recordZipDebugEvent("debug", "debug snapshot copy failed", { error: message }, "error");
+      setDebugCopyStatus("");
+      setStatus("DEBUG INFO copy failed: " + message, true);
+    }
   }
 
   function syncLoginCtaDirectionalCopy(sideValue) {
@@ -2818,6 +3503,9 @@
     const text = normalizePassAiCommentBody(message || "");
     state.slackMeNoteStatus = text;
     state.slackMeNoteStatusIsError = !!(text && isError);
+    if (text) {
+      appendZipDebugStatusHistoryEntry(text, isError ? "error" : "info", "slack_me_dialog");
+    }
   }
 
   function clearSlackMeDialogStatus() {
@@ -3657,12 +4345,28 @@
 
         for (const candidateId of candidateIds) {
           try {
+            recordZipDebugEvent("zendesk", "tab request", {
+              action: inner && inner.action || "",
+              tabId: candidateId,
+              attempt
+            });
             const result = await sendOnce(candidateId);
             state.zendeskTabId = candidateId;
+            recordZipDebugEvent("zendesk", "tab request resolved", {
+              action: inner && inner.action || "",
+              tabId: candidateId,
+              result: summarizeZipDebugTransportPayload(result)
+            });
             return result;
           } catch (err) {
             lastError = err || null;
             if (state.zendeskTabId === candidateId) state.zendeskTabId = null;
+            recordZipDebugEvent("zendesk", "tab request failed", {
+              action: inner && inner.action || "",
+              tabId: candidateId,
+              error: err && err.message ? err.message : "Unknown error",
+              attempt
+            }, "error");
           }
         }
 
@@ -3739,10 +4443,20 @@
 
         for (const candidateId of candidateIds) {
           try {
+            recordZipDebugEvent("slack", "tab request", {
+              action: inner && inner.action || "",
+              tabId: candidateId,
+              attempt
+            });
             const result = await sendOnce(candidateId);
             if (shouldTryNextSlackTabCandidate(result)) {
               const retryMessage = String(result.error || result.message || "").trim();
               lastError = new Error(retryMessage || "Slack tab is not ready yet.");
+              recordZipDebugEvent("slack", "tab request deferred", {
+                action: inner && inner.action || "",
+                tabId: candidateId,
+                result: summarizeZipDebugTransportPayload(result)
+              }, "warn");
               if (state.slackTabId === candidateId) state.slackTabId = null;
               if (isTrackedSlackWorkerTabId(candidateId)) {
                 clearTrackedSlackWorkerTabReference(candidateId);
@@ -3751,6 +4465,11 @@
             }
             state.slackTabId = candidateId;
             touchTrackedSlackWorkerTab(candidateId, "send_success");
+            recordZipDebugEvent("slack", "tab request resolved", {
+              action: inner && inner.action || "",
+              tabId: candidateId,
+              result: summarizeZipDebugTransportPayload(result)
+            });
             return result;
           } catch (err) {
             lastError = err || null;
@@ -3758,6 +4477,12 @@
             if (isTrackedSlackWorkerTabId(candidateId)) {
               clearTrackedSlackWorkerTabReference(candidateId);
             }
+            recordZipDebugEvent("slack", "tab request failed", {
+              action: inner && inner.action || "",
+              tabId: candidateId,
+              error: err && err.message ? err.message : "Unknown error",
+              attempt
+            }, "error");
           }
         }
 
@@ -4421,6 +5146,10 @@
     const isLoading = !!on;
     if (state.ticketTableLoading === isLoading) return;
     state.ticketTableLoading = isLoading;
+    recordZipDebugEvent("tickets", isLoading ? "ticket table loading started" : "ticket table loading finished", {
+      source: state.ticketSource,
+      filteredTickets: Array.isArray(state.filteredTickets) ? state.filteredTickets.length : 0
+    });
     applyTicketTableLoadingUi();
     updateTicketNetworkIndicator();
     applyGlobalBusyUi();
@@ -4428,7 +5157,12 @@
   }
 
   function setBusy(on) {
-    state.busy = !!on;
+    const next = !!on;
+    if (state.busy === next) return;
+    state.busy = next;
+    recordZipDebugEvent("app", next ? "busy started" : "busy cleared", {
+      lastApiPath: state.lastApiPath
+    });
     if (els.apiRunBtn) els.apiRunBtn.disabled = state.busy;
     applyGlobalBusyUi();
   }
@@ -4556,6 +5290,15 @@
     const nextMessage = msg || DEFAULT_FOOTER_HINT;
     const normalizedNextMessage = normalizePassAiCommentBody(nextMessage);
     const trackedMessage = normalizePassAiCommentBody(state.slacktivationStatusMessage || "");
+    const rawMessage = normalizePassAiCommentBody(msg || "");
+    const text = String(msg || "").trim().toLowerCase();
+    const isNotice = text.includes("temporarily unavailable")
+      || text.includes("switch side")
+      || text.includes("opening login")
+      || text.includes("opening latest");
+    if (rawMessage) {
+      appendZipDebugStatusHistoryEntry(rawMessage, isError ? "error" : (isNotice ? "notice" : "info"), "footer");
+    }
     if (isError) {
       resetSlacktivationFooterStatusState();
     } else if (trackedMessage && normalizedNextMessage !== trackedMessage) {
@@ -4567,17 +5310,14 @@
       els.status.classList.remove("loading");
       els.status.classList.remove("notice");
       els.status.classList.remove("success");
+      queueDebugConsoleRender();
       return;
     }
-    const text = String(msg || "").trim().toLowerCase();
-    const isNotice = text.includes("temporarily unavailable")
-      || text.includes("switch side")
-      || text.includes("opening login")
-      || text.includes("opening latest");
     els.status.classList.toggle("notice", isNotice);
     const stillLoading = !!(state.busy || state.ticketTableLoading || state.orgSelectLoading || state.viewSelectLoading || state.groupSelectLoading);
     if (!stillLoading) els.status.classList.remove("loading");
     syncSlacktivationFooterStatusState();
+    queueDebugConsoleRender();
   }
 
   function recordSlackProbeEvent(eventType, details) {
@@ -4616,6 +5356,7 @@
         try { console.info("[ZIP Slack probe]", entry); } catch (_) {}
       }
     }
+    queueDebugConsoleRender();
   }
 
   function hideToast() {
@@ -4645,6 +5386,10 @@
     } else {
       delete els.toast.dataset.tone;
     }
+    recordZipDebugEvent("toast", text, {
+      tone: tone || "default",
+      durationMs: Number(durationMs) || 2000
+    });
     els.toast.classList.remove("hidden");
     const delay = Math.max(300, Number(durationMs) || 2000);
     toastHideTimerId = window.setTimeout(() => {
@@ -6963,6 +7708,11 @@
       state.lastApiPayload = payload;
       state.lastApiPayloadString = JSON.stringify(payload, null, 2);
     }
+    recordZipDebugEvent("api", "raw payload updated", {
+      path: state.lastApiPath,
+      payloadKind: payload == null ? "none" : (Array.isArray(payload) ? "array" : typeof payload),
+      payloadChars: String(state.lastApiPayloadString || "").length
+    });
     renderApiResultTable(state.lastApiPayload);
     updateRawDownloadLink();
   }
@@ -9575,7 +10325,12 @@
   }
 
   function setPassAiLoading(on) {
-    state.passAiLoading = !!on;
+    const next = !!on;
+    if (state.passAiLoading === next) return;
+    state.passAiLoading = next;
+    recordZipDebugEvent("pass_ai", next ? "PASS AI loading started" : "PASS AI loading finished", {
+      ticketId: getSelectedPassAiTicketId()
+    });
     applyGlobalBusyUi();
     updateTicketActionButtons();
   }
@@ -9584,6 +10339,9 @@
     const next = !!on;
     if (state.passAiConversationInFlight === next) return;
     state.passAiConversationInFlight = next;
+    recordZipDebugEvent("pass_ai", next ? "PASS AI conversation started" : "PASS AI conversation finished", {
+      ticketId: getSelectedPassAiTicketId()
+    });
     applyGlobalBusyUi();
     updateTicketActionButtons();
   }
@@ -13903,6 +14661,10 @@
       });
       window.addEventListener("blur", () => { hideContextMenu(); });
       window.addEventListener("beforeunload", () => {
+        if (debugCopyResetTimerId != null) {
+          window.clearTimeout(debugCopyResetTimerId);
+          debugCopyResetTimerId = null;
+        }
         maybeCloseZipOpenedSlackLoginTab("panel_unload", 0).catch(() => {});
         closeTrackedSlackWorkerTab("panel_unload").catch(() => {});
       });
@@ -14163,6 +14925,16 @@
       els.appVersionLink.addEventListener("click", (e) => {
         e.preventDefault();
         refreshAll();
+      });
+    }
+    if (els.debugToggleBtn) {
+      els.debugToggleBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (event.shiftKey) {
+          setDebugConsoleCollapsed(!state.debugConsoleCollapsed);
+          return;
+        }
+        void copyDebugConsoleToClipboard();
       });
     }
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getManifest) {
@@ -14505,6 +15277,7 @@
     setTicketSearchMode(state.ticketSearchMode, { preserveInput: true });
     updateTicketActionButtons();
     renderContextMenuSlacktivation();
+    renderDebugConsole();
     resetTopIdentity();
     setStatus("", false);
     enforceZipConfigGate({ reportStatus: false });

@@ -222,10 +222,40 @@
           <a id="zipRawDownload" href="#" class="raw-download-link">Raw.JSON</a>
         </div>
       </section>
+      <section id="zipDebugConsole" class="section zip-debug-console hidden" aria-label="Debug info" aria-hidden="true">
+        <div class="zip-debug-console-header">
+          <div class="zip-debug-console-heading">
+            <span id="zipDebugConsoleTitle" class="spectrum-Detail spectrum-Detail--sizeL zip-debug-console-title">DEBUG INFO</span>
+            <span id="zipDebugConsoleMeta" class="spectrum-Body spectrum-Body--sizeS zip-debug-console-meta">Click copies. Shift+click toggles details.</span>
+          </div>
+          <span id="zipDebugToggleStatus" class="spectrum-Detail spectrum-Detail--sizeS zip-debug-console-status hidden">Copied to clipboard</span>
+        </div>
+        <div id="zipDebugConsoleBody" class="zip-debug-console-body" hidden>
+          <div class="spectrum-Textfield spectrum-Textfield--sizeM spectrum-Textfield--multiline is-readOnly zip-debug-console-field">
+            <textarea id="zipDebugLogOutput" class="spectrum-Textfield-input zip-debug-console-output" readonly spellcheck="false"></textarea>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
   <footer class="zip-footer" id="zipFooter">
     <span id="zipStatus" class="zip-footer-status">Initializing...</span>
+    <button
+      id="zipDebugToggleBtn"
+      class="btn icon-btn icon-only spectrum-Button spectrum-Button--outline spectrum-Button--sizeS zip-footer-debug-btn"
+      type="button"
+      title="DEBUG INFO. Click to copy debug info. Shift+click to expand."
+      aria-label="DEBUG INFO. Click to copy debug info. Shift+click to expand."
+      aria-controls="zipDebugConsoleBody"
+      aria-expanded="false"
+    >
+      <svg class="zip-footer-debug-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="8.25" fill="none" stroke="currentColor" stroke-width="1.6"></circle>
+        <circle cx="12" cy="7.55" r="1.05" fill="currentColor"></circle>
+        <path d="M12 10.6v5.55" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"></path>
+      </svg>
+      <span class="zip-visually-hidden">DEBUG INFO</span>
+    </button>
     <a href="#" id="zipAppVersionLink" class="zip-footer-version zip-footer-brand-refresh" title="Refresh ZIP">
       <img class="zip-footer-brand-mark zip-round-z-icon" src="assets/brand/icons/icon128.png" alt="" aria-hidden="true" />
       <span class="zip-footer-brand-sep" aria-hidden="true">|</span>

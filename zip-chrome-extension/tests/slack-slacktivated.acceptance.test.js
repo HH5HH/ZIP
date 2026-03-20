@@ -335,6 +335,54 @@ test("sidepanel tracks staged Slacktivation progress in the footer and toast", (
   assert.match(css, /\.zip-toast\[data-tone="success"\] \{/);
 });
 
+test("sidepanel ships ZIP DEBUG INFO footer icon and hidden console snapshot", () => {
+  const html = fs.readFileSync(SIDEPANEL_HTML_PATH, "utf8");
+  const js = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
+  const css = fs.readFileSync(SIDEPANEL_CSS_PATH, "utf8");
+
+  assert.match(html, /id="zipDebugConsole"/);
+  assert.match(html, /id="zipDebugConsoleBody"/);
+  assert.match(html, /id="zipDebugConsoleTitle"/);
+  assert.match(html, /id="zipDebugConsoleMeta"/);
+  assert.match(html, /id="zipDebugToggleStatus"/);
+  assert.match(html, /id="zipDebugLogOutput"/);
+  assert.match(html, /id="zipStatus"[\s\S]*id="zipDebugToggleBtn"[\s\S]*id="zipAppVersionLink"/);
+  assert.match(html, /id="zipDebugToggleBtn"[\s\S]*Shift\+click to expand\./);
+
+  assert.match(js, /const ZIP_DEBUG_TOGGLE_LABEL = "DEBUG INFO";/);
+  assert.match(js, /const ZIP_DEBUG_TOGGLE_META = "Click copies\. Shift\+click toggles details\.";/);
+  assert.match(js, /const ZIP_DEBUG_COPY_STATUS = "Copied to clipboard";/);
+  assert.match(js, /const ZIP_DEBUG_COPY_TOAST_MESSAGE = "ZIP DEBUG INFO copied\.";/);
+  assert.match(js, /debugConsoleCollapsed:\s*true/);
+  assert.match(js, /debugCopyStatus:\s*""/);
+  assert.match(js, /debugEvents:\s*\[\]/);
+  assert.match(js, /debugStatusHistory:\s*\[\]/);
+  assert.match(js, /debugConsole:\s*\$\("zipDebugConsole"\)/);
+  assert.match(js, /debugConsoleBody:\s*\$\("zipDebugConsoleBody"\)/);
+  assert.match(js, /debugConsoleTitle:\s*\$\("zipDebugConsoleTitle"\)/);
+  assert.match(js, /debugConsoleMeta:\s*\$\("zipDebugConsoleMeta"\)/);
+  assert.match(js, /debugToggleBtn:\s*\$\("zipDebugToggleBtn"\)/);
+  assert.match(js, /debugToggleStatus:\s*\$\("zipDebugToggleStatus"\)/);
+  assert.match(js, /debugLogOutput:\s*\$\("zipDebugLogOutput"\)/);
+  assert.match(js, /function recordZipDebugEvent\(channel,\s*message,\s*details,\s*level\)/);
+  assert.match(js, /function composeZipDebugConsoleOutput\(\)/);
+  assert.match(js, /function composeZipDebugConsoleFallback\(error\)/);
+  assert.match(js, /function getZipDebugConsoleSnapshot\(\)/);
+  assert.match(js, /function renderDebugConsole\(\)/);
+  assert.match(js, /function setDebugConsoleCollapsed\(collapsed\)/);
+  assert.match(js, /async function copyDebugConsoleToClipboard\(\)/);
+  assert.match(js, /pushZipDebugSection\(lines,\s*"slacktivation",\s*\[/);
+  assert.match(js, /pushZipDebugSection\(\s*lines,\s*"recent_slack_probe",/);
+  assert.match(js, /showToast\(ZIP_DEBUG_COPY_TOAST_MESSAGE,\s*1800,\s*\{\s*tone:\s*"success"\s*\}\);/);
+  assert.match(js, /els\.debugToggleBtn\.addEventListener\("click",\s*\(event\)\s*=>\s*\{[\s\S]*if \(event\.shiftKey\) \{[\s\S]*setDebugConsoleCollapsed\(!state\.debugConsoleCollapsed\);[\s\S]*void copyDebugConsoleToClipboard\(\);/);
+
+  assert.match(css, /\.zip-footer-debug-btn\s*\{/);
+  assert.match(css, /\.zip-footer-debug-btn\[data-state="expanded"\]\s*\{/);
+  assert.match(css, /\.zip-debug-console\s*\{/);
+  assert.match(css, /\.zip-debug-console-status\s*\{/);
+  assert.match(css, /\.zip-debug-console-output\s*\{/);
+});
+
 test("sidepanel styles avoid custom Slack header spinner overlay", () => {
   const css = fs.readFileSync(SIDEPANEL_CSS_PATH, "utf8");
   assert.doesNotMatch(css, /#zipSlacktivatedBtn\.is-network-loading::after/);
