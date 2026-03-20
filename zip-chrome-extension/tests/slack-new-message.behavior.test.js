@@ -93,6 +93,7 @@ test("sidepanel explicitly routes SLACK_IT_TO_ME to the logged-in user's Slack D
   assert.match(source, /const sendPayload = \{[\s\S]*directChannelId:\s*normalizePassAiSlackDirectChannelId\(state\.passAiSlackDirectChannelId \|\| ""\)[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*botToken:\s*slackApiTokens\.botToken \|\| ""[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*autoBootstrapSlackTab:\s*false[\s\S]*\};/);
+  assert.match(source, /setPassAiSlackAuthState\(\{[\s\S]*userId:\s*state\.passAiSlackUserId \|\| response\.user_id \|\| response\.userId \|\| ""[\s\S]*userName:\s*state\.passAiSlackUserName \|\| response\.user_name \|\| response\.userName \|\| ""[\s\S]*avatarUrl:\s*state\.passAiSlackAvatarUrl \|\| response\.avatar_url \|\| response\.avatarUrl \|\| ""[\s\S]*directChannelId:\s*confirmedDelivery\.directChannelId \|\| state\.passAiSlackDirectChannelId \|\| ""[\s\S]*\}\);/);
 });
 
 test("sidepanel routes @SLACK ME through the logged-in user's Slack DM path", () => {

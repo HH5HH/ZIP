@@ -2084,6 +2084,62 @@ function resolveExpectedSlackAuthorUserId(input, openIdSession) {
   ]);
 }
 
+function collectSlackAuthorIdentityUserIdCandidates(snapshot, input, openIdSession) {
+  const passTransition = snapshot && typeof snapshot === "object" ? snapshot : buildPassTransitionSnapshot({});
+  const source = input && typeof input === "object" ? input : {};
+  const session = openIdSession && typeof openIdSession === "object" ? openIdSession : {};
+  const output = [];
+  const pushUserIdCandidate = (value) => {
+    const normalized = normalizeSlackUserId(value);
+    if (!normalized) return;
+    if (!output.includes(normalized)) output.push(normalized);
+  };
+  const authorUserId = resolveExpectedSlackAuthorUserId(source, session);
+  const authorUserName = normalizeSlackDisplayName(
+    source.authorUserName
+    || source.author_user_name
+    || source.userName
+    || source.user_name
+    || session.userName
+    || ""
+  );
+  const authorEmail = normalizeSlackEmailAddress(
+    source.authorEmail
+    || source.author_email
+    || source.userEmail
+    || source.user_email
+    || session.email
+    || ""
+  );
+  pushUserIdCandidate(authorUserId);
+  collectPassTransitionSelfUserIdCandidates(passTransition, {
+    authorUserId,
+    author_user_id: authorUserId,
+    authorUserName,
+    author_user_name: authorUserName,
+    authorEmail,
+    author_email: authorEmail,
+    userId: authorUserId,
+    user_id: authorUserId,
+    userName: authorUserName,
+    user_name: authorUserName,
+    userEmail: authorEmail,
+    user_email: authorEmail
+  }, session).forEach(pushUserIdCandidate);
+  pushUserIdCandidate(session.userId);
+  return output;
+}
+
+function doesSlackAuthorIdentityMatchExpectedUser(expectedUserId, authUserId, snapshot, input, openIdSession) {
+  const expected = normalizeSlackUserId(expectedUserId);
+  if (!expected) return true;
+  const authenticated = normalizeSlackUserId(authUserId);
+  if (!authenticated) return false;
+  if (authenticated === expected) return true;
+  const allowedCandidates = collectSlackAuthorIdentityUserIdCandidates(snapshot, input, openIdSession);
+  return allowedCandidates.includes(expected) && allowedCandidates.includes(authenticated);
+}
+
 function decodeSlackEntityText(value) {
   return String(value == null ? "" : value)
     .replace(/&amp;/gi, "&")
@@ -5198,7 +5254,17 @@ async function slackSendMarkdownToSelfViaApi(input) {
     const teamId = normalizeSlackTeamId(authPayload.team_id || authPayload.team);
     const authFallbackName = normalizeSlackDisplayName(authPayload.user || "");
     const authUserId = normalizeSlackUserId(authPayload.user_id || authPayload.user);
-    if (expectedAuthorUserId && authUserId && authUserId !== expectedAuthorUserId) {
+    if (
+      expectedAuthorUserId
+      && authUserId
+      && !doesSlackAuthorIdentityMatchExpectedUser(
+        expectedAuthorUserId,
+        authUserId,
+        passTransitionSnapshot,
+        body,
+        openIdSession
+      )
+    ) {
       lastFailureCode = "slack_identity_mismatch";
       lastFailureError = "Slack API token does not match the active Slack user.";
       continue;
@@ -6147,7 +6213,17 @@ async function slackAuthTestViaApi(input) {
 
     const payload = auth.payload && typeof auth.payload === "object" ? auth.payload : {};
     const authUserId = normalizeSlackUserId(payload.user_id || payload.user || "");
-    if (expectedUserId && authUserId && authUserId !== expectedUserId) {
+    if (
+      expectedUserId
+      && authUserId
+      && !doesSlackAuthorIdentityMatchExpectedUser(
+        expectedUserId,
+        authUserId,
+        passTransitionSnapshot,
+        body,
+        openIdSession
+      )
+    ) {
       lastFailureCode = "slack_identity_mismatch";
       lastFailureError = "Slack API token does not match the active Slack user.";
       continue;

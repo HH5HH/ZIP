@@ -7245,12 +7245,12 @@
           ready: true,
           mode: "api",
           webReady: true,
-          userId: response.user_id || response.userId || state.passAiSlackUserId || "",
-          userName: response.user_name || response.userName || state.passAiSlackUserName || "",
-          avatarUrl: response.avatar_url || response.avatarUrl || state.passAiSlackAvatarUrl || "",
+          userId: state.passAiSlackUserId || response.user_id || response.userId || "",
+          userName: state.passAiSlackUserName || response.user_name || response.userName || "",
+          avatarUrl: state.passAiSlackAvatarUrl || response.avatar_url || response.avatarUrl || "",
           directChannelId: confirmedDelivery.directChannelId || state.passAiSlackDirectChannelId || "",
-          teamId: response.team_id || response.teamId || "",
-          enterpriseId: response.enterprise_id || response.enterpriseId || ""
+          teamId: state.passAiSlackTeamId || response.team_id || response.teamId || "",
+          enterpriseId: state.passAiSlackEnterpriseId || response.enterprise_id || response.enterpriseId || ""
         });
 
         const sentRows = Math.min(rows.length, SLACK_IT_TO_ME_MAX_ROWS);
