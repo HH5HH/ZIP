@@ -53,8 +53,8 @@
   const SLACKTIVATED_SESSION_CACHE_VERSION = 1;
   const SLACKTIVATED_PENDING_ICON_URL = "assets/brand/icons/icon128.png";
   const SLACKTIVATED_LOGIN_TOOLTIP = "ZIP is not SLACKTIVATED - Click to login into https://adobedx.slack.com/";
-  const SLACK_IT_TO_ME_CACHED_PASS_TRANSITION_TOOLTIP = "Click sends to you. Shift+Click uses the cached PASS-TRANSITION roster.";
-  const SLACK_IT_TO_ME_REHYDRATE_TOOLTIP = "Click sends to you. RE-SLACKTIVATE to load pass-transition teammates.";
+  const SLACK_IT_TO_ME_CACHED_PASS_TRANSITION_TOOLTIP = "Click sends to ZipTool panel. Shift+Click uses the cached PASS-TRANSITION roster.";
+  const SLACK_IT_TO_ME_REHYDRATE_TOOLTIP = "Click sends to ZipTool panel. RE-SLACKTIVATE to load pass-transition teammates.";
   const PASS_TRANSITION_CACHE_MISSING_MESSAGE = "No PASS-TRANSITION roster is cached yet. RE-SLACKTIVATE to load members.";
   const SLACKTIVATION_IMPORT_PROGRESS_MESSAGE = "SLACKTIVATING ZIP.KEY…";
   const SLACKTIVATION_REFRESH_PROGRESS_MESSAGE = "Refreshing stored Slacktivation credentials…";
@@ -193,7 +193,6 @@
     passAiPanelVisible: false,
     slackItToMeLoading: false,
     slackItToMeButtonState: "",
-    slackMeMode: "self",
     slackMeNoteLoading: false,
     slackMeNoteStatus: "",
     slackMeNoteStatusIsError: false,
@@ -873,7 +872,6 @@
     contextMenuToggleZdApi: $("zipContextMenuToggleZdApi"),
     contextMenuToggleSide: $("zipContextMenuToggleSide"),
     contextMenuAskTeam: $("zipContextMenuAskTeam"),
-    contextMenuSlackMe: $("zipContextMenuSlackMe"),
     contextMenuGetLatest: $("zipContextMenuGetLatest"),
     contextMenuAppearanceRow: $("zipContextMenuAppearanceRow"),
     contextMenuThemeStopToggle: $("zipContextMenuThemeStopToggle"),
@@ -1537,12 +1535,6 @@
       els.contextMenuToggleZdApi.classList.toggle("hidden", !loggedIn);
       els.contextMenuToggleZdApi.disabled = !loggedIn;
       els.contextMenuToggleZdApi.setAttribute("aria-hidden", loggedIn ? "false" : "true");
-    }
-    if (els.contextMenuSlackMe) {
-      els.contextMenuSlackMe.classList.toggle("hidden", !loggedIn);
-      els.contextMenuSlackMe.disabled = !(loggedIn && slackReady && !state.slackMeNoteLoading);
-      els.contextMenuSlackMe.title = slackReady ? "@SLACK ME" : slackStatus.message;
-      els.contextMenuSlackMe.setAttribute("aria-hidden", loggedIn ? "false" : "true");
     }
   }
 
@@ -3171,10 +3163,6 @@
     );
   }
 
-  function getSlackMeDialogMode() {
-    return state.slackMeMode === "transition" ? "transition" : "self";
-  }
-
   function buildPassTransitionRecipientCacheKey() {
     const passTransition = state.zipSecretConfig && state.zipSecretConfig.passTransition
       ? state.zipSecretConfig.passTransition
@@ -3506,30 +3494,21 @@
   }
 
   function syncSlackMeRecipientIdentity() {
-    const transitionMode = getSlackMeDialogMode() === "transition";
-    const transitionRecipient = transitionMode ? getSelectedPassTransitionRecipient() : null;
-    const displayName = transitionMode
-      ? (transitionRecipient && (transitionRecipient.label || transitionRecipient.userName || transitionRecipient.userId) || "")
-      : getSlacktivatedDisplayName();
-    const labelText = transitionMode
-      ? (
-        displayName
-          ? (displayName + " (#pass-transition)")
-          : (
-            state.slackMePassTransitionLoading
-              ? "Loading PASS-TRANSITION member..."
-              : "RE-SLACKTIVATE to load a PASS-TRANSITION member"
-          )
-      )
-      : (displayName ? (displayName + " (you)") : "you");
+    const transitionRecipient = getSelectedPassTransitionRecipient();
+    const displayName = transitionRecipient
+      && (transitionRecipient.label || transitionRecipient.userName || transitionRecipient.userId)
+      || "";
+    const labelText = displayName
+      ? (displayName + " (#pass-transition)")
+      : (
+        state.slackMePassTransitionLoading
+          ? "Loading PASS-TRANSITION member..."
+          : "RE-SLACKTIVATE to load a PASS-TRANSITION member"
+      );
     if (els.slackMeRecipientLabel) {
       els.slackMeRecipientLabel.textContent = labelText;
     }
-    const avatarUrl = normalizePassAiSlackAvatarUrl(
-      transitionMode
-        ? (transitionRecipient && transitionRecipient.avatarUrl || "")
-        : (state.passAiSlackAvatarUrl || "")
-    );
+    const avatarUrl = normalizePassAiSlackAvatarUrl(transitionRecipient && transitionRecipient.avatarUrl || "");
     if (els.slackMeRecipientAvatar) {
       if (avatarUrl) {
         els.slackMeRecipientAvatar.src = avatarUrl;
@@ -3539,7 +3518,7 @@
       els.slackMeRecipientAvatar.classList.toggle("hidden", !avatarUrl);
     }
     if (els.slackMeRecipientAvatarFallback) {
-      const fallbackBase = transitionMode ? (displayName || "P") : (displayName || "Y");
+      const fallbackBase = displayName || "P";
       const fallbackChar = String(fallbackBase || "").trim().charAt(0).toUpperCase() || "P";
       els.slackMeRecipientAvatarFallback.textContent = fallbackChar;
       els.slackMeRecipientAvatarFallback.classList.toggle("hidden", !!avatarUrl);
@@ -3609,17 +3588,13 @@
     const force = !!opts.force;
     const keepText = !!opts.keepText;
     const keepStatus = !!opts.keepStatus;
-    const keepMode = !!opts.keepMode;
     if (state.slackMeNoteLoading && !force) return;
     if (!els.slackMeDialogBackdrop) return;
     moveFocusOutsideSlackMeDialog();
     els.slackMeDialogBackdrop.classList.add("hidden");
     els.slackMeDialogBackdrop.setAttribute("aria-hidden", "true");
     state.slackMeDialogReturnFocusEl = null;
-    if (!keepMode) {
-      state.slackMeMode = "self";
-      setSelectedPassTransitionRecipient("");
-    }
+    setSelectedPassTransitionRecipient("");
     if (els.slackMeInput && !keepText) {
       els.slackMeInput.value = "";
     }
@@ -3632,56 +3607,43 @@
   function syncSlackMeDialogUi() {
     const dialogOpen = isSlackMeDialogOpen();
     const slackReady = isPassAiSlacktivated();
-    const transitionMode = getSlackMeDialogMode() === "transition";
     const hasVisibleRows = Array.isArray(state.filteredTickets) && state.filteredTickets.length > 0;
     const hasTransitionRecipient = !!getSelectedPassTransitionRecipient();
     syncSlackMeRecipientIdentity();
     renderPassTransitionRecipientOptions();
-    const noteText = normalizeSlackMeDraftText(
-      els.slackMeInput && typeof els.slackMeInput.value === "string"
-        ? els.slackMeInput.value
-        : ""
-    );
     const canSend = !!(
       dialogOpen
       && slackReady
       && !state.slackMeNoteLoading
-      && (
-        transitionMode
-          ? (hasTransitionRecipient && hasVisibleRows && !state.slackMePassTransitionLoading)
-          : !!noteText
-      )
+      && hasTransitionRecipient
+      && hasVisibleRows
+      && !state.slackMePassTransitionLoading
     );
     if (els.slackMeSendBtn) {
       els.slackMeSendBtn.disabled = !canSend;
       els.slackMeSendBtn.setAttribute("aria-busy", state.slackMeNoteLoading ? "true" : "false");
     }
     if (els.slackMeSendLabel) {
-      els.slackMeSendLabel.textContent = transitionMode ? "SHARE" : "SEND";
+      els.slackMeSendLabel.textContent = "SHARE";
     }
     if (els.slackMeInput) {
       els.slackMeInput.disabled = state.slackMeNoteLoading;
-      els.slackMeInput.placeholder = transitionMode
-        ? "Add an optional handoff note for the selected PASS-TRANSITION member..."
-        : "Type your personal Slack note...";
+      els.slackMeInput.placeholder = "Add an optional handoff note for the selected PASS-TRANSITION member...";
     }
     if (els.slackMeCloseBtn) {
       els.slackMeCloseBtn.disabled = state.slackMeNoteLoading;
     }
     if (els.slackMeRecipientSelectWrap) {
-      els.slackMeRecipientSelectWrap.classList.toggle("hidden", !(dialogOpen && transitionMode));
+      els.slackMeRecipientSelectWrap.classList.toggle("hidden", !dialogOpen);
     }
     if (els.slackMeRecipientSelect) {
-      els.slackMeRecipientSelect.disabled = !dialogOpen || !transitionMode || state.slackMePassTransitionLoading || state.slackMeNoteLoading;
+      els.slackMeRecipientSelect.disabled = !dialogOpen || state.slackMePassTransitionLoading || state.slackMeNoteLoading;
     }
     if (els.slackMeRecipientHelp) {
-      els.slackMeRecipientHelp.classList.toggle("hidden", !(dialogOpen && transitionMode));
+      els.slackMeRecipientHelp.classList.toggle("hidden", !dialogOpen);
     }
     if (els.slackMeDialog) {
-      els.slackMeDialog.setAttribute(
-        "aria-label",
-        transitionMode ? "Share visible tickets to PASS-TRANSITION member" : "@SLACK ME"
-      );
+      els.slackMeDialog.setAttribute("aria-label", "Share visible tickets to PASS-TRANSITION member");
     }
     if (els.slackMeSending) {
       els.slackMeSending.classList.toggle("hidden", !state.slackMeNoteLoading);
@@ -3940,7 +3902,6 @@
 
   async function openSlackMeDialog(options) {
     const opts = options && typeof options === "object" ? options : {};
-    const mode = opts.mode === "transition" ? "transition" : "self";
     const requestedRecipientId = normalizePassAiSlackUserId(opts.selectedRecipientId || "");
     const activeBeforeOpen = typeof document !== "undefined" ? document.activeElement : null;
     hideContextMenu();
@@ -3958,35 +3919,29 @@
     } else {
       state.slackMeDialogReturnFocusEl = null;
     }
-    state.slackMeMode = mode;
     state.slackMeNoteLoading = false;
     clearSlackMeDialogStatus();
     if (els.slackMeInput) {
       els.slackMeInput.value = "";
     }
-    if (mode !== "transition") {
-      setSelectedPassTransitionRecipient("");
-    } else if (requestedRecipientId) {
+    if (requestedRecipientId) {
       setSelectedPassTransitionRecipient(requestedRecipientId);
     }
     els.slackMeDialogBackdrop.classList.remove("hidden");
     els.slackMeDialogBackdrop.setAttribute("aria-hidden", "false");
     syncSlackMeDialogUi();
-    if (mode === "transition") {
-      loadPassTransitionRecipients({
-        force: false,
-        preserveExisting: true
-      }).then((recipients) => {
-        if (!requestedRecipientId) return;
-        if (!Array.isArray(recipients)) return;
-        if (!recipients.some((entry) => entry && entry.userId === requestedRecipientId)) return;
-        setSelectedPassTransitionRecipient(requestedRecipientId);
-        syncSlackMeDialogUi();
-      }).catch(() => {});
-    }
+    loadPassTransitionRecipients({
+      force: false,
+      preserveExisting: true
+    }).then((recipients) => {
+      if (!requestedRecipientId) return;
+      if (!Array.isArray(recipients)) return;
+      if (!recipients.some((entry) => entry && entry.userId === requestedRecipientId)) return;
+      setSelectedPassTransitionRecipient(requestedRecipientId);
+      syncSlackMeDialogUi();
+    }).catch(() => {});
     const focusTarget = (
-      mode === "transition"
-      && els.slackMeRecipientSelect
+      els.slackMeRecipientSelect
       && !els.slackMeRecipientSelect.disabled
     ) ? els.slackMeRecipientSelect : els.slackMeInput;
     if (focusTarget) {
@@ -4166,88 +4121,7 @@
   }
 
   async function sendSlackMeNoteFromDialog() {
-    if (getSlackMeDialogMode() === "transition") {
-      return sendPassTransitionShareFromDialog();
-    }
-    if (state.slackMeNoteLoading) return;
-    let shouldCloseSlackMeDialog = false;
-    if (!isPassAiSlacktivated()) {
-      const blockedMessage = getPassAiSlackBlockedMessage();
-      setSlackMeDialogStatus(blockedMessage, true);
-      setStatus(blockedMessage, true);
-      syncSlackMeDialogUi();
-      return;
-    }
-    const noteText = normalizeSlackMeDraftText(
-      els.slackMeInput && typeof els.slackMeInput.value === "string"
-        ? els.slackMeInput.value
-        : ""
-    );
-    if (!noteText) {
-      setSlackMeDialogStatus("Enter a Slack note before sending.", true);
-      setStatus("Enter a Slack note before sending.", true);
-      syncSlackMeDialogUi();
-      return;
-    }
-    clearSlackMeDialogStatus();
-    state.slackMeNoteLoading = true;
-    applyGlobalBusyUi();
-    syncContextMenuAuthVisibility();
-    syncSlackMeDialogUi();
-    try {
-      await ensurePassAiSlackIdentityVerifiedForDelivery();
-      const slackApiTokens = getPassAiSlackApiTokenConfig();
-      await persistPassAiSlackApiTokenConfig(slackApiTokens).catch(() => {});
-      const response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", {
-        workspaceOrigin: PASS_AI_SLACK_WORKSPACE_ORIGIN,
-        userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
-        userName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
-        userEmail: normalizeEmailAddress(state.user && state.user.email || ""),
-        avatarUrl: state.passAiSlackAvatarUrl || "",
-        authorUserId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
-        authorUserName: normalizePassAiSlackDisplayName(state.passAiSlackUserName || ""),
-        authorEmail: normalizeEmailAddress(state.user && state.user.email || ""),
-        authorAvatarUrl: state.passAiSlackAvatarUrl || "",
-        directChannelId: normalizePassAiSlackDirectChannelId(state.passAiSlackDirectChannelId || ""),
-        markdownText: buildSlackMeNoteMarkdown(noteText),
-        botToken: slackApiTokens.botToken || "",
-        userToken: slackApiTokens.userToken || "",
-        autoBootstrapSlackTab: false,
-        preferApiFirst: true,
-        preferBotDmDelivery: false,
-        requireNativeNewMessage: false,
-        requireBotDelivery: false,
-        allowBotDelivery: false,
-        skipUnreadMark: true,
-        forceNewMessage: true
-      });
-      if (!response || response.ok !== true) {
-        const responseCode = String(response && response.code || "").trim().toLowerCase();
-        const responseMessage = normalizePassAiCommentBody(response && (response.error || response.message)) || "Slack send failed.";
-        const responseCodeLabel = responseCode ? ("[" + responseCode + "] ") : "";
-        throw new Error(responseCodeLabel + responseMessage);
-      }
-      if (!getConfirmedPassAiSlackDelivery(response)) {
-        throw new Error("[slack_delivery_unconfirmed] Slack send returned no delivery confirmation.");
-      }
-      const deliveryMode = String(response && response.delivery_mode || "").trim();
-      const deliverySuffix = deliveryMode ? (" Delivery mode: " + deliveryMode + ".") : "";
-      setStatus("@SLACK ME sent to your Slack DM." + deliverySuffix, false);
-      shouldCloseSlackMeDialog = true;
-    } catch (err) {
-      const message = normalizePassAiCommentBody(err && err.message) || "Slack send failed.";
-      setSlackMeDialogStatus("@SLACK ME failed: " + message, true);
-      setStatus("@SLACK ME failed: " + message, true);
-    } finally {
-      state.slackMeNoteLoading = false;
-      applyGlobalBusyUi();
-      syncContextMenuAuthVisibility();
-      if (shouldCloseSlackMeDialog) {
-        hideSlackMeDialog();
-      } else {
-        syncSlackMeDialogUi();
-      }
-    }
+    return sendPassTransitionShareFromDialog();
   }
 
   function applyContextMenuUpdateState(updateInfo) {
@@ -7061,12 +6935,6 @@
     return "// " + betaLink + " :ziptool: " + deeplinkLink;
   }
 
-  function buildSlackMeNoteMarkdown(noteText) {
-    const normalized = convertSlackMeDraftToMrkdwn(noteText || "");
-    if (!normalized) return "";
-    return normalized + "\n\n" + buildZipToolSlackFooterLine();
-  }
-
   function getConfirmedPassAiSlackDelivery(response) {
     const payload = response && typeof response === "object" ? response : {};
     const channel = normalizePassAiSlackChannelId(
@@ -7188,7 +7056,7 @@
       applyGlobalBusyUi();
       updateTicketActionButtons();
       syncContextMenuAuthVisibility();
-      setStatus("Sending visible ticket list to your Slack DM…", false);
+      setStatus("Sending visible ticket list to ZipTool panel…", false);
       let delivered = false;
       try {
         await ensurePassAiSlackIdentityVerifiedForDelivery();
@@ -7213,13 +7081,13 @@
           preferApiFirst: true,
           preferBotDmDelivery: true,
           requireNativeNewMessage: false,
-          requireBotDelivery: false,
+          requireBotDelivery: true,
           allowBotDelivery: true,
           skipUnreadMark: true,
           forceNewMessage: true
         };
 
-        setStatus("Sending visible ticket list to your Slack DM via Slack API…", false);
+        setStatus("Sending visible ticket list to ZipTool panel via Slack API…", false);
         let response = await sendBackgroundRequest("ZIP_SLACK_API_SEND_TO_SELF", sendPayload);
 
         if (!response || response.ok !== true) {
@@ -7266,7 +7134,7 @@
         const deliverySuffix = deliveryMode ? (" Delivery mode: " + deliveryMode + ".") : "";
         delivered = true;
         state.slackItToMeButtonState = "ack";
-        setStatus("SLACK_IT_TO_ME delivered to your Slack DM" + summarySuffix + "." + unreadSuffix + unconfirmedSuffix + deliverySuffix, false);
+        setStatus("SLACK_IT_TO_ME delivered to ZipTool panel" + summarySuffix + "." + unreadSuffix + unconfirmedSuffix + deliverySuffix, false);
       } catch (err) {
         const message = normalizePassAiCommentBody(err && err.message) || "Unable to send visible ticket list.";
         setStatus("SLACK_IT_TO_ME failed: " + message, true);
@@ -14869,12 +14737,6 @@
         runContextMenuAction("askTeam");
       });
     }
-    if (els.contextMenuSlackMe) {
-      els.contextMenuSlackMe.addEventListener("click", () => {
-        if (els.contextMenuSlackMe.disabled || !isPassAiSlacktivated()) return;
-        openSlackMeDialog({ mode: "self" });
-      });
-    }
     if (els.contextMenuGetLatest) {
       els.contextMenuGetLatest.addEventListener("click", () => {
         runContextMenuAction("getLatest");
@@ -14889,10 +14751,7 @@
             recipientButton.getAttribute("data-slacktivate-recipient") || ""
           );
           if (!selectedRecipientId) return;
-          openSlackMeDialog({
-            mode: "transition",
-            selectedRecipientId
-          });
+          openSlackMeDialog({ selectedRecipientId });
           return;
         }
         const trigger = event.target instanceof Element ? event.target.closest("[data-slacktivate-trigger]") : null;
@@ -15176,7 +15035,7 @@
         if (els.slackItToMeBtn.disabled || !isPassAiSlacktivated()) return;
         if (state.slackItToMeButtonState === "ack") return;
         if (e.shiftKey) {
-          openSlackMeDialog({ mode: "transition" }).catch((err) => {
+          openSlackMeDialog({}).catch((err) => {
             const message = normalizePassAiCommentBody(err && err.message) || "PASS-TRANSITION share dialog failed.";
             setStatus("PASS-TRANSITION share dialog failed: " + message, true);
           });

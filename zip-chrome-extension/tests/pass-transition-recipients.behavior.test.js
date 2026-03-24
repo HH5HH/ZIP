@@ -65,7 +65,10 @@ test("sidepanel preserves PASS-TRANSITION label text separately from the raw use
 test("sidepanel uses PASS-TRANSITION labels for the selected recipient UI and markdown", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
 
-  assert.match(source, /transitionRecipient && \(transitionRecipient\.label \|\| transitionRecipient\.userName \|\| transitionRecipient\.userId\)/);
+  assert.match(
+    source,
+    /const displayName = transitionRecipient[\s\S]*transitionRecipient\.label \|\| transitionRecipient\.userName \|\| transitionRecipient\.userId/
+  );
   assert.ok(
     source.includes(
       'const senderLabel = "*Note from @" + escapeSlackMrkdwn(senderName.replace(/^@+/, "").trim()) + ":*";'
