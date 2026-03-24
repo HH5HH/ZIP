@@ -3657,13 +3657,16 @@
     const force = !!opts.force;
     const keepText = !!opts.keepText;
     const keepStatus = !!opts.keepStatus;
+    const clearRecipient = !!opts.clearRecipient;
     if (state.slackMeNoteLoading && !force) return;
     if (!els.slackMeDialogBackdrop) return;
     moveFocusOutsideSlackMeDialog();
     els.slackMeDialogBackdrop.classList.add("hidden");
     els.slackMeDialogBackdrop.setAttribute("aria-hidden", "true");
     state.slackMeDialogReturnFocusEl = null;
-    setSelectedPassTransitionRecipient("");
+    if (clearRecipient) {
+      setSelectedPassTransitionRecipient("");
+    }
     if (els.slackMeInput && !keepText) {
       els.slackMeInput.value = "";
     }
@@ -7848,7 +7851,7 @@
 
   function showLogin() {
     stopPassAiSlackAuthPolling();
-    hideSlackMeDialog({ force: true });
+    hideSlackMeDialog({ force: true, clearRecipient: true });
     maybeCloseZipOpenedSlackLoginTab("show_login_reset", 0).catch(() => {});
     closeTrackedSlackWorkerTab("show_login_reset").catch(() => {});
     hideToast();

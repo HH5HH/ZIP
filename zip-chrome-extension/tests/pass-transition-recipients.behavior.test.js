@@ -90,3 +90,14 @@ test("transition dialog uses the cached roster and never warms Slack auth on log
   assert.doesNotMatch(source, /prefetchPassTransitionRecipients\(\{ force: false \}\)\.catch\(\(\) => \{\}\);/);
   assert.match(source, /const PASS_TRANSITION_CACHE_MISSING_MESSAGE = "No PASS-TRANSITION roster is cached yet\. RE-SLACKTIVATE to load members\.";/);
 });
+
+test("transition dialog preserves the chosen recipient across normal closes and clears only on hard reset", () => {
+  const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
+  const hideDialogSource = extractFunctionSource(source, "hideSlackMeDialog");
+  const showLoginSource = extractFunctionSource(source, "showLogin");
+
+  assert.match(hideDialogSource, /const clearRecipient = !!opts\.clearRecipient;/);
+  assert.match(hideDialogSource, /if \(clearRecipient\) \{\s*setSelectedPassTransitionRecipient\(""\);\s*\}/);
+  assert.doesNotMatch(hideDialogSource, /state\.slackMeDialogReturnFocusEl = null;\s*setSelectedPassTransitionRecipient\(""\);/);
+  assert.match(showLoginSource, /hideSlackMeDialog\(\{ force: true, clearRecipient: true \}\);/);
+});
