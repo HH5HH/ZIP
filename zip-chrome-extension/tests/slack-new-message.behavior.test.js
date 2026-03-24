@@ -115,7 +115,7 @@ test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", 
   assert.match(source, /await ensurePassAiSlackIdentityVerifiedForDelivery\(\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
   assert.match(
     source,
-    /if \(sendingToSelf\) \{[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF",\s*\{[\s\S]*preferBotDmDelivery:\s*true[\s\S]*requireBotDelivery:\s*false[\s\S]*allowBotDelivery:\s*true[\s\S]*\}\);/
+    /if \(sendingToSelf\) \{[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF",\s*\{[\s\S]*preferBotDmDelivery:\s*false[\s\S]*requireBotDelivery:\s*false[\s\S]*allowBotDelivery:\s*false[\s\S]*\}\);/
   );
   assert.match(
     source,
