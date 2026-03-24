@@ -4214,10 +4214,10 @@
         userToken: slackApiTokens.userToken || "",
         autoBootstrapSlackTab: false,
         preferApiFirst: true,
-        preferBotDmDelivery: true,
+        preferBotDmDelivery: false,
         requireNativeNewMessage: false,
         requireBotDelivery: false,
-        allowBotDelivery: true,
+        allowBotDelivery: false,
         skipUnreadMark: true,
         forceNewMessage: true
       });

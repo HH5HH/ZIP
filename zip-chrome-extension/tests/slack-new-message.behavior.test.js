@@ -98,7 +98,7 @@ test("sidepanel explicitly routes SLACK_IT_TO_ME to the logged-in user's Slack D
 
 test("sidepanel routes @SLACK ME through the logged-in user's Slack DM path", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
-  assert.match(source, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF",\s*\{[\s\S]*userEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)[\s\S]*authorEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)[\s\S]*markdownText:\s*buildSlackMeNoteMarkdown\(noteText\)[\s\S]*preferBotDmDelivery:\s*true[\s\S]*requireBotDelivery:\s*false[\s\S]*allowBotDelivery:\s*true[\s\S]*\}\)/);
+  assert.match(source, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF",\s*\{[\s\S]*userEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)[\s\S]*authorEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)[\s\S]*markdownText:\s*buildSlackMeNoteMarkdown\(noteText\)[\s\S]*preferBotDmDelivery:\s*false[\s\S]*requireBotDelivery:\s*false[\s\S]*allowBotDelivery:\s*false[\s\S]*\}\)/);
 });
 
 test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", () => {
