@@ -9601,7 +9601,7 @@
     slackSessionCacheHydrated = true;
     if (!cached) return false;
     const cachedMode = String(cached.mode || "").trim().toLowerCase();
-    if (cachedMode !== "openid" && cachedMode !== "web") {
+    if (cachedMode !== "openid" && cachedMode !== "web" && cachedMode !== "api") {
       clearPassAiSlacktivatedSessionCache().catch(() => {});
       return false;
     }
@@ -9619,6 +9619,13 @@
       teamId: cached.teamId || "",
       enterpriseId: cached.enterpriseId || "",
       skipPersist: true
+    });
+    recordSlackProbeEvent("slack_probe_cached_state_loaded", {
+      mode: cachedMode,
+      userId: cached.userId || "",
+      teamId: cached.teamId || "",
+      hasDirectChannel: !!normalizePassAiSlackDirectChannelId(cached.directChannelId || ""),
+      verifiedAtMs: Number(cached.verifiedAtMs || 0) || 0
     });
     return isPassAiSlackAuthVerified();
   }
@@ -10471,7 +10478,7 @@
     const requestedMode = String(nextState && nextState.mode || "").trim().toLowerCase();
     const skipPersist = !!(nextState && nextState.skipPersist);
     const clearPersisted = !!(nextState && nextState.clearPersisted);
-    const persistableMode = requestedMode === "openid" || requestedMode === "web";
+    const persistableMode = requestedMode === "openid" || requestedMode === "web" || requestedMode === "api";
     const requestedSessionOnly = !!(
       nextState
       && (
@@ -11069,10 +11076,14 @@
       recordSlackProbeEvent("slack_probe_web_auth_failed", { message });
       if (
         wasReady
-        && priorSlackAuthMode
-        && priorSlackAuthMode !== "cached"
         && isTransientSlackAuthProbeFailureMessage(message)
       ) {
+        recordSlackProbeEvent("slack_probe_verified_state_preserved", {
+          source: "transient_web_auth_failure",
+          mode: priorSlackAuthMode || "cached",
+          userId: normalizePassAiSlackUserId(state.passAiSlackUserId || ""),
+          message
+        });
         return true;
       }
       setPassAiSlackAuthState({ ready: false, error: message });

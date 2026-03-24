@@ -115,6 +115,15 @@ test("sidepanel tracks staged Slacktivation progress in the footer and toast", (
   assert.match(css, /\.zip-toast\[data-tone="success"\] \{/);
 });
 
+test("sidepanel preserves verified Slacktivated state across reload and transient no-tab refreshes", () => {
+  const js = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
+
+  assert.match(js, /if \(cachedMode !== "openid" && cachedMode !== "web" && cachedMode !== "api"\)/);
+  assert.match(js, /recordSlackProbeEvent\("slack_probe_cached_state_loaded",\s*\{/);
+  assert.match(js, /const persistableMode = requestedMode === "openid" \|\| requestedMode === "web" \|\| requestedMode === "api";/);
+  assert.match(js, /if \(\s*wasReady[\s\S]*&& isTransientSlackAuthProbeFailureMessage\(message\)\s*\) \{[\s\S]*recordSlackProbeEvent\("slack_probe_verified_state_preserved",\s*\{[\s\S]*source:\s*"transient_web_auth_failure"/);
+});
+
 test("sidepanel ships ZIP DEBUG INFO footer icon and hidden console snapshot", () => {
   const html = fs.readFileSync(SIDEPANEL_HTML_PATH, "utf8");
   const js = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
