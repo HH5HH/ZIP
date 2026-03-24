@@ -144,7 +144,7 @@ test("sidepanel ships ZIP DEBUG INFO footer icon and hidden console snapshot", (
   assert.match(js, /debugToggleBtn:\s*\$\("zipDebugToggleBtn"\)/);
   assert.match(js, /debugToggleStatus:\s*\$\("zipDebugToggleStatus"\)/);
   assert.match(js, /debugLogOutput:\s*\$\("zipDebugLogOutput"\)/);
-  assert.match(js, /function recordZipDebugEvent\(channel,\s*message,\s*details,\s*level\)/);
+  assert.match(js, /function recordZipDebugEvent\(channel,\s*message,\s*details,\s*level,\s*atOverride\)/);
   assert.match(js, /function composeZipDebugConsoleOutput\(\)/);
   assert.match(js, /function composeZipDebugConsoleFallback\(error\)/);
   assert.match(js, /function getZipDebugConsoleSnapshot\(\)/);

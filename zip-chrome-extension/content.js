@@ -846,11 +846,6 @@
         }
       });
     } catch (_) {}
-    try {
-      if (event && event.type) {
-        console.debug("[ZIP] Zendesk search:", event.type, event);
-      }
-    } catch (_) {}
   }
 
   function createZendeskSearchFetchImpl() {

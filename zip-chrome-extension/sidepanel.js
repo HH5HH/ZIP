@@ -245,6 +245,7 @@
     ticketRequestorProfileCacheById: Object.create(null),
     ticketOrganizationProfileCacheById: Object.create(null),
     ticketEnrichmentMetrics: null,
+    zendeskSearchMetrics: null,
     themeId: "s2-dark-cerulean",
     themeOptions: [],
     themeFlyoutStop: ""
@@ -269,6 +270,7 @@
   let slackOpenIdSilentProbeLastAt = 0;
   let slackBootstrapInFlight = false;
   let slackBootstrapLastAt = 0;
+  let runtimeDebugBridgeSeenIds = [];
   let slackWorkerCloseTimerId = null;
   let slackItToMeAckResetTimerId = null;
   let slackItToMeRequestInFlight = null;
@@ -1704,11 +1706,11 @@
     queueDebugConsoleRender();
   }
 
-  function recordZipDebugEvent(channel, message, details, level) {
+  function recordZipDebugEvent(channel, message, details, level, atOverride) {
     const normalizedMessage = normalizePassAiCommentBody(message || "");
     if (!normalizedMessage) return;
     const entry = {
-      at: Date.now(),
+      at: Number.isFinite(Number(atOverride)) ? Number(atOverride) : Date.now(),
       channel: String(channel || "app").trim().toLowerCase() || "app",
       level: normalizeZipDebugLevel(level),
       message: sanitizeZipDebugString(normalizedMessage, "message"),
@@ -1723,6 +1725,71 @@
       window.ZIP_DEBUG_EVENTS = state.debugEvents.slice();
     }
     queueDebugConsoleRender();
+  }
+
+  function hasSeenRuntimeDebugBridgeEventId(eventId) {
+    const normalizedId = Number(eventId);
+    return Number.isFinite(normalizedId) && runtimeDebugBridgeSeenIds.includes(normalizedId);
+  }
+
+  function rememberRuntimeDebugBridgeEventId(eventId) {
+    const normalizedId = Number(eventId);
+    if (!Number.isFinite(normalizedId) || runtimeDebugBridgeSeenIds.includes(normalizedId)) return;
+    runtimeDebugBridgeSeenIds.unshift(normalizedId);
+    runtimeDebugBridgeSeenIds = runtimeDebugBridgeSeenIds.slice(0, ZIP_DEBUG_ACTIVITY_LIMIT * 4);
+  }
+
+  function applyRuntimeDebugBridgeEvent(payload) {
+    const entry = payload && typeof payload === "object" ? payload : {};
+    if (hasSeenRuntimeDebugBridgeEventId(entry.id)) return;
+    rememberRuntimeDebugBridgeEventId(entry.id);
+    if (entry.channel === "zendesk_search") {
+      state.zendeskSearchMetrics = {
+        capturedAt: new Date(
+          Number.isFinite(Number(entry.at)) ? Number(entry.at) : Date.now()
+        ).toISOString(),
+        ...(entry.details && typeof entry.details === "object" ? entry.details : {})
+      };
+    }
+    recordZipDebugEvent(
+      entry.channel || "app",
+      entry.message || "runtime debug event",
+      entry.details,
+      entry.level,
+      entry.at
+    );
+  }
+
+  function loadRuntimeDebugEventBuffer() {
+    return new Promise((resolve) => {
+      if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+        resolve([]);
+        return;
+      }
+      chrome.runtime.sendMessage({ type: "ZIP_GET_DEBUG_EVENT_BUFFER" }, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve([]);
+          return;
+        }
+        const events = Array.isArray(response && response.events) ? response.events : [];
+        events.slice().reverse().forEach((entry) => applyRuntimeDebugBridgeEvent(entry));
+        resolve(events);
+      });
+    });
+  }
+
+  function buildZipErrorDebugDetails(error, extraDetails) {
+    const details = extraDetails && typeof extraDetails === "object" ? { ...extraDetails } : {};
+    const err = error && typeof error === "object" ? error : null;
+    const message = normalizePassAiCommentBody(err && err.message || error || "");
+    if (message) details.error = message;
+    const errorCode = String(err && (err.passAiErrorCode || err.code) || "").trim();
+    if (errorCode) details.errorCode = errorCode;
+    const classification = String(err && err.passAiClassification || "").trim();
+    if (classification) details.classification = classification;
+    const issueSource = String(err && err.passAiIssueSource || "").trim();
+    if (issueSource) details.issueSource = issueSource;
+    return details;
   }
 
   function compactZipRecentActivityEntries(entries, limit) {
@@ -1949,6 +2016,7 @@
       ? state.zipSecretConfig
       : null;
     const enrichmentMetrics = stringifyZipDebugInfoValue(state.ticketEnrichmentMetrics, 320) || "n/a";
+    const zendeskSearchMetrics = stringifyZipDebugInfoValue(state.zendeskSearchMetrics, 320) || "n/a";
     const threadContext = stringifyZipDebugInfoValue(state.passAiLastThreadContext, 320) || "n/a";
 
     lines.push("ZIP DEBUG INFO");
@@ -2029,6 +2097,7 @@
       "search_mode=" + (String(state.ticketSearchMode || "").trim() || "n/a"),
       "local_query=" + (String(state.ticketLocalSearchQuery || "").trim() || "n/a"),
       "cloud_query=" + (String(state.ticketApiSearchQuery || "").trim() || "n/a"),
+      "zendesk_search_metrics=" + zendeskSearchMetrics,
       "pass_ai_panel_visible=" + (state.passAiPanelVisible ? "yes" : "no"),
       "pass_ai_delete_in_flight=" + (state.passAiDeleteInFlight ? "yes" : "no"),
       "ticket_enrichment_metrics=" + enrichmentMetrics,
@@ -12132,9 +12201,21 @@
   function logPassAiRequestFailure(err) {
     const debugEnabled = typeof window !== "undefined" && window.ZIP_DEBUG_PASS_AI === true;
     if (isHandledPassAiSlackConfigError(err)) {
+      recordZipDebugEvent(
+        "pass_ai",
+        "PASS AI handled Slack config issue",
+        buildZipErrorDebugDetails(err),
+        "notice"
+      );
       if (debugEnabled) console.warn("PASS AI handled Slack config issue:", err);
       return;
     }
+    recordZipDebugEvent(
+      "pass_ai",
+      "PASS AI request failed",
+      buildZipErrorDebugDetails(err),
+      "error"
+    );
     if (debugEnabled) console.error("PASS AI request failed:", err);
   }
 
@@ -12916,6 +12997,12 @@
       setStatus(copiedMessage, false);
     } catch (err) {
       const message = err && err.message ? err.message : "Unknown error";
+      recordZipDebugEvent(
+        "tickets",
+        "ticket email copy failed",
+        buildZipErrorDebugDetails(err, { ticketId: normalizedTicketId }),
+        "error"
+      );
       setStatus("Unable to copy ticket emails: " + message, true);
     } finally {
       delete state.ticketEmailCopyBusyById[normalizedTicketId];
@@ -12934,7 +13021,12 @@
     }
     if (id != null && state.passAiPanelVisible) {
       loadLatestQuestionForTicket(id, { silentError: false }).catch((err) => {
-        console.error("Failed to load latest ticket question:", err);
+        recordZipDebugEvent(
+          "tickets",
+          "load latest ticket question failed",
+          buildZipErrorDebugDetails(err, { ticketId: id }),
+          "error"
+        );
       }).finally(() => {
         updateTicketActionButtons();
       });
@@ -13088,7 +13180,12 @@
             event.preventDefault();
             event.stopPropagation();
             handleCopyTicketEmails(rowId, copyBtn, { rowUrl }).catch((err) => {
-              console.error("Ticket email copy failed:", err);
+              recordZipDebugEvent(
+                "tickets",
+                "ticket email copy handler failed",
+                buildZipErrorDebugDetails(err, { ticketId: rowId }),
+                "error"
+              );
             });
           });
           td.appendChild(copyBtn);
@@ -14621,6 +14718,13 @@
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage && chrome.runtime.onMessage.addListener) {
       chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (!msg || typeof msg !== "object") return;
+        if (msg.type === "ZIP_DEBUG_EVENT_RECORDED") {
+          applyRuntimeDebugBridgeEvent(msg.payload);
+          if (typeof sendResponse === "function") {
+            sendResponse({ ok: true });
+          }
+          return;
+        }
         if (msg.type === ZIP_APPLY_WORKSPACE_DEEPLINK_MESSAGE_TYPE) {
           const accepted = handleRuntimeWorkspaceDeeplinkMessage(msg.payload);
           if (typeof sendResponse === "function") {
@@ -14637,6 +14741,7 @@
     }
     if (typeof window !== "undefined") {
       window.addEventListener("focus", () => {
+        loadRuntimeDebugEventBuffer().catch(() => {});
         refreshZipSecretConfigFromStorage()
           .then(() => applyZipConfigAfterStorageRefresh({ reportStatus: false }))
           .catch(() => {});
@@ -15268,6 +15373,7 @@
     if (els.status) els.status.title = FOOTER_HINT_TOOLTIP;
     await hydrateLoginHeroToolBox().catch(() => {});
     wireEvents();
+    await loadRuntimeDebugEventBuffer().catch(() => []);
     syncLoginCtaDirectionalCopy(state.sidePanelLayout);
     await refreshZipSecretConfigFromStorage().catch(() => {});
     await loadThemeState().catch(() => {});

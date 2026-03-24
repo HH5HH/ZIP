@@ -248,6 +248,9 @@ let sessionAboutToExpireSentForDeadline = 0;
 const slackTokenBackoffUntilByToken = new Map();
 const slackMentionUserIdCache = new Map();
 let latestTicketEnrichmentMetrics = null;
+const ZIP_DEBUG_EVENT_BUFFER_LIMIT = 120;
+let runtimeDebugEventSeq = 0;
+let runtimeDebugEventBuffer = [];
 
 function clearSessionPollTimer() {
   if (sessionPollTimerId != null) {
@@ -268,6 +271,66 @@ function parseDateToMs(value) {
 function parseNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
+}
+
+function normalizeRuntimeDebugLevel(value) {
+  const level = String(value || "").trim().toLowerCase();
+  if (level === "error") return "error";
+  if (level === "notice" || level === "warn" || level === "warning") return "notice";
+  return "info";
+}
+
+function sanitizeRuntimeDebugValue(value, depth) {
+  const level = Number(depth) || 0;
+  if (level > 4) return "[Max depth]";
+  if (value == null) return null;
+  if (typeof value === "string") return value.slice(0, 280);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) {
+    return value.slice(0, 16).map((entry) => sanitizeRuntimeDebugValue(entry, level + 1));
+  }
+  if (typeof value === "object") {
+    const output = {};
+    Object.keys(value).slice(0, 24).forEach((key) => {
+      output[key] = sanitizeRuntimeDebugValue(value[key], level + 1);
+    });
+    return output;
+  }
+  return String(value).slice(0, 280);
+}
+
+function createRuntimeDebugEvent(payload) {
+  const raw = payload && typeof payload === "object" ? payload : {};
+  const message = String(raw.message || "").trim();
+  if (!message) return null;
+  const channel = String(raw.channel || "app").trim().toLowerCase() || "app";
+  const at = Number.isFinite(Number(raw.at)) ? Math.trunc(Number(raw.at)) : Date.now();
+  return {
+    id: ++runtimeDebugEventSeq,
+    at,
+    channel,
+    level: normalizeRuntimeDebugLevel(raw.level),
+    message: message.slice(0, 220),
+    details: sanitizeRuntimeDebugValue(raw.details, 0)
+  };
+}
+
+function broadcastRuntimeDebugEvent(entry) {
+  if (!entry || typeof entry !== "object") return;
+  try {
+    chrome.runtime.sendMessage({ type: "ZIP_DEBUG_EVENT_RECORDED", payload: entry }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch (_) {}
+}
+
+function recordRuntimeDebugEvent(payload) {
+  const entry = createRuntimeDebugEvent(payload);
+  if (!entry) return null;
+  runtimeDebugEventBuffer.unshift(entry);
+  runtimeDebugEventBuffer = runtimeDebugEventBuffer.slice(0, ZIP_DEBUG_EVENT_BUFFER_LIMIT);
+  broadcastRuntimeDebugEvent(entry);
+  return entry;
 }
 
 function normalizeSessionEnvelope(payload) {
@@ -7579,6 +7642,18 @@ chrome.commands.onCommand.addListener((command) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || typeof msg !== "object") return;
+  if (msg.type === "ZIP_DEBUG_EVENT") {
+    const entry = recordRuntimeDebugEvent(msg.payload || msg);
+    sendResponse({ ok: !!entry, payload: entry });
+    return true;
+  }
+  if (msg.type === "ZIP_GET_DEBUG_EVENT_BUFFER") {
+    sendResponse({
+      ok: true,
+      events: runtimeDebugEventBuffer.slice()
+    });
+    return true;
+  }
   if (msg.type === "LOGIN_CLICKED") {
     handleLoginClicked()
       .then((result) => sendResponse(result || { ok: true }))
@@ -7596,6 +7671,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     latestTicketEnrichmentMetrics = msg && msg.payload && typeof msg.payload === "object"
       ? { ...msg.payload }
       : null;
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (msg.type === "ZIP_ZENDESK_SEARCH_METRICS") {
+    const payload = msg && msg.payload && typeof msg.payload === "object"
+      ? { ...msg.payload }
+      : {};
+    const eventType = String(payload.type || "zendesk_search").trim().toLowerCase();
+    const level = (
+      eventType.includes("failed")
+      || eventType.includes("blocked")
+    ) ? "error" : (
+      eventType.includes("retry")
+      || eventType.includes("recommend")
+    ) ? "notice" : "info";
+    recordRuntimeDebugEvent({
+      channel: "zendesk_search",
+      message: eventType || "zendesk_search",
+      level,
+      at: payload.ts,
+      details: payload
+    });
     sendResponse({ ok: true });
     return true;
   }
