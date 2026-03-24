@@ -1108,7 +1108,10 @@ function sanitizeLatestPackageFileSegment(value, fallback) {
 }
 
 function buildLatestZipPackageFileName(latestVersion, commitSha) {
-  const versionSegment = sanitizeLatestPackageFileSegment(latestVersion, "latest");
+  const versionSegment = sanitizeLatestPackageFileSegment(latestVersion, "");
+  if (!versionSegment) {
+    throw new Error("Unable to verify latest ZIP version from GitHub.");
+  }
   const shaSegment = normalizeCommitSha(commitSha).slice(0, 7);
   return shaSegment
     ? ("ZIP-v" + versionSegment + "-" + shaSegment + ".zip")
@@ -1193,9 +1196,9 @@ async function refreshUpdateState(options = {}) {
       updateState.updateAvailable = compareVersions(currentVersion, latestVersion) < 0;
       updateState.checkError = "";
     } catch (err) {
-      updateState.latestVersion = prevLatestVersion || "";
-      updateState.latestCommitSha = prevLatestCommitSha || "";
-      updateState.updateAvailable = prevUpdateAvailable;
+      updateState.latestVersion = "";
+      updateState.latestCommitSha = "";
+      updateState.updateAvailable = false;
       updateState.checkError = err && err.message ? err.message : "Version check failed";
     } finally {
       updateState.lastCheckedAt = Date.now();
@@ -7274,6 +7277,25 @@ async function openGetLatestFlow() {
   const hasFreshUpdateMetadata = !String(refreshed && refreshed.checkError || "").trim();
   const latestVersion = hasFreshUpdateMetadata ? (refreshed && refreshed.latestVersion || "") : "";
   const latestCommitSha = hasFreshUpdateMetadata ? (refreshed && refreshed.latestCommitSha || "") : "";
+  if (!String(latestVersion || "").trim()) {
+    const verifyError = String(
+      refreshed && refreshed.checkError
+      || "Unable to verify latest ZIP version from GitHub."
+    ).trim() || "Unable to verify latest ZIP version from GitHub.";
+    return {
+      ok: false,
+      error: verifyError,
+      downloadUrl: "",
+      downloadFileName: "",
+      latestVersion: "",
+      latestCommitSha: "",
+      checkError: verifyError,
+      downloadId: 0,
+      downloadStarted: false,
+      downloadTabOpened: false,
+      extensionsOpened: false
+    };
+  }
   const downloadUrl = buildLatestZipPackageUrl(latestCommitSha);
   const downloadFileName = buildLatestZipPackageFileName(latestVersion, latestCommitSha);
   const result = {

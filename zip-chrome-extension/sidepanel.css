@@ -8,8 +8,8 @@
 html {
   width: 100%;
   height: 100%;
-  min-width: var(--zip-panel-min-width, 220px);
-  overflow-x: auto;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: hidden;
 }
 
@@ -547,7 +547,7 @@ body {
   margin: 0;
   width: 100%;
   height: 100%;
-  min-width: var(--zip-panel-min-width, 220px);
+  min-width: 0;
   min-height: 0;
   max-height: 100%;
   background:
@@ -560,8 +560,7 @@ body {
   color-scheme: var(--zip-color-scheme);
   display: grid;
   grid-template-rows: var(--zip-header-height) minmax(0, 1fr) var(--zip-footer-height);
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
 }
 
 body[data-sidepanel-side="right"] .topbar {
@@ -628,8 +627,8 @@ body.zip-ticket-cloud-search-busy * {
   position: relative;
   isolation: isolate;
   max-inline-size: 100%;
-  min-width: var(--zip-topbar-min-inline-size);
-  min-inline-size: var(--zip-topbar-min-inline-size);
+  min-width: 0;
+  min-inline-size: 0;
   overflow: visible;
 }
 
@@ -637,9 +636,9 @@ body.zip-ticket-cloud-search-busy * {
   display: flex;
   align-items: center;
   gap: var(--zip-topbar-brand-gap);
-  min-width: auto;
-  min-inline-size: max-content;
-  flex: 0 0 auto;
+  min-width: 0;
+  min-inline-size: 0;
+  flex: 1 1 auto;
   max-inline-size: 100%;
 }
 
@@ -723,10 +722,12 @@ body.zip-ticket-cloud-search-busy * {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-inline-size: var(--zip-topbar-status-min-inline-size);
-  max-inline-size: none;
+  min-inline-size: 0;
+  max-inline-size: min(100%, var(--zip-topbar-status-preferred-inline-size));
   margin-inline: 2px var(--space-xxs);
   padding-inline: 2px;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .slacktivated-status-icon-img,
@@ -756,8 +757,8 @@ body.zip-ticket-cloud-search-busy * {
   line-height: 1.1;
   color: var(--fg-default);
   white-space: nowrap;
-  overflow: visible;
-  text-overflow: clip;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .slacktivated-indicator.has-status {
@@ -935,6 +936,10 @@ body.zip-ticket-cloud-search-busy * {
   background:
     linear-gradient(180deg, var(--zip-surface-soft) 0%, var(--zip-surface-mid) 100%),
     var(--bg-default);
+}
+
+#zipAppScreen {
+  min-width: 0;
 }
 
 body.zip-debug-open .body {
@@ -2829,6 +2834,8 @@ body.zip-debug-open .body {
 }
 
 .section {
+  min-width: 0;
+  min-inline-size: 0;
   border: 1px solid var(--zip-surface-border-accent);
   border-radius: var(--radius-lg);
   background:
@@ -2973,15 +2980,16 @@ body.zip-debug-open .body {
   column-gap: var(--space-xs);
   row-gap: var(--space-xxs);
   margin-bottom: 0;
-  min-width: var(--zip-ticket-header-min-inline-size);
-  min-inline-size: var(--zip-ticket-header-min-inline-size);
+  min-width: 0;
+  min-inline-size: 0;
+  max-inline-size: 100%;
 }
 
 .ticket-section-title {
   grid-area: title;
   margin: 0;
-  min-width: var(--zip-ticket-header-title-min-inline-size);
-  min-inline-size: var(--zip-ticket-header-title-min-inline-size);
+  min-width: 0;
+  min-inline-size: 0;
 }
 
 .ticket-network-indicator {
@@ -2993,7 +3001,7 @@ body.zip-debug-open .body {
   justify-content: flex-start;
   gap: 6px;
   flex: 0 0 auto;
-  min-inline-size: var(--zip-ticket-network-min-inline-size);
+  min-inline-size: 0;
   max-inline-size: min(100%, 280px);
   padding: 3px 8px;
   border: 1px solid var(--zip-surface-border-accent);
@@ -3035,6 +3043,8 @@ body.zip-debug-open .body {
   flex-wrap: wrap;
   flex: 1 1 auto;
   min-width: 0;
+  min-inline-size: 0;
+  max-inline-size: 100%;
   margin-top: 0;
   padding: var(--space-xxs);
   border: 1px solid var(--zip-surface-border-accent);
@@ -3137,10 +3147,54 @@ body.zip-debug-open .body {
 }
 
 @media (max-width: 520px) {
+  .topbar {
+    flex-wrap: wrap;
+    align-content: flex-start;
+    height: auto;
+    max-height: none;
+  }
+
+  .docs-menu {
+    margin-left: 0;
+    margin-inline-end: 0;
+    min-width: 0;
+    min-inline-size: 0;
+    flex: 1 1 100%;
+    inline-size: 100%;
+    max-width: none;
+    max-inline-size: none;
+  }
+
+  .ticket-section-header {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "title"
+      "status"
+      "filters";
+  }
+
+  .ticket-network-indicator {
+    justify-self: stretch;
+    max-inline-size: 100%;
+  }
+
   .ticket-section-by-org,
   .ticket-section-by-view,
   .ticket-section-by-group {
     flex: 1 1 100%;
+  }
+
+  .ticket-table-footer {
+    flex-wrap: wrap;
+  }
+
+  .ticket-table-footer .ticket-search-omnibox {
+    flex: 1 1 100%;
+  }
+
+  .ticket-table-footer #zipStatusFilter {
+    flex: 1 1 11ch;
+    max-inline-size: none;
   }
 }
 
@@ -3209,6 +3263,7 @@ input::placeholder {
   align-items: center;
   justify-content: flex-start;
   min-width: 0;
+  max-inline-size: 100%;
   border: 1px solid var(--zip-surface-border-accent);
   border-top: 0;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
@@ -3991,6 +4046,8 @@ input::placeholder {
 }
 
 .table-wrap {
+  min-width: 0;
+  max-width: 100%;
   min-height: calc((var(--zip-ticket-table-row-min-block-size) * 2) + 2px);
   max-height: calc(((var(--zip-ticket-table-max-visible-rows) + 1) * var(--zip-ticket-table-row-min-block-size)) + var(--zip-ticket-table-scrollbar-space) + 2px);
   overflow: auto;

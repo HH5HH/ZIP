@@ -83,6 +83,48 @@ test("distribution build excludes docs tests scripts and README from the runtime
   assert.ok(!archiveEntries.includes("ziptool_distro/scripts/helper.sh"));
 });
 
+test("distribution build prefers current tracked worktree files over older staged content", (t) => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ziptool-distro-worktree-test-"));
+  const repoDir = path.join(tempRoot, "repo");
+  const packageDir = path.join(repoDir, "zip-chrome-extension");
+  const repoScriptsDir = path.join(repoDir, "scripts");
+  const artifactPath = path.join(repoDir, "ziptool_distro.zip");
+
+  t.after(() => {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  fs.mkdirSync(packageDir, { recursive: true });
+  fs.mkdirSync(repoScriptsDir, { recursive: true });
+  fs.copyFileSync(SCRIPT_PATH, path.join(repoScriptsDir, "build_ziptool_distro.sh"));
+  fs.chmodSync(path.join(repoScriptsDir, "build_ziptool_distro.sh"), 0o755);
+
+  fs.writeFileSync(path.join(packageDir, "manifest.json"), '{ "version": "1.0.0" }\n');
+  fs.writeFileSync(path.join(packageDir, "background.js"), 'console.log("staged");\n');
+
+  runCommand("git", ["init", "--quiet"], repoDir);
+  runCommand(
+    "git",
+    [
+      "add",
+      "scripts/build_ziptool_distro.sh",
+      "zip-chrome-extension/manifest.json",
+      "zip-chrome-extension/background.js",
+    ],
+    repoDir
+  );
+
+  fs.writeFileSync(path.join(packageDir, "manifest.json"), '{ "version": "1.0.1" }\n');
+  fs.writeFileSync(path.join(packageDir, "background.js"), 'console.log("worktree");\n');
+
+  runCommand("bash", ["scripts/build_ziptool_distro.sh"], repoDir);
+  const manifestSource = runCommand("unzip", ["-p", artifactPath, "ziptool_distro/manifest.json"], repoDir);
+  const backgroundSource = runCommand("unzip", ["-p", artifactPath, "ziptool_distro/background.js"], repoDir);
+
+  assert.match(manifestSource, /"version": "1\.0\.1"/);
+  assert.equal(backgroundSource, 'console.log("worktree");\n');
+});
+
 test("distribution build packages staged tracked files even when the worktree copy is missing", (t) => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ziptool-distro-dirty-test-"));
   const repoDir = path.join(tempRoot, "repo");

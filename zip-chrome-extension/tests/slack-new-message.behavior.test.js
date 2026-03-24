@@ -86,9 +86,9 @@ test("sidepanel explicitly routes SLACK_IT_TO_ME to the logged-in user's Slack D
   assert.match(source, /setStatus\("Sending visible ticket list to your Slack DM…",\s*false\);/);
   assert.match(source, /setStatus\("Sending visible ticket list to your Slack DM via Slack API…",\s*false\);/);
   assert.match(source, /setStatus\("SLACK_IT_TO_ME delivered to your Slack DM"/);
-  assert.match(source, /const sendPayload = \{[\s\S]*preferBotDmDelivery:\s*false[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*preferBotDmDelivery:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*requireBotDelivery:\s*false[\s\S]*\};/);
-  assert.match(source, /const sendPayload = \{[\s\S]*allowBotDelivery:\s*false[\s\S]*\};/);
+  assert.match(source, /const sendPayload = \{[\s\S]*allowBotDelivery:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*skipUnreadMark:\s*true[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*directChannelId:\s*normalizePassAiSlackDirectChannelId\(state\.passAiSlackDirectChannelId \|\| ""\)[\s\S]*\};/);
   assert.match(source, /const sendPayload = \{[\s\S]*botToken:\s*slackApiTokens\.botToken \|\| ""[\s\S]*\};/);
@@ -98,7 +98,7 @@ test("sidepanel explicitly routes SLACK_IT_TO_ME to the logged-in user's Slack D
 
 test("sidepanel routes @SLACK ME through the logged-in user's Slack DM path", () => {
   const source = fs.readFileSync(SIDEPANEL_JS_PATH, "utf8");
-  assert.match(source, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF",\s*\{[\s\S]*userEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)[\s\S]*authorEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)[\s\S]*markdownText:\s*buildSlackMeNoteMarkdown\(noteText\)[\s\S]*preferBotDmDelivery:\s*false[\s\S]*requireBotDelivery:\s*false[\s\S]*allowBotDelivery:\s*false[\s\S]*\}\)/);
+  assert.match(source, /sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF",\s*\{[\s\S]*userEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)[\s\S]*authorEmail:\s*normalizeEmailAddress\(state\.user && state\.user\.email \|\| ""\)[\s\S]*markdownText:\s*buildSlackMeNoteMarkdown\(noteText\)[\s\S]*preferBotDmDelivery:\s*true[\s\S]*requireBotDelivery:\s*false[\s\S]*allowBotDelivery:\s*true[\s\S]*\}\)/);
 });
 
 test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", () => {
@@ -113,6 +113,10 @@ test("sidepanel routes Shift+Click through PASS-TRANSITION recipient delivery", 
   assert.match(source, /if \(\(!response \|\| response\.ok !== true\) && !sendingToSelf && responseCode === "user_not_found"\) \{/);
   assert.match(source, /await ensurePassAiSlackIdentityVerifiedForDelivery\(\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER"/);
   assert.match(source, /await ensurePassAiSlackIdentityVerifiedForDelivery\(\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF"/);
+  assert.match(
+    source,
+    /if \(sendingToSelf\) \{[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_SELF",\s*\{[\s\S]*preferBotDmDelivery:\s*true[\s\S]*requireBotDelivery:\s*false[\s\S]*allowBotDelivery:\s*true[\s\S]*\}\);/
+  );
   assert.match(
     source,
     /const sendingToSelf = isPassTransitionRecipientCurrentSlackUser\(targetRecipient\);[\s\S]*sendBackgroundRequest\("ZIP_SLACK_API_SEND_TO_USER",\s*\{[\s\S]*botToken:\s*slackApiTokens\.botToken \|\| ""[\s\S]*preferBotDmDelivery:\s*false[\s\S]*requireBotDelivery:\s*true[\s\S]*allowBotDelivery:\s*true[\s\S]*\}\);/

@@ -3213,7 +3213,7 @@
     const displayName = normalizePassAiSlackDisplayName(raw.displayName || raw.display_name || "");
     const realName = normalizePassAiSlackDisplayName(raw.realName || raw.real_name || "");
     const handle = normalizePassAiSlackDisplayName(String(raw.handle || "").replace(/^@+/, "")) || "";
-    const email = normalizeEmailAddress(raw.email || raw.user_email || "");
+    const email = String(raw.email || raw.user_email || "").replace(/\s+/g, "").trim().toLowerCase();
     return {
       userId,
       userName,
@@ -4079,10 +4079,10 @@
             userToken: slackApiTokens.userToken || "",
             autoBootstrapSlackTab: false,
             preferApiFirst: true,
-            preferBotDmDelivery: false,
+            preferBotDmDelivery: true,
             requireNativeNewMessage: false,
             requireBotDelivery: false,
-            allowBotDelivery: false,
+            allowBotDelivery: true,
             skipUnreadMark: true,
             forceNewMessage: true
           });
@@ -4137,7 +4137,8 @@
       if (!getConfirmedPassAiSlackDelivery(response)) {
         throw new Error("[slack_delivery_unconfirmed] Slack share returned no delivery confirmation.");
       }
-      const recipientLabel = deliveryRecipient.label || deliveryRecipient.userName || deliveryRecipient.userId;
+      const recipient = deliveryRecipient;
+      const recipientLabel = recipient.label || recipient.userName || recipient.userId;
       const sentRows = Math.min(rows.length, SLACK_IT_TO_ME_MAX_ROWS);
       const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
       const deliveryMode = String(response && response.delivery_mode || "").trim();
@@ -4213,10 +4214,10 @@
         userToken: slackApiTokens.userToken || "",
         autoBootstrapSlackTab: false,
         preferApiFirst: true,
-        preferBotDmDelivery: false,
+        preferBotDmDelivery: true,
         requireNativeNewMessage: false,
         requireBotDelivery: false,
-        allowBotDelivery: false,
+        allowBotDelivery: true,
         skipUnreadMark: true,
         forceNewMessage: true
       });
@@ -7210,10 +7211,10 @@
           userToken: slackApiTokens.userToken || "",
           autoBootstrapSlackTab: false,
           preferApiFirst: true,
-          preferBotDmDelivery: false,
+          preferBotDmDelivery: true,
           requireNativeNewMessage: false,
           requireBotDelivery: false,
-          allowBotDelivery: false,
+          allowBotDelivery: true,
           skipUnreadMark: true,
           forceNewMessage: true
         };

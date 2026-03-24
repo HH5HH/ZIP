@@ -273,11 +273,11 @@ test("sidepanel uses SLACKTIVATED indicator + Slack DM actions + @SLACK ME compo
   assert.match(js, /authorAvatarUrl:\s*state\.passAiSlackAvatarUrl \|\| ""/);
   assert.match(js, /directChannelId:\s*normalizePassAiSlackDirectChannelId\(state\.passAiSlackDirectChannelId \|\| ""\)/);
   assert.match(js, /preferApiFirst:\s*true/);
-  assert.match(js, /preferBotDmDelivery:\s*false/);
+  assert.match(js, /preferBotDmDelivery:\s*true/);
   assert.match(js, /requireNativeNewMessage:\s*false/);
   assert.match(js, /requireBotDelivery:\s*false/);
   assert.match(js, /autoBootstrapSlackTab:\s*false/);
-  assert.match(js, /allowBotDelivery:\s*false/);
+  assert.match(js, /allowBotDelivery:\s*true/);
   assert.match(js, /skipUnreadMark:\s*true/);
   assert.doesNotMatch(js, /csvFilename:/);
   assert.doesNotMatch(js, /csvContent:/);
@@ -301,8 +301,8 @@ test("sidepanel uses SLACKTIVATED indicator + Slack DM actions + @SLACK ME compo
   assert.match(js, /Sending visible ticket list to your Slack DM/);
   assert.match(js, /PASS-TRANSITION self-share sent to your Slack DM/);
   assert.match(js, /Click the Z avatar to finish Slack login\./);
-  assert.match(js, /preferBotDmDelivery:\s*false/);
-  assert.match(js, /allowBotDelivery:\s*false/);
+  assert.match(js, /preferBotDmDelivery:\s*true/);
+  assert.match(js, /allowBotDelivery:\s*true/);
   assert.match(js, /@SLACK ME sent to your Slack DM\./);
   assert.doesNotMatch(js, /Use RE-SLACKTIVATE to refresh the stored Slack identity against/);
   assert.doesNotMatch(js, /Shift\+Click Blondie Button uses this cached PASS-TRANSITION roster/);

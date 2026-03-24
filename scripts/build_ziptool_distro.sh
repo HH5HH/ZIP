@@ -31,6 +31,15 @@ rm -f "$output_path"
 
 git checkout-index --all --force --prefix="$staging_dir/"
 
+while IFS= read -r -d '' tracked_file; do
+  worktree_path="$repo_root/$tracked_file"
+  staged_path="$staging_dir/$tracked_file"
+  if [[ -f "$worktree_path" || -L "$worktree_path" ]]; then
+    mkdir -p "$(dirname "$staged_path")"
+    cp -p "$worktree_path" "$staged_path"
+  fi
+done < <(git ls-files -z -- "$package_root")
+
 if [[ ! -d "$staging_dir/$package_root" ]]; then
   echo "No extension files available to package." >&2
   exit 1
