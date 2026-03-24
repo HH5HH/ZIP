@@ -71,7 +71,8 @@ test("sidepanel uses PASS-TRANSITION labels for the selected recipient UI and ma
       'const senderLabel = "*Note from @" + escapeSlackMrkdwn(senderName.replace(/^@+/, "").trim()) + ":*";'
     )
   );
-  assert.match(source, /const recipientLabel = recipient\.label \|\| recipient\.userName \|\| recipient\.userId;/);
+  assert.match(source, /const recipientLabel = deliveredRecipient\.label \|\| deliveredRecipient\.userName \|\| deliveredRecipient\.userId;/);
+  assert.doesNotMatch(source, /let deliveryRecipient = recipient;[\s\S]*const recipient = deliveryRecipient;/);
 });
 
 test("transition dialog uses the cached roster and never warms Slack auth on login", () => {

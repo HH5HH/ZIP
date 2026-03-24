@@ -4137,8 +4137,8 @@
       if (!getConfirmedPassAiSlackDelivery(response)) {
         throw new Error("[slack_delivery_unconfirmed] Slack share returned no delivery confirmation.");
       }
-      const recipient = deliveryRecipient;
-      const recipientLabel = recipient.label || recipient.userName || recipient.userId;
+      const deliveredRecipient = deliveryRecipient;
+      const recipientLabel = deliveredRecipient.label || deliveredRecipient.userName || deliveredRecipient.userId;
       const sentRows = Math.min(rows.length, SLACK_IT_TO_ME_MAX_ROWS);
       const summarySuffix = rows.length > sentRows ? (" (first " + sentRows + " rows)") : "";
       const deliveryMode = String(response && response.delivery_mode || "").trim();
