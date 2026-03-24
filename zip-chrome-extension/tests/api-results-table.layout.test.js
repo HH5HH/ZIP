@@ -29,16 +29,20 @@ test("API result key cells force horizontal readable flow and prevent character-
 
 test("ticket layout stays contained when the sidepanel is narrowed", () => {
   const css = fs.readFileSync(SIDEPANEL_CSS_PATH, "utf8");
+  assert.match(css, /--zip-topbar-status-min-inline-size:\s*0px;/);
+  assert.match(css, /body:not\(\.zip-logged-out\)\s*\{[\s\S]*min-inline-size:\s*var\(--zip-panel-min-width\);/);
   assert.match(css, /html\s*\{[\s\S]*min-width:\s*0;/);
   assert.match(css, /html\s*\{[\s\S]*overflow-x:\s*hidden;/);
   assert.match(css, /body\s*\{[\s\S]*min-width:\s*0;/);
   assert.match(css, /body\s*\{[\s\S]*overflow:\s*hidden;/);
   assert.match(css, /\.topbar\s*\{[\s\S]*min-inline-size:\s*0;/);
+  assert.match(css, /\.topbar\s*\{[\s\S]*flex-wrap:\s*nowrap;/);
   assert.match(css, /\.section\s*\{[\s\S]*min-inline-size:\s*0;/);
   assert.doesNotMatch(css, /\.ticket-section-header\s*\{[\s\S]*min-inline-size:\s*var\(--zip-ticket-header-min-inline-size\);/);
   assert.match(css, /\.ticket-section-filters\s*\{[\s\S]*max-inline-size:\s*100%;/);
   assert.match(css, /\.table-wrap\s*\{[\s\S]*max-width:\s*100%;/);
-  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.topbar\s*\{[\s\S]*flex-wrap:\s*wrap;/);
+  assert.doesNotMatch(css, /@media \(max-width: 520px\) \{[\s\S]*\.topbar\s*\{[\s\S]*flex-wrap:\s*wrap;/);
+  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*body:not\(\.zip-logged-out\)\s*\{[\s\S]*--zip-topbar-edge-pad:\s*6px;[\s\S]*--zip-topbar-main-gap:\s*6px;[\s\S]*--zip-topbar-brand-gap:\s*3px;[\s\S]*--zip-topbar-links-inline-end-offset:\s*0px;/);
   assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.ticket-section-header\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\);[\s\S]*grid-template-areas:\s*"title"[\s\S]*"status"[\s\S]*"filters";/);
   assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.ticket-table-footer\s*\{[\s\S]*flex-wrap:\s*wrap;/);
 });

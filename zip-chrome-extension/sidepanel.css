@@ -61,10 +61,10 @@ html {
   --zip-topbar-edge-pad: 9px;
   --zip-topbar-main-gap: 8px;
   --zip-topbar-brand-gap: 4px;
-  --zip-topbar-control-inline-size: 24px;
+  --zip-topbar-control-inline-size: var(--spectrum-component-height-100);
   --zip-topbar-links-inline-size: 136px;
   --zip-topbar-status-preferred-inline-size: 220px;
-  --zip-topbar-status-min-inline-size: 220px;
+  --zip-topbar-status-min-inline-size: 0px;
   --zip-topbar-min-inline-size: calc(
     (var(--zip-topbar-edge-pad) * 2)
     + var(--zip-topbar-main-gap)
@@ -82,7 +82,7 @@ html {
     + var(--zip-ticket-network-min-inline-size)
     + var(--zip-ticket-header-inline-gap)
   );
-  --zip-panel-min-width: max(420px, var(--zip-ticket-header-min-inline-size), var(--zip-topbar-min-inline-size));
+  --zip-panel-min-width: var(--zip-topbar-min-inline-size);
 }
 
 /* ZIP semantic aliases backed by Spectrum 2 tokens. */
@@ -563,6 +563,11 @@ body {
   overflow: hidden;
 }
 
+body:not(.zip-logged-out) {
+  min-width: var(--zip-panel-min-width);
+  min-inline-size: var(--zip-panel-min-width);
+}
+
 body[data-sidepanel-side="right"] .topbar {
   border-right: 2px solid var(--zip-surface-border-accent);
 }
@@ -626,6 +631,7 @@ body.zip-ticket-cloud-search-busy * {
     0 2px 10px var(--zip-shadow-soft);
   position: relative;
   isolation: isolate;
+  z-index: 1;
   max-inline-size: 100%;
   min-width: 0;
   min-inline-size: 0;
@@ -3147,22 +3153,15 @@ body.zip-debug-open .body {
 }
 
 @media (max-width: 520px) {
-  .topbar {
-    flex-wrap: wrap;
-    align-content: flex-start;
-    height: auto;
-    max-height: none;
+  body:not(.zip-logged-out) {
+    --zip-topbar-edge-pad: 6px;
+    --zip-topbar-main-gap: 6px;
+    --zip-topbar-brand-gap: 3px;
+    --zip-topbar-links-inline-end-offset: 0px;
   }
 
   .docs-menu {
-    margin-left: 0;
     margin-inline-end: 0;
-    min-width: 0;
-    min-inline-size: 0;
-    flex: 1 1 100%;
-    inline-size: 100%;
-    max-width: none;
-    max-inline-size: none;
   }
 
   .ticket-section-header {
