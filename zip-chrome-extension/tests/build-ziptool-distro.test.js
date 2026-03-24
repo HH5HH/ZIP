@@ -168,3 +168,76 @@ test("distribution build packages staged tracked files even when the worktree co
   assert.ok(archiveEntries.includes("ziptool_distro/background.js"));
   assert.equal(backgroundSource, 'console.log("zip");\n');
 });
+
+test("distribution build mirrors the filtered runtime tree exactly inside the archive", (t) => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ziptool-distro-verify-test-"));
+  const repoDir = path.join(tempRoot, "repo");
+  const packageDir = path.join(repoDir, "zip-chrome-extension");
+  const repoScriptsDir = path.join(repoDir, "scripts");
+  const nestedDir = path.join(packageDir, "nested", "deep");
+  const artifactPath = path.join(repoDir, "ziptool_distro.zip");
+  const extractDir = path.join(tempRoot, "extract");
+
+  t.after(() => {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  fs.mkdirSync(nestedDir, { recursive: true });
+  fs.mkdirSync(repoScriptsDir, { recursive: true });
+  fs.copyFileSync(SCRIPT_PATH, path.join(repoScriptsDir, "build_ziptool_distro.sh"));
+  fs.chmodSync(path.join(repoScriptsDir, "build_ziptool_distro.sh"), 0o755);
+
+  fs.writeFileSync(path.join(packageDir, "manifest.json"), '{ "version": "1.2.3" }\n');
+  fs.writeFileSync(path.join(packageDir, "background.js"), 'console.log("fresh background");\n');
+  fs.writeFileSync(path.join(packageDir, "sidepanel.js"), 'console.log("fresh sidepanel");\n');
+  fs.writeFileSync(path.join(nestedDir, "config.json"), '{\n  "ok": true,\n  "build": "fresh"\n}\n');
+
+  runCommand("git", ["init", "--quiet"], repoDir);
+  runCommand(
+    "git",
+    [
+      "add",
+      "scripts/build_ziptool_distro.sh",
+      "zip-chrome-extension/manifest.json",
+      "zip-chrome-extension/background.js",
+      "zip-chrome-extension/sidepanel.js",
+      "zip-chrome-extension/nested/deep/config.json",
+    ],
+    repoDir
+  );
+
+  runCommand("bash", ["scripts/build_ziptool_distro.sh"], repoDir);
+  runCommand("unzip", ["-qq", artifactPath, "-d", extractDir], repoDir);
+
+  const expectedFiles = [
+    "manifest.json",
+    "background.js",
+    "sidepanel.js",
+    path.join("nested", "deep", "config.json"),
+  ];
+
+  expectedFiles.forEach((relativePath) => {
+    const sourcePath = path.join(packageDir, relativePath);
+    const archivedPath = path.join(extractDir, "ziptool_distro", relativePath);
+    assert.equal(fs.existsSync(archivedPath), true, "archive should include " + relativePath);
+    assert.equal(fs.readFileSync(archivedPath, "utf8"), fs.readFileSync(sourcePath, "utf8"));
+  });
+
+  const archiveEntries = runCommand("unzip", ["-Z1", artifactPath], repoDir)
+    .trim()
+    .split(/\n+/)
+    .filter(Boolean);
+
+  assert.deepEqual(
+    archiveEntries
+      .filter((entry) => entry.endsWith(".js") || entry.endsWith(".json"))
+      .sort(),
+    [
+      "ziptool_distro/background.js",
+      "ziptool_distro/manifest.json",
+      "ziptool_distro/nested/deep/config.json",
+      "ziptool_distro/sidepanel.js",
+    ]
+      .sort()
+  );
+});
